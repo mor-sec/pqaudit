@@ -1,5 +1,6 @@
 //! Reports for pqaudit.
 
+pub mod cbom;
 pub mod messages;
 pub mod technical;
 

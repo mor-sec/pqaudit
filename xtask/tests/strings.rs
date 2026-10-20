@@ -41,7 +41,7 @@ fn strings_extracts_help_and_messages() {
     assert!(help.contains("Use this directory as the engagement directory."));
     assert!(help.contains("Scan files on disk."), "subcommand help");
     let messages = fs::read_to_string(out.join("messages.md")).unwrap();
-    assert!(messages.contains(pqaudit_cli::messages::NOT_IMPLEMENTED));
+    assert!(messages.contains(pqaudit_cli::messages::LATER_RELEASE));
 }
 
 #[test]

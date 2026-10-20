@@ -114,7 +114,14 @@ pub enum Command {
         output: Option<PathBuf>,
     },
     /// Make a cryptography bill of materials (CBOM).
-    Cbom,
+    Cbom {
+        /// Read this results file. The default is `results/merged.pqr` in the engagement directory.
+        #[arg(long, value_name = "FILE")]
+        results: Option<PathBuf>,
+        /// Write the CBOM to this file. The default is `reports/cbom.cdx.json` in the engagement directory.
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
+    },
     /// Explain a finding: its score, complexity, tests, and fix.
     Explain {
         /// The ID of the finding, for example `F-1a2b3c4d`.

@@ -111,12 +111,12 @@
   oid: "2.16.840.1.101.3.4.2.2"
   primitive: hash
   quantum_vulnerable: false
-  nist_quantum_level: 3
+  nist_quantum_level: 4
 - name: SHA-512
   oid: "2.16.840.1.101.3.4.2.3"
   primitive: hash
   quantum_vulnerable: false
-  nist_quantum_level: 3
+  nist_quantum_level: 5
 - name: 3DES
   oid: "1.2.840.113549.3.7"
   primitive: cipher

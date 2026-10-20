@@ -55,7 +55,7 @@ fn init_logging(cli: &Cli) {
     };
 }
 
-/// Run one command. Each command is a stub until its task replaces it.
+/// Run one command.
 fn dispatch(cli: &Cli) -> ExitCode {
     match &cli.command {
         Command::Profiles { command } => commands::profiles::run(command),
@@ -113,11 +113,8 @@ fn dispatch(cli: &Cli) -> ExitCode {
                 output: output.as_deref(),
             },
         ),
-        Command::Cbom => not_implemented(),
+        Command::Cbom { results, output } => {
+            commands::cbom::run(cli, results.as_deref(), output.as_deref())
+        }
     }
-}
-
-fn not_implemented() -> ExitCode {
-    eprintln!("{}", messages::NOT_IMPLEMENTED);
-    ExitCode::Error
 }

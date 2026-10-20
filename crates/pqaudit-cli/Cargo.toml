@@ -22,6 +22,7 @@ pqaudit-report = { version = "0.1.0", path = "../pqaudit-report" }
 pqaudit-scan-net = { version = "0.1.0", path = "../pqaudit-scan-net" }
 pqaudit-scan-files = { version = "0.1.0", path = "../pqaudit-scan-files" }
 pqaudit-rules = { version = "0.1.0", path = "../pqaudit-rules" }
+serde_json = "1.0.154"
 tokio = { version = "1.54.0", features = ["rt", "time", "net", "signal"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -34,6 +35,6 @@ predicates.workspace = true
 pqaudit-rules = { path = "../pqaudit-rules", features = ["signing", "test-trust"] }
 rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "aws_lc_rs"] }
 rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
-serde_json = "1.0.154"
 sha2 = "0.11.1"
 tempfile = "3.27.0"
+base64 = "0.23.1"

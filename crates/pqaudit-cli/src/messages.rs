@@ -1,7 +1,10 @@
 //! User-facing text of the CLI crate.
 
-/// The text of a command that is not ready yet.
-pub const NOT_IMPLEMENTED: &str = "This command is not implemented yet.";
+/// The error when the tool cannot write the CBOM. The tool fills in {path} and {reason}.
+pub const CBOM_WRITE: &str = "The tool cannot write the CBOM {path}. {reason}";
+
+/// The text after the tool writes the CBOM. The tool fills in {path}.
+pub const CBOM_WRITTEN: &str = "Wrote the CBOM to {path}.";
 
 /// The error when the tool cannot merge. The tool fills in {reason}.
 pub const MERGE_FAILED: &str = "The tool cannot merge the results files. {reason}";
@@ -272,7 +275,8 @@ pub const ALL: &[(&str, &str)] = &[
     ("NET_SUMMARY", NET_SUMMARY),
     ("NET_NO_TARGETS", NET_NO_TARGETS),
     ("NET_REFUSED_STOP", NET_REFUSED_STOP),
-    ("NOT_IMPLEMENTED", NOT_IMPLEMENTED),
+    ("CBOM_WRITE", CBOM_WRITE),
+    ("CBOM_WRITTEN", CBOM_WRITTEN),
     ("MERGE_FAILED", MERGE_FAILED),
     ("MERGE_READ", MERGE_READ),
     ("MERGE_SUMMARY", MERGE_SUMMARY),

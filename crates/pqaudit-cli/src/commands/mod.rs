@@ -1,6 +1,7 @@
 //! The command handlers.
 
 pub mod assessment;
+pub mod cbom;
 pub mod explain;
 pub mod init;
 pub mod merge;

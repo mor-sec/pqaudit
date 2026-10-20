@@ -33,17 +33,22 @@ fn unknown_command_exits_1() {
 }
 
 #[test]
-fn stub_command_exits_1_with_message() {
-    pqaudit()
-        .arg("cbom")
-        .assert()
-        .code(1)
-        .stderr(predicate::str::contains("not implemented"));
-}
-
-#[test]
-fn scan_subcommands_are_stubs() {
-    for sub in ["files", "net"] {
-        pqaudit().args(["scan", sub]).assert().code(1);
+fn no_command_is_a_stub() {
+    // Without an engagement, each command fails for its own reason.
+    let dir = tempfile::tempdir().unwrap();
+    let commands: [&[&str]; 6] = [
+        &["cbom"],
+        &["report"],
+        &["explain", "F-00000000"],
+        &["merge", "missing.pqr"],
+        &["scan", "files", "."],
+        &["scan", "net"],
+    ];
+    for args in commands {
+        pqaudit()
+            .current_dir(dir.path())
+            .args(args)
+            .assert()
+            .stderr(predicate::str::contains("not implemented").not());
     }
 }
