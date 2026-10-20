@@ -171,3 +171,26 @@ fn strings_extracts_template_comments() {
     assert!(!text.contains("A # B"), "{text}");
     assert_eq!(text.matches("\n## ").count(), 3, "{text}");
 }
+
+#[test]
+fn docs_mention_every_flag() {
+    let out = scratch("docs-flags");
+    let root = workspace_root();
+    run_strings(&root, &out, &["--commits", "HEAD..HEAD"]);
+    let help = fs::read_to_string(out.join("cli-help.md")).unwrap();
+    let guide = fs::read_to_string(root.join("docs/user-guide.md")).unwrap();
+    // The help file has one heading for each flag, for example "### `pqaudit scan files --follow-symlinks`".
+    let flags: std::collections::BTreeSet<&str> = help
+        .lines()
+        .filter(|line| line.starts_with("### `"))
+        .flat_map(str::split_whitespace)
+        .filter(|word| word.starts_with("--"))
+        .map(|word| word.trim_end_matches('`'))
+        .collect();
+    assert!(flags.len() >= 15, "the test found too few flags: {flags:?}");
+    let missing: Vec<&&str> = flags
+        .iter()
+        .filter(|flag| !guide.contains(**flag))
+        .collect();
+    assert!(missing.is_empty(), "docs/user-guide.md lacks: {missing:?}");
+}
