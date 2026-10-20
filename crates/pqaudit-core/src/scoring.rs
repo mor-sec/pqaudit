@@ -144,7 +144,7 @@ pub fn score(
             value,
             weight,
             contribution: if weight_sum > 0.0 {
-                100.0 * weight * value / weight_sum
+                100.0 * (weight / weight_sum) * value
             } else {
                 0.0
             },

@@ -292,6 +292,7 @@ fn negative_weight_is_rejected() {
 fn nan_weight_is_rejected() {
     let text = scoring_error("[weights]\nmosca = nan\n");
     assert!(text.contains("weights.mosca"), "{text}");
+    assert!(text.contains("0 or more"), "{text}");
 }
 
 #[test]
@@ -309,12 +310,22 @@ fn unordered_bands_are_rejected() {
     assert!(text.contains("bands.high"), "{text}");
     let text = scoring_error("[bands]\ncritical = 180\n");
     assert!(text.contains("bands"), "{text}");
+    assert!(text.contains("0 to 100"), "{text}");
 }
 
 #[test]
 fn bad_migration_time_is_rejected() {
     let text = scoring_error("[migration_years]\nM = 0\n");
     assert!(text.contains("migration_years.M"), "{text}");
+    assert!(text.contains("more than 0"), "{text}");
     let text = scoring_error("[migration_years]\nL = nan\n");
     assert!(text.contains("migration_years.L"), "{text}");
+    assert!(text.contains("finite number"), "{text}");
+}
+
+#[test]
+fn overflowing_weight_sum_is_rejected() {
+    let text = scoring_error("[weights]\nthreat = 1e308\nexposure = 1e308\n");
+    assert!(text.contains("The key weights "), "{text}");
+    assert!(text.contains("sum of the weights"), "{text}");
 }

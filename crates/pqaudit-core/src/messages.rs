@@ -164,7 +164,7 @@ pub const SCORING_INVALID: &str =
 pub const RULE_WEIGHT: &str = "Each weight must be a finite number of 0 or more.";
 
 /// The rule for the sum of the weights.
-pub const RULE_WEIGHT_SUM: &str = "The sum of the weights must be more than 0.";
+pub const RULE_WEIGHT_SUM: &str = "The sum of the weights must be a finite number of more than 0.";
 
 /// The rule for a classification value.
 pub const RULE_CLASSIFICATION: &str = "Each classification value must be a number from 0 to 1.";

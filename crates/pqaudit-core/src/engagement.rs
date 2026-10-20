@@ -475,7 +475,8 @@ impl ScoringConfig {
                 return Err(invalid(format!("weights.{name}"), messages::RULE_WEIGHT));
             }
         }
-        if weights.iter().map(|(_, value)| value).sum::<f64>() <= 0.0 {
+        let sum: f64 = weights.iter().map(|(_, value)| value).sum();
+        if !sum.is_finite() || sum <= 0.0 {
             return Err(invalid("weights".into(), messages::RULE_WEIGHT_SUM));
         }
         for (name, value) in &self.classification {
