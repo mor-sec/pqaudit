@@ -828,6 +828,73 @@ fn key_file_with_zip_magic_is_not_read_and_not_an_error() {
     assert_eq!((out.files_read, out.files_not_read), (0, 1));
 }
 
+/// Write one DER element. The length is short or long form.
+fn tlv(tag: u8, content: &[u8]) -> Vec<u8> {
+    let mut out = vec![tag];
+    if content.len() < 128 {
+        out.push(content.len() as u8);
+    } else {
+        out.extend_from_slice(&[0x81, content.len() as u8]);
+    }
+    out.extend_from_slice(content);
+    out
+}
+
+/// A PKCS#8 RSA private key with a 384-bit modulus. Only the structure and the sizes are real.
+fn rsa384_pkcs8() -> Vec<u8> {
+    let mut modulus = vec![0x00, 0xc5];
+    modulus.extend_from_slice(&pseudo_random(11, 47));
+    let n = tlv(0x02, &modulus);
+    let e = tlv(0x02, &[0x01, 0x00, 0x01]);
+    let filler = tlv(0x02, &[0x2b; 24]);
+    let mut numbers = tlv(0x02, &[0]);
+    for part in [&n, &e, &filler, &filler, &filler, &filler, &filler, &filler] {
+        numbers.extend_from_slice(part);
+    }
+    let pkcs1 = tlv(0x30, &numbers);
+    let mut id = tlv(
+        0x06,
+        &[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01],
+    );
+    id.extend_from_slice(&[0x05, 0x00]);
+    let mut body = tlv(0x02, &[0]);
+    body.extend_from_slice(&tlv(0x30, &id));
+    body.extend_from_slice(&tlv(0x04, &pkcs1));
+    tlv(0x30, &body)
+}
+
+#[test]
+fn small_rsa_keys_are_weak_findings_in_every_named_form() {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine;
+    let dir = tempfile::tempdir().unwrap();
+    let der = rsa384_pkcs8();
+    let pem = dir.path().join("small.pem");
+    fs::write(
+        &pem,
+        format!(
+            "-----BEGIN PRIVATE KEY-----\n{}\n-----END PRIVATE KEY-----\n",
+            STANDARD.encode(&der)
+        ),
+    )
+    .unwrap();
+    let named_der = dir.path().join("small.der");
+    fs::write(&named_der, &der).unwrap();
+    let named_key = dir.path().join("small.key");
+    fs::write(&named_key, &der).unwrap();
+    for path in [pem, named_der, named_key] {
+        let out = scan_paths(std::slice::from_ref(&path));
+        let finding = only_finding(&out);
+        assert_eq!(finding.rule_id, "key.weak", "{path:?}");
+        assert_eq!(finding.algorithm.as_ref().unwrap().key_bits, Some(384));
+    }
+    // A file with no key name and a small RSA key is not read as a key.
+    let unnamed = dir.path().join("small");
+    fs::write(&unnamed, &der).unwrap();
+    let out = scan_paths(&[unnamed]);
+    assert!(out.findings.is_empty() && out.errors.is_empty());
+}
+
 #[test]
 fn key_blocks_with_bad_content_show_no_bytes() {
     // A key block with bad content next to the bytes of a real key.

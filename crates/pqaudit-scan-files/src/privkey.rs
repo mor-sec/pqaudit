@@ -96,7 +96,15 @@ pub fn is_whole_der_key(head: &[u8], head_is_cut: bool) -> bool {
     };
     (head_is_cut || rest.is_empty())
         && outer.whole.len() == head.len() - rest.len()
-        && parse_der_forms(outer.whole, "", false).is_ok()
+        && parse_der_forms(outer.whole, "", false)
+            .is_ok_and(|key| key.info.algorithm.is_some_and(plausible_algorithm))
+}
+
+/// Return true if a file with no key name can hold a key of this algorithm.
+///
+/// An RSA key of less than 512 bits is real, but a file with no key name is more likely not a key.
+fn plausible_algorithm(algorithm: pqaudit_core::Algorithm) -> bool {
+    algorithm.name != "RSA" || algorithm.key_bits.is_some_and(|bits| bits >= 512)
 }
 
 /// Try the DER forms in order. The flag says if the tool tries a PKCS#1 public key.
@@ -191,24 +199,7 @@ fn rsa_numbers(sequence: &[u8], private: bool) -> Option<(Tlv<'_>, Tlv<'_>)> {
     }
     let (n, rest) = der::read_tag(rest, INTEGER)?;
     let (e, _) = der::read_tag(rest, INTEGER)?;
-    plausible_rsa(n.content, e.content).then_some((n, e))
-}
-
-/// Return true if the numbers can be an RSA key: a big odd modulus and a small odd exponent.
-fn plausible_rsa(modulus: &[u8], exponent: &[u8]) -> bool {
-    let strip = |bytes: &[u8]| -> Vec<u8> {
-        bytes
-            .iter()
-            .copied()
-            .skip_while(|byte| *byte == 0)
-            .collect()
-    };
-    let (modulus, exponent) = (strip(modulus), strip(exponent));
-    modulus.len() >= 64
-        && modulus.last().is_some_and(|byte| byte & 1 == 1)
-        && (1..=4).contains(&exponent.len())
-        && exponent.last().is_some_and(|byte| byte & 1 == 1)
-        && exponent != [1]
+    Some((n, e))
 }
 
 /// Make the SPKI bytes of a public key.
