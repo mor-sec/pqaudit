@@ -98,8 +98,44 @@ pub const LEGACY_FAILED: &str = "The check for old protocol versions failed. {re
 /// The error when the server sends a reply that is not a TLS handshake record.
 pub const LEGACY_BAD_REPLY: &str = "The server sent a reply that is not a TLS handshake.";
 
-/// The error when the SSH probe does not exist yet.
-pub const SSH_NOT_AVAILABLE: &str = "The SSH probe is not available yet.";
+/// The error when the server sends too many lines, or a long line, before the SSH banner.
+pub const SSH_BANNER_TOO_LONG: &str =
+    "The SSH banner is too long. The server sent too many lines, or a line that is too long.";
+
+/// The error when an SSH packet is too large. The tool fills in {max}.
+pub const SSH_PACKET_TOO_LARGE: &str =
+    "The server sent an SSH packet that is too large. The limit is {max} bytes.";
+
+/// The error when an SSH packet is not valid.
+pub const SSH_PACKET_INVALID: &str = "The server sent an SSH packet that the tool cannot read.";
+
+/// The error when the first SSH packet is not a KEXINIT message.
+pub const SSH_NOT_KEXINIT: &str = "The first SSH packet of the server is not a KEXINIT message.";
+
+/// The error when the server closes the connection too early.
+pub const SSH_CLOSED: &str = "The server closed the connection before the SSH exchange ended.";
+
+/// The error when a read or write fails in the SSH exchange. The tool fills in {reason}.
+pub const SSH_IO: &str = "The SSH exchange failed. {reason}";
+
+/// The error when the SSH exchange does not finish in the read timeout.
+pub const SSH_TIMEOUT: &str = "The SSH exchange did not finish in the read timeout.";
+
+/// The evidence for an SSH server without a post-quantum key exchange.
+pub const EVIDENCE_SSH_NO_PQ: &str =
+    "The server offers no post-quantum key exchange. It offers {count} key exchange algorithms.";
+
+/// The evidence for an SSH server with weak key exchange algorithms. The tool fills in {names}.
+pub const EVIDENCE_SSH_WEAK_KEX: &str =
+    "The server offers these weak key exchange algorithms: {names}.";
+
+/// The evidence for an SSH server with classical host keys. The tool fills in {names}.
+pub const EVIDENCE_SSH_HOSTKEY: &str =
+    "All host key algorithms of the server are classical: {names}.";
+
+/// The evidence for an SSH server with a post-quantum key exchange. The tool fills in {names}.
+pub const EVIDENCE_SSH_PQ_READY: &str =
+    "The server offers these post-quantum key exchange algorithms: {names}.";
 
 /// The error when other names used the handshake limit of this address and port.
 pub const HANDSHAKE_LIMIT_USED: &str =
@@ -168,7 +204,13 @@ pub const ALL: &[(&str, &str)] = &[
     ("CHAIN_TOO_LONG", CHAIN_TOO_LONG),
     ("LEGACY_FAILED", LEGACY_FAILED),
     ("LEGACY_BAD_REPLY", LEGACY_BAD_REPLY),
-    ("SSH_NOT_AVAILABLE", SSH_NOT_AVAILABLE),
+    ("SSH_BANNER_TOO_LONG", SSH_BANNER_TOO_LONG),
+    ("SSH_PACKET_TOO_LARGE", SSH_PACKET_TOO_LARGE),
+    ("SSH_PACKET_INVALID", SSH_PACKET_INVALID),
+    ("SSH_NOT_KEXINIT", SSH_NOT_KEXINIT),
+    ("SSH_CLOSED", SSH_CLOSED),
+    ("SSH_IO", SSH_IO),
+    ("SSH_TIMEOUT", SSH_TIMEOUT),
     ("HANDSHAKE_LIMIT_USED", HANDSHAKE_LIMIT_USED),
     ("HANDSHAKE_LIMIT_PART", HANDSHAKE_LIMIT_PART),
     ("TARGET_STOPPED", TARGET_STOPPED),
@@ -178,5 +220,9 @@ pub const ALL: &[(&str, &str)] = &[
     ("EVIDENCE_NO_PQ", EVIDENCE_NO_PQ),
     ("EVIDENCE_LEGACY", EVIDENCE_LEGACY),
     ("EVIDENCE_CHAIN_CERT", EVIDENCE_CHAIN_CERT),
+    ("EVIDENCE_SSH_NO_PQ", EVIDENCE_SSH_NO_PQ),
+    ("EVIDENCE_SSH_WEAK_KEX", EVIDENCE_SSH_WEAK_KEX),
+    ("EVIDENCE_SSH_HOSTKEY", EVIDENCE_SSH_HOSTKEY),
+    ("EVIDENCE_SSH_PQ_READY", EVIDENCE_SSH_PQ_READY),
     ("UNKNOWN_VALUE", UNKNOWN_VALUE),
 ];

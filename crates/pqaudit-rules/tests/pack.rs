@@ -5,7 +5,7 @@ use std::path::Path;
 
 use chrono::NaiveDate;
 use pqaudit_rules::embedded::default_pack;
-use pqaudit_rules::pack::{MilestoneKind, PackError, RulesPack, TierScope};
+use pqaudit_rules::pack::{MilestoneKind, PackError, RulesPack, SshRole, TierScope};
 
 fn date(text: &str) -> NaiveDate {
     text.parse().unwrap()
@@ -166,6 +166,42 @@ fn rsa_weak_below_2048() {
     assert_eq!(pack.algorithm("RSA").unwrap().weak_below_bits, Some(2048));
     assert!(pack.algorithm("SHA-1").unwrap().weak_always);
     assert!(pack.algorithm("ML-KEM-768").is_some());
+}
+
+#[test]
+fn ssh_names_have_roles() {
+    let pack = default_pack();
+    let role = |name: &str| pack.algorithm(name).and_then(|fact| fact.ssh_role);
+    assert_eq!(role("mlkem768x25519-sha256"), Some(SshRole::PqKex));
+    assert_eq!(role("sntrup761x25519-sha512"), Some(SshRole::PqKex));
+    assert_eq!(
+        role("sntrup761x25519-sha512@openssh.com"),
+        Some(SshRole::PqKex)
+    );
+    assert_eq!(role("diffie-hellman-group1-sha1"), Some(SshRole::WeakKex));
+    assert_eq!(role("diffie-hellman-group14-sha1"), Some(SshRole::WeakKex));
+    assert_eq!(
+        role("diffie-hellman-group-exchange-sha1"),
+        Some(SshRole::WeakKex)
+    );
+    assert_eq!(role("ssh-ed25519"), Some(SshRole::ClassicalHostKey));
+    assert_eq!(role("curve25519-sha256"), None);
+}
+
+#[test]
+fn ssh_role_in_a_pack_file_is_read() {
+    let dir = tempfile::tempdir().unwrap();
+    small_pack(dir.path(), "[]\n");
+    write(
+        dir.path(),
+        "algorithms.yaml",
+        "- name: extra-kex\n  primitive: kem\n  quantum_vulnerable: false\n  nist_quantum_level: 3\n  ssh_role: pq_kex\n",
+    );
+    let pack = RulesPack::load_dir(dir.path()).unwrap();
+    assert_eq!(
+        pack.algorithm("extra-kex").unwrap().ssh_role,
+        Some(SshRole::PqKex)
+    );
 }
 
 #[test]

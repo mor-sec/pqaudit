@@ -600,19 +600,6 @@ async fn garbage_server_is_not_a_tls_server() {
     assert!(out.findings.is_empty());
 }
 
-#[tokio::test]
-async fn ssh_probe_is_a_stub() {
-    let dir = tempfile::tempdir().unwrap();
-    let audit = audit_in(&dir);
-    let ctx = ProbeCtx::new(limits(), &audit, Uuid::new_v4());
-    let mut ssh = target_for("127.0.0.1:22".parse().unwrap(), 1);
-    ssh.protocol = Protocol::Ssh;
-    let result = RealProbes::new(false).ssh(&ssh, &ctx).await;
-    assert_eq!(result.unwrap_err(), "The SSH probe is not available yet.");
-    // The stub opens no socket, so the audit log stays empty.
-    assert!(read_entries(&dir).is_empty());
-}
-
 fn sni_target(address: SocketAddr, name: &str, connections: u8) -> PlannedTarget {
     let mut t = target_for(address, connections);
     t.host = Some(name.to_string());

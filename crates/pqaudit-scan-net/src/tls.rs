@@ -25,6 +25,7 @@ use tokio_rustls::TlsConnector;
 use crate::messages;
 use crate::runtime::{Connected, ProbeCtx, Probes, SshObservationResult, TlsObservationWithCerts};
 use crate::scope::PlannedTarget;
+use crate::ssh;
 use crate::tls_legacy;
 
 /// The probe name of the hybrid handshake in the audit log.
@@ -60,9 +61,33 @@ impl Probes for RealProbes {
         probe_tls(self.legacy_tls_check, t, ctx).await
     }
 
-    async fn ssh(&self, _t: &PlannedTarget, _ctx: &ProbeCtx<'_>) -> SshObservationResult {
-        Err(messages::SSH_NOT_AVAILABLE.to_string())
+    async fn ssh(&self, t: &PlannedTarget, ctx: &ProbeCtx<'_>) -> SshObservationResult {
+        probe_ssh(t, ctx).await
     }
+}
+
+/// Probe an SSH target with one connection. The probe sends no KEXINIT message.
+async fn probe_ssh(t: &PlannedTarget, ctx: &ProbeCtx<'_>) -> SshObservationResult {
+    // The pattern lists the guard first. The variables then drop in reverse order:
+    // the stream closes first, and the audit guard drops last.
+    let Connected {
+        mut audit,
+        mut stream,
+    } = ctx
+        .connect(t, ssh::PROBE_NAME)
+        .await
+        .map_err(|error| error.to_string())?;
+    let result = ssh::probe(&mut stream, &ctx.limits).await;
+    if result.is_ok() {
+        ssh::close(&mut stream).await;
+    }
+    drop(stream);
+    audit.set_outcome(match &result {
+        Ok(_) => "ok",
+        Err(ssh::SshProbeError::Timeout) => "timeout",
+        Err(_) => "ssh-failed",
+    });
+    result.map_err(|error| error.to_string())
 }
 
 /// A verifier that records the chain and accepts all chains.

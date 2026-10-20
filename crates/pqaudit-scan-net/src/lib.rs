@@ -8,5 +8,6 @@ mod findings;
 pub mod messages;
 pub mod runtime;
 pub mod scope;
+pub mod ssh;
 pub mod tls;
 pub mod tls_legacy;

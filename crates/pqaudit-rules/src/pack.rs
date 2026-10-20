@@ -106,6 +106,18 @@ pub enum Primitive {
     Cipher,
 }
 
+/// The part that an SSH algorithm name plays in the SSH rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SshRole {
+    /// A post-quantum key exchange name.
+    PqKex,
+    /// A key exchange name that is weak now.
+    WeakKex,
+    /// A host key name that a quantum computer can break.
+    ClassicalHostKey,
+}
+
 /// The kind of a milestone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -173,6 +185,9 @@ pub struct AlgorithmFact {
     /// True when the algorithm is always weak.
     #[serde(default)]
     pub weak_always: bool,
+    /// The part that the name plays in the SSH rules. The name is then an SSH algorithm name.
+    #[serde(default)]
+    pub ssh_role: Option<SshRole>,
 }
 
 /// The assets and threats that a milestone covers.

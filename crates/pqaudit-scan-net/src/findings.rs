@@ -7,10 +7,10 @@ use chrono::Utc;
 use pqaudit_core::classify::classify_cert;
 use pqaudit_core::{
     Agility, Algorithm, CertInfo, EndpointInfo, Finding, Fingerprint, FixOwner, InventoryItem,
-    InventoryKind, Location, Occurrence, Protocol, Purpose, ScanError, Source, ThreatType,
-    TlsObservation,
+    InventoryKind, Location, Occurrence, Protocol, Purpose, ScanError, Source, SshObservation,
+    ThreatType, TlsObservation,
 };
-use pqaudit_rules::pack::RulesPack;
+use pqaudit_rules::pack::{RulesPack, SshRole};
 use uuid::Uuid;
 
 use crate::messages;
@@ -22,10 +22,26 @@ pub const RULE_NO_PQ_KEX: &str = "tls.no-pq-kex";
 /// The ID of the rule for a server that accepts an old protocol version.
 pub const RULE_LEGACY_VERSION: &str = "tls.legacy-version";
 
+/// The ID of the rule for an SSH server without a post-quantum key exchange.
+pub const RULE_SSH_NO_PQ_KEX: &str = "ssh.no-pq-kex";
+/// The ID of the rule for an SSH server that offers a weak key exchange.
+pub const RULE_SSH_WEAK_KEX: &str = "ssh.weak-kex";
+/// The ID of the rule for an SSH server with classical host keys only.
+pub const RULE_SSH_CLASSICAL_HOSTKEY: &str = "ssh.classical-hostkey";
+
 /// A certificate and the endpoints where the tool saw it.
 struct SeenCert {
     cert: CertInfo,
     occurrences: Vec<Occurrence>,
+}
+
+/// The facts of one SSH finding.
+struct SshFinding {
+    rule_id: &'static str,
+    fallback: ThreatType,
+    purpose: Purpose,
+    algorithm: Option<Algorithm>,
+    evidence: String,
 }
 
 /// Collect the output of a scan, in the order of the plan.
@@ -57,8 +73,7 @@ pub(crate) fn build(
             Some(TargetResult::Tls(result)) => {
                 builder.tls(target, result.obs, result.chain, result.failures);
             }
-            // The SSH findings come with the SSH probe.
-            Some(TargetResult::Ssh(Ok(_))) => {}
+            Some(TargetResult::Ssh(Ok(obs))) => builder.ssh(target, obs),
             Some(TargetResult::Ssh(Err(reason))) => builder.error(target, reason),
         }
     }
@@ -217,6 +232,117 @@ impl Builder<'_> {
                 .occurrences
                 .push(occurrence);
         }
+    }
+
+    /// Apply the SSH rules. The rule pack gives the role of each algorithm name.
+    fn ssh(&mut self, t: &PlannedTarget, obs: SshObservation) {
+        let host = display_host(t);
+        let endpoint = EndpointInfo {
+            protocol: Protocol::Ssh,
+            tls: None,
+            ssh: Some(obs.clone()),
+        };
+        let pack = self.pack;
+        let with_role = |names: &[String], role: SshRole| -> Vec<String> {
+            names
+                .iter()
+                .filter(|name| pack.algorithm(name).and_then(|fact| fact.ssh_role) == Some(role))
+                .cloned()
+                .collect()
+        };
+        let algorithm_of = |name: Option<&String>| {
+            name.map(|name| Algorithm {
+                name: name.clone(),
+                key_bits: None,
+                curve: None,
+            })
+        };
+        let pq_names = with_role(&obs.kex, SshRole::PqKex);
+        let weak_names = with_role(&obs.kex, SshRole::WeakKex);
+        let classical_keys = with_role(&obs.host_key_algorithms, SshRole::ClassicalHostKey);
+
+        if pq_names.is_empty() {
+            let evidence =
+                messages::EVIDENCE_SSH_NO_PQ.replace("{count}", &obs.kex.len().to_string());
+            self.ssh_finding(
+                t,
+                &endpoint,
+                SshFinding {
+                    rule_id: RULE_SSH_NO_PQ_KEX,
+                    fallback: ThreatType::Hndl,
+                    purpose: Purpose::KeyExchange,
+                    algorithm: None,
+                    evidence,
+                },
+            );
+        }
+        if !weak_names.is_empty() {
+            let evidence =
+                messages::EVIDENCE_SSH_WEAK_KEX.replace("{names}", &weak_names.join(", "));
+            self.ssh_finding(
+                t,
+                &endpoint,
+                SshFinding {
+                    rule_id: RULE_SSH_WEAK_KEX,
+                    fallback: ThreatType::ClassicalWeakNow,
+                    purpose: Purpose::KeyExchange,
+                    algorithm: algorithm_of(weak_names.first()),
+                    evidence,
+                },
+            );
+        }
+        // The finding needs at least one host key name, and all names must be classical.
+        if !obs.host_key_algorithms.is_empty()
+            && classical_keys.len() == obs.host_key_algorithms.len()
+        {
+            let evidence =
+                messages::EVIDENCE_SSH_HOSTKEY.replace("{names}", &classical_keys.join(", "));
+            self.ssh_finding(
+                t,
+                &endpoint,
+                SshFinding {
+                    rule_id: RULE_SSH_CLASSICAL_HOSTKEY,
+                    fallback: ThreatType::ForgeryShortLived,
+                    purpose: Purpose::Signature,
+                    algorithm: algorithm_of(classical_keys.first()),
+                    evidence,
+                },
+            );
+        }
+        if !pq_names.is_empty() {
+            let evidence = messages::EVIDENCE_SSH_PQ_READY.replace("{names}", &pq_names.join(", "));
+            let occurrence = self.occurrence(t, evidence);
+            self.output.inventory.push(InventoryItem {
+                kind: InventoryKind::Endpoint,
+                fingerprint: Fingerprint::endpoint(&host, t.port, "ssh"),
+                pq_ready: true,
+                algorithm: algorithm_of(pq_names.first()),
+                cert: None,
+                key: None,
+                endpoint: Some(endpoint),
+                occurrences: vec![occurrence],
+            });
+        }
+    }
+
+    fn ssh_finding(&mut self, t: &PlannedTarget, endpoint: &EndpointInfo, found: SshFinding) {
+        let finding = Finding {
+            id: self.next_id(),
+            fingerprint: Fingerprint::endpoint(&display_host(t), t.port, found.rule_id),
+            rule_id: found.rule_id.to_string(),
+            source: Source::Net,
+            algorithm: found.algorithm,
+            purpose: found.purpose,
+            threat_type: self.threat(found.rule_id, found.fallback),
+            agility: Agility::Unknown,
+            fix_owner: FixOwner::Unknown,
+            also: Vec::new(),
+            occurrences: vec![self.occurrence(t, found.evidence)],
+            cert: None,
+            key: None,
+            endpoint: Some(endpoint.clone()),
+        };
+        self.output.findings.push(finding);
     }
 
     /// Classify the certificates. A certificate that many endpoints share is one item.
