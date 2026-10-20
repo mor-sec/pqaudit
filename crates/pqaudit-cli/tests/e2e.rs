@@ -30,7 +30,8 @@ impl Engagement {
     /// Run `pqaudit` on the engagement. `PQAUDIT_DATA_DIR` is empty, so only the embedded rules pack is in use.
     fn pqaudit(&self) -> Command {
         let mut cmd = Command::cargo_bin("pqaudit").unwrap();
-        cmd.env("PQAUDIT_DATA_DIR", self.dir.path().join("data"))
+        cmd.env_remove("SOURCE_DATE_EPOCH")
+            .env("PQAUDIT_DATA_DIR", self.dir.path().join("data"))
             .arg("--engagement")
             .arg(self.path());
         cmd
@@ -122,35 +123,27 @@ fn full_stage1_engagement() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    let done: Vec<&Value> = lines
-        .iter()
-        .filter(|line| line["outcome"] != "started")
-        .collect();
-    let started = lines.len() - done.len();
-    assert_eq!(done.len(), 3, "{lines:?}");
-    assert_eq!(started, 3, "{lines:?}");
-    assert_eq!(
-        done.iter().filter(|l| l["port"] == tls.port()).count(),
-        2,
-        "{lines:?}"
-    );
-    assert_eq!(
-        done.iter().filter(|l| l["port"] == ssh.port()).count(),
-        1,
-        "{lines:?}"
-    );
-    // The classical server refuses the hybrid probe on purpose. That is a result, not a scan error.
-    for line in &done {
-        let expected = if line["probe"] == "tls-hybrid" {
-            "tls-failed"
-        } else {
-            "ok"
-        };
-        assert_eq!(line["outcome"], expected, "{lines:?}");
+    // Each connection has a "started" line and a final line. They share the port and the probe.
+    let probes = [
+        (tls.port(), "tls-hybrid", "tls-failed"),
+        (tls.port(), "tls-classical", "ok"),
+        (ssh.port(), "ssh-kexinit", "ok"),
+    ];
+    assert_eq!(lines.len(), 2 * probes.len(), "{lines:?}");
+    for (port, probe, outcome) in probes {
+        let of_connection: Vec<&Value> = lines
+            .iter()
+            .filter(|l| l["port"] == port && l["probe"] == probe)
+            .collect();
+        assert_eq!(of_connection.len(), 2, "{port} {probe}: {lines:?}");
+        assert_eq!(of_connection[0]["outcome"], "started", "{lines:?}");
+        // The classical server refuses the hybrid probe on purpose. That is a result, not a scan error.
+        assert_eq!(of_connection[1]["outcome"], outcome, "{lines:?}");
     }
 
     // Exit 3 is right here. The fixtures hold files that the scanner cannot read, on purpose:
-    // the GnuPG key box `pubring.kbx` and the `.key.der` files that are not certificates.
+    // the GnuPG key box `pubring.kbx`, the `.key.der` files that are not certificates,
+    // and the key store `store-pw.p12`, which needs a password that the engagement does not give.
     // The scanner reports each one as an error and keeps the other results.
     engagement
         .pqaudit()
@@ -158,6 +151,29 @@ fn full_stage1_engagement() {
         .arg(fixtures())
         .assert()
         .code(3);
+    let files_results = results_with_prefix(&engagement, "files-");
+    assert_eq!(files_results.len(), 1);
+    let scanned = ResultsFile::read(&files_results[0]).unwrap();
+    let mut places: Vec<String> = scanned
+        .errors
+        .iter()
+        .map(|error| error.location.clone())
+        .collect();
+    places.sort();
+    let names: Vec<&str> = places
+        .iter()
+        .map(|place| place.rsplit('/').next().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "pubring.kbx",
+            "store-empty.key.der",
+            "store-pw.key.der",
+            "store-pw.p12"
+        ],
+        "{places:?}"
+    );
     assert_eq!(results_with_prefix(&engagement, "net-").len(), 1);
     assert_eq!(results_with_prefix(&engagement, "files-").len(), 1);
 
@@ -187,11 +203,18 @@ fn full_stage1_engagement() {
         .assert()
         .code(0);
     engagement.pqaudit().arg("cbom").assert().code(0);
-    engagement
+    let explained = engagement
         .pqaudit()
         .args(["explain", &first_id])
         .assert()
         .code(0);
+    let explained = String::from_utf8(explained.get_output().stdout.clone()).unwrap();
+    assert!(
+        explained.starts_with(&format!("Finding {first_id}:")),
+        "{explained}"
+    );
+    assert!(explained.contains("Rule: "));
+    assert!(explained.contains("Total: "));
 
     // The JSON report: `tls.no-pq-kex` has the deadline 2030-12-31 from the profile `au`.
     let reports = engagement.path().join("reports");
@@ -200,7 +223,7 @@ fn full_stage1_engagement() {
     let findings = json["findings"].as_array().unwrap();
     let no_pq: Vec<&Value> = findings
         .iter()
-        .filter(|f| f["rule_id"] == "tls.no-pq-kex" || f["finding"]["rule_id"] == "tls.no-pq-kex")
+        .filter(|f| f["finding"]["rule_id"] == "tls.no-pq-kex")
         .collect();
     assert!(!no_pq.is_empty(), "no tls.no-pq-kex in {findings:#?}");
     for finding in no_pq {
@@ -227,4 +250,19 @@ fn full_stage1_engagement() {
     assert!(html.contains("2030-12-31"));
     assert!(html.contains("2035"), "the CRQC year");
     assert!(html.trim_end().ends_with("</html>"));
+    // The report is one file. It needs no other file and no network.
+    assert!(html.contains("<style"));
+    for banned in ["<script src", "<link", "@import", "url(http"] {
+        assert!(!html.contains(banned), "found {banned}");
+    }
+    for (at, _) in html.match_indices("http") {
+        let rest = &html[at..];
+        if rest.starts_with("http://") || rest.starts_with("https://") {
+            assert!(
+                html[..at].ends_with("href=\""),
+                "link outside an anchor: {}",
+                &rest[..40.min(rest.len())]
+            );
+        }
+    }
 }
