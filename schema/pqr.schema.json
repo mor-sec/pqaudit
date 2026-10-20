@@ -1,0 +1,1028 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResultsFile",
+  "description": "A results file.",
+  "type": "object",
+  "properties": {
+    "errors": {
+      "description": "The errors during the scan.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ScanError"
+      }
+    },
+    "findings": {
+      "description": "The findings.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Finding"
+      }
+    },
+    "header": {
+      "description": "The header.",
+      "$ref": "#/$defs/ResultsHeader"
+    },
+    "inventory": {
+      "description": "Each cryptographic item that the scan found.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/InventoryItem"
+      }
+    }
+  },
+  "required": [
+    "header",
+    "findings",
+    "inventory",
+    "errors"
+  ],
+  "$defs": {
+    "Agility": {
+      "description": "How easily the item can change to another algorithm.",
+      "oneOf": [
+        {
+          "description": "The algorithm is fixed in the code.",
+          "type": "string",
+          "const": "hard_coded"
+        },
+        {
+          "description": "A setting selects the algorithm.",
+          "type": "string",
+          "const": "config"
+        },
+        {
+          "description": "The library selects the algorithm.",
+          "type": "string",
+          "const": "library_default"
+        },
+        {
+          "description": "The tool cannot tell.",
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
+    "Algorithm": {
+      "description": "A cryptographic algorithm.",
+      "type": "object",
+      "properties": {
+        "curve": {
+          "description": "The name of the elliptic curve.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "key_bits": {
+          "description": "The key size in bits.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "name": {
+          "description": "The name of the algorithm.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "CertInfo": {
+      "description": "Facts about a certificate.",
+      "type": "object",
+      "properties": {
+        "chain_position": {
+          "description": "The position in the chain. The leaf is 0.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        },
+        "ext_key_usage": {
+          "description": "The extended key usage values.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "is_ca": {
+          "description": "True if the certificate is a CA.",
+          "type": "boolean"
+        },
+        "issuer": {
+          "description": "The issuer name.",
+          "type": "string"
+        },
+        "key_usage": {
+          "description": "The key usage values.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "not_after": {
+          "description": "The end of the validity.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "not_before": {
+          "description": "The start of the validity.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "public_key": {
+          "description": "The public key.",
+          "$ref": "#/$defs/Algorithm"
+        },
+        "sha256": {
+          "description": "The SHA-256 hash of the certificate in hex.",
+          "type": "string"
+        },
+        "signature_algorithm": {
+          "description": "The signature algorithm.",
+          "type": "string"
+        },
+        "subject": {
+          "description": "The subject name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sha256",
+        "subject",
+        "issuer",
+        "not_before",
+        "not_after",
+        "is_ca",
+        "key_usage",
+        "ext_key_usage",
+        "public_key",
+        "signature_algorithm"
+      ]
+    },
+    "EndpointInfo": {
+      "description": "Facts about a network endpoint.",
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "description": "The protocol.",
+          "$ref": "#/$defs/Protocol"
+        },
+        "ssh": {
+          "description": "The SSH facts.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SshObservation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tls": {
+          "description": "The TLS facts.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TlsObservation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "protocol"
+      ]
+    },
+    "Finding": {
+      "description": "A weak cryptographic item that the tool found.",
+      "type": "object",
+      "properties": {
+        "agility": {
+          "description": "How easily the item can change.",
+          "$ref": "#/$defs/Agility"
+        },
+        "algorithm": {
+          "description": "The algorithm.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Algorithm"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "also": {
+          "description": "The IDs of other rules that matched the same subject.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cert": {
+          "description": "The certificate facts.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CertInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "endpoint": {
+          "description": "The endpoint facts.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EndpointInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fingerprint": {
+          "description": "The stable ID of the subject.",
+          "$ref": "#/$defs/Fingerprint"
+        },
+        "fix_owner": {
+          "description": "Who can fix the finding.",
+          "$ref": "#/$defs/FixOwner"
+        },
+        "id": {
+          "description": "The ID of the finding in this file.",
+          "type": "string"
+        },
+        "key": {
+          "description": "The key facts.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KeyInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "occurrences": {
+          "description": "The places where the tool saw the subject.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Occurrence"
+          }
+        },
+        "purpose": {
+          "description": "What the item does.",
+          "$ref": "#/$defs/Purpose"
+        },
+        "rule_id": {
+          "description": "The rule that matched.",
+          "type": "string"
+        },
+        "source": {
+          "description": "The kind of scan.",
+          "$ref": "#/$defs/Source"
+        },
+        "threat_type": {
+          "description": "The kind of threat.",
+          "$ref": "#/$defs/ThreatType"
+        }
+      },
+      "required": [
+        "id",
+        "fingerprint",
+        "rule_id",
+        "source",
+        "purpose",
+        "threat_type",
+        "agility",
+        "fix_owner",
+        "also",
+        "occurrences"
+      ]
+    },
+    "Fingerprint": {
+      "description": "A stable ID of a subject. The format is `<kind>:<32 hex digits>`.",
+      "type": "string"
+    },
+    "FixOwner": {
+      "description": "Who can fix the finding.",
+      "oneOf": [
+        {
+          "description": "The user's own team.",
+          "type": "string",
+          "const": "in_house"
+        },
+        {
+          "description": "An open-source project.",
+          "type": "string",
+          "const": "open_source"
+        },
+        {
+          "description": "A vendor.",
+          "type": "string",
+          "const": "vendor"
+        },
+        {
+          "description": "The tool cannot tell.",
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
+    "InventoryItem": {
+      "description": "A cryptographic item that the scan found. It can be a finding or not.",
+      "type": "object",
+      "properties": {
+        "algorithm": {
+          "description": "The algorithm.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Algorithm"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cert": {
+          "description": "The certificate facts.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CertInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "endpoint": {
+          "description": "The endpoint facts.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EndpointInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fingerprint": {
+          "description": "The stable ID of the item.",
+          "$ref": "#/$defs/Fingerprint"
+        },
+        "key": {
+          "description": "The key facts.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KeyInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "description": "The kind of item.",
+          "$ref": "#/$defs/InventoryKind"
+        },
+        "occurrences": {
+          "description": "The places where the tool saw the item.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Occurrence"
+          }
+        },
+        "pq_ready": {
+          "description": "True if the item is ready for post-quantum use.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "fingerprint",
+        "pq_ready",
+        "occurrences"
+      ]
+    },
+    "InventoryKind": {
+      "description": "The kind of an inventory item.",
+      "oneOf": [
+        {
+          "description": "A certificate.",
+          "type": "string",
+          "const": "certificate"
+        },
+        {
+          "description": "A key.",
+          "type": "string",
+          "const": "key"
+        },
+        {
+          "description": "An endpoint.",
+          "type": "string",
+          "const": "endpoint"
+        }
+      ]
+    },
+    "KeyInfo": {
+      "description": "Facts about a key. This never holds private key material.",
+      "type": "object",
+      "properties": {
+        "algorithm": {
+          "description": "The algorithm.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Algorithm"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "comment": {
+          "description": "The comment of the key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fingerprint_sha256": {
+          "description": "The SHA-256 fingerprint in hex.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "The kind of key.",
+          "$ref": "#/$defs/KeyKind"
+        }
+      },
+      "required": [
+        "fingerprint_sha256",
+        "kind"
+      ]
+    },
+    "KeyKind": {
+      "description": "The kind of a key.",
+      "oneOf": [
+        {
+          "description": "An X.509 SubjectPublicKeyInfo public key.",
+          "type": "string",
+          "const": "x509_spki"
+        },
+        {
+          "description": "An OpenSSH public key.",
+          "type": "string",
+          "const": "open_ssh"
+        },
+        {
+          "description": "A PGP key.",
+          "type": "string",
+          "const": "pgp"
+        },
+        {
+          "description": "An unencrypted PKCS#8 private key. The results never hold its bytes.",
+          "type": "string",
+          "const": "pkcs8_private"
+        },
+        {
+          "description": "An encrypted private key. The results never hold its bytes.",
+          "type": "string",
+          "const": "encrypted_private"
+        }
+      ]
+    },
+    "Location": {
+      "description": "Where the tool saw an item.",
+      "oneOf": [
+        {
+          "description": "A place in a file.",
+          "type": "object",
+          "properties": {
+            "line": {
+              "description": "The line number.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0
+            },
+            "path": {
+              "description": "The path of the file.",
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "file"
+            }
+          },
+          "required": [
+            "type",
+            "path"
+          ]
+        },
+        {
+          "description": "A network endpoint.",
+          "type": "object",
+          "properties": {
+            "host": {
+              "description": "The host name.",
+              "type": "string"
+            },
+            "ip": {
+              "description": "The IP address.",
+              "type": "string",
+              "format": "ip"
+            },
+            "port": {
+              "description": "The port.",
+              "type": "integer",
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0
+            },
+            "protocol": {
+              "description": "The protocol.",
+              "$ref": "#/$defs/Protocol"
+            },
+            "type": {
+              "type": "string",
+              "const": "endpoint"
+            }
+          },
+          "required": [
+            "type",
+            "host",
+            "ip",
+            "port",
+            "protocol"
+          ]
+        }
+      ]
+    },
+    "Occurrence": {
+      "description": "One place where the tool saw an item.",
+      "type": "object",
+      "properties": {
+        "evidence": {
+          "description": "The text that shows the item.",
+          "type": "string"
+        },
+        "location": {
+          "description": "The place.",
+          "$ref": "#/$defs/Location"
+        },
+        "run_id": {
+          "description": "The run that saw the item.",
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "location",
+        "evidence",
+        "run_id"
+      ]
+    },
+    "PackOriginRef": {
+      "description": "Where a rules pack came from. This records the key chain or an unsigned pack.",
+      "oneOf": [
+        {
+          "description": "The pack is part of the program.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "embedded"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "description": "The user installed the pack. The signature is correct.",
+          "type": "object",
+          "properties": {
+            "path": {
+              "description": "The directory of the pack.",
+              "type": "string"
+            },
+            "rotation_chain": {
+              "description": "The key IDs from the trusted key to the signing key.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "signed_by": {
+              "description": "The ID of the key that signed the pack.",
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "installed"
+            }
+          },
+          "required": [
+            "type",
+            "path",
+            "signed_by",
+            "rotation_chain"
+          ]
+        },
+        {
+          "description": "The pack has no valid signature. The user accepted it.",
+          "type": "object",
+          "properties": {
+            "path": {
+              "description": "The directory of the pack.",
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "unsigned"
+            }
+          },
+          "required": [
+            "type",
+            "path"
+          ]
+        }
+      ]
+    },
+    "PackRef": {
+      "description": "The rules pack that a scan used.",
+      "type": "object",
+      "properties": {
+        "content_hash": {
+          "description": "The hash of the pack content.",
+          "type": "string"
+        },
+        "id": {
+          "description": "The ID of the pack.",
+          "type": "string"
+        },
+        "origin": {
+          "description": "Where the pack came from.",
+          "$ref": "#/$defs/PackOriginRef"
+        },
+        "version": {
+          "description": "The version of the pack.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "content_hash",
+        "origin"
+      ]
+    },
+    "Protocol": {
+      "description": "A network protocol that the tool probes.",
+      "oneOf": [
+        {
+          "description": "TLS.",
+          "type": "string",
+          "const": "tls"
+        },
+        {
+          "description": "SSH.",
+          "type": "string",
+          "const": "ssh"
+        }
+      ]
+    },
+    "Purpose": {
+      "description": "What a cryptographic item does.",
+      "oneOf": [
+        {
+          "description": "Key exchange.",
+          "type": "string",
+          "const": "key_exchange"
+        },
+        {
+          "description": "Encryption.",
+          "type": "string",
+          "const": "encryption"
+        },
+        {
+          "description": "Signature.",
+          "type": "string",
+          "const": "signature"
+        },
+        {
+          "description": "Hash.",
+          "type": "string",
+          "const": "hash"
+        },
+        {
+          "description": "The purpose is not known.",
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
+    "ResultsHeader": {
+      "description": "The header of a results file.",
+      "type": "object",
+      "properties": {
+        "audit_log_hash": {
+          "description": "The hash of the audit log.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "engagement": {
+          "description": "The name of the engagement.",
+          "type": "string"
+        },
+        "finished": {
+          "description": "The end time.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "host": {
+          "description": "The host that made the file.",
+          "type": "string"
+        },
+        "operator": {
+          "description": "The operator.",
+          "type": "string"
+        },
+        "redacted": {
+          "description": "True if the tool removed sensitive text.",
+          "type": "boolean"
+        },
+        "rules_pack": {
+          "description": "The rules pack.",
+          "$ref": "#/$defs/PackRef"
+        },
+        "runs": {
+          "description": "The runs in this file.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RunInfo"
+          }
+        },
+        "scanner": {
+          "description": "The scanner.",
+          "$ref": "#/$defs/ScannerKind"
+        },
+        "schema_version": {
+          "description": "The schema version.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "scope_hash": {
+          "description": "The hash of the scope file.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started": {
+          "description": "The start time.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "tool_version": {
+          "description": "The version of the tool.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "engagement",
+        "tool_version",
+        "rules_pack",
+        "scanner",
+        "host",
+        "operator",
+        "started",
+        "finished",
+        "runs",
+        "redacted"
+      ]
+    },
+    "RunInfo": {
+      "description": "One scanner run that is part of the results.",
+      "type": "object",
+      "properties": {
+        "host": {
+          "description": "The host that ran the scanner.",
+          "type": "string"
+        },
+        "run_id": {
+          "description": "The ID of the run.",
+          "type": "string",
+          "format": "uuid"
+        },
+        "scanner": {
+          "description": "The scanner of the run.",
+          "$ref": "#/$defs/ScannerKind"
+        },
+        "started": {
+          "description": "The start time of the run.",
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "run_id",
+        "scanner",
+        "host",
+        "started"
+      ]
+    },
+    "ScanError": {
+      "description": "An error during a scan.",
+      "type": "object",
+      "properties": {
+        "location": {
+          "description": "The file path or the endpoint.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why the scan failed.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "location",
+        "reason"
+      ]
+    },
+    "ScannerKind": {
+      "description": "Which scanner made a results file or a run.",
+      "oneOf": [
+        {
+          "description": "The file scanner.",
+          "type": "string",
+          "const": "files"
+        },
+        {
+          "description": "The network scanner.",
+          "type": "string",
+          "const": "net"
+        },
+        {
+          "description": "A merge of other results.",
+          "type": "string",
+          "const": "merged"
+        }
+      ]
+    },
+    "Source": {
+      "description": "The kind of scan that found a subject.",
+      "oneOf": [
+        {
+          "description": "The file scanner.",
+          "type": "string",
+          "const": "file"
+        },
+        {
+          "description": "The network scanner.",
+          "type": "string",
+          "const": "net"
+        }
+      ]
+    },
+    "SshObservation": {
+      "description": "What the tool saw in an SSH exchange.",
+      "type": "object",
+      "properties": {
+        "banner": {
+          "description": "The banner line of the server.",
+          "type": "string"
+        },
+        "ciphers": {
+          "description": "The ciphers.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "host_key_algorithms": {
+          "description": "The host key algorithms.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "kex": {
+          "description": "The key exchange algorithms.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "macs": {
+          "description": "The MAC algorithms.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "banner",
+        "kex",
+        "host_key_algorithms",
+        "ciphers",
+        "macs"
+      ]
+    },
+    "ThreatType": {
+      "description": "The kind of threat that a finding shows.",
+      "oneOf": [
+        {
+          "description": "An attacker records data now and decrypts it later.",
+          "type": "string",
+          "const": "hndl"
+        },
+        {
+          "description": "An attacker forges a signature that stays valid for a long time.",
+          "type": "string",
+          "const": "forgery_long_lived"
+        },
+        {
+          "description": "An attacker forges a signature that is valid for a short time.",
+          "type": "string",
+          "const": "forgery_short_lived"
+        },
+        {
+          "description": "An attacker can break the algorithm now without a quantum computer.",
+          "type": "string",
+          "const": "classical_weak_now"
+        }
+      ]
+    },
+    "TlsObservation": {
+      "description": "What the tool saw in a TLS handshake.",
+      "type": "object",
+      "properties": {
+        "cipher_suite": {
+          "description": "The negotiated cipher suite.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "errors": {
+          "description": "The errors during the probe.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "legacy_versions": {
+          "description": "The old protocol versions that the server accepts.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "negotiated_group": {
+          "description": "The negotiated key exchange group.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "negotiated_version": {
+          "description": "The negotiated TLS version.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pq_hybrid_supported": {
+          "description": "True if the server supports a post-quantum hybrid group.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "errors"
+      ]
+    }
+  }
+}
