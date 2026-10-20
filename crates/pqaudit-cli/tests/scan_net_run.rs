@@ -2,10 +2,8 @@
 
 use std::fmt::Write as _;
 use std::fs;
-use std::io::Read;
-use std::net::{SocketAddr, TcpListener};
+use std::net::TcpListener;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -13,10 +11,10 @@ use assert_cmd::Command;
 use chrono::{Local, Timelike};
 use pqaudit_core::{ResultsFile, ScannerKind};
 use predicates::prelude::*;
-use rustls::crypto::aws_lc_rs::{self, kx_group};
-use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
-use rustls::{ServerConfig, ServerConnection};
 use sha2::{Digest, Sha256};
+
+mod common;
+use common::classical_tls_server;
 
 /// A scratch directory with an engagement directory.
 struct Setup {
@@ -215,45 +213,6 @@ fn silent_server_gives_timeout_error_exit_3() {
     let lines = setup.audit_lines();
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0]["outcome"], "timeout");
-}
-
-/// A TLS server on a thread. It accepts X25519 only, so it is not a post-quantum server.
-fn classical_tls_server() -> SocketAddr {
-    let key = rcgen::KeyPair::generate().unwrap();
-    let cert = rcgen::CertificateParams::new(vec![String::from("localhost")])
-        .unwrap()
-        .self_signed(&key)
-        .unwrap();
-    let mut provider = aws_lc_rs::default_provider();
-    provider.kx_groups = vec![kx_group::X25519];
-    let config = Arc::new(
-        ServerConfig::builder_with_provider(Arc::new(provider))
-            .with_safe_default_protocol_versions()
-            .unwrap()
-            .with_no_client_auth()
-            .with_single_cert(
-                vec![CertificateDer::from(cert.der().to_vec())],
-                PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.serialize_der())),
-            )
-            .unwrap(),
-    );
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = listener.local_addr().unwrap();
-    thread::spawn(move || {
-        while let Ok((mut stream, _)) = listener.accept() {
-            let config = config.clone();
-            thread::spawn(move || {
-                stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-                if let Ok(mut connection) = ServerConnection::new(config) {
-                    if connection.complete_io(&mut stream).is_ok() {
-                        let mut sink = [0u8; 16];
-                        let _ = stream.read(&mut sink);
-                    }
-                }
-            });
-        }
-    });
-    address
 }
 
 #[test]

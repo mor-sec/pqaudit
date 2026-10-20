@@ -1529,6 +1529,7 @@ dependencies = [
  "base64",
  "chrono",
  "clap",
+ "jsonschema",
  "pqaudit-core",
  "pqaudit-report",
  "pqaudit-rules",

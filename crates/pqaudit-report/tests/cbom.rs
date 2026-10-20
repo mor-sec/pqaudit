@@ -305,32 +305,9 @@ fn by_ref<'a>(bom: &'a Value, bom_ref: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("no component {bom_ref}"))
 }
 
-/// Read the schema files that the CycloneDX schema names with a URI.
-struct LocalSchemas;
-
-impl jsonschema::Retrieve for LocalSchemas {
-    fn retrieve(
-        &self,
-        uri: &jsonschema::Uri<String>,
-    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        let name = uri.path().as_str().rsplit('/').next().unwrap_or_default();
-        let path = schema_dir().join(name);
-        Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
-    }
-}
-
-fn schema_dir() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/schema")
-}
-
-fn validator() -> jsonschema::Validator {
-    let text = std::fs::read_to_string(schema_dir().join("bom-1.6.schema.json")).unwrap();
-    let schema: Value = serde_json::from_str(&text).unwrap();
-    jsonschema::options()
-        .with_retriever(LocalSchemas)
-        .build(&schema)
-        .expect("the schema is valid")
-}
+#[path = "support/validator.rs"]
+mod validator_support;
+use validator_support::validator;
 
 #[test]
 fn cbom_validates_against_cyclonedx_1_6() {
