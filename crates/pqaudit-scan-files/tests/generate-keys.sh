@@ -49,6 +49,8 @@ ssh-keygen -q -H -f "$work/known_hosts" 2>/dev/null
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$out/pkcs8-rsa.pem"
 openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$out/pkcs8-ec.pem"
 openssl genpkey -algorithm ED25519 -out "$out/pkcs8-ed25519.pem"
+openssl genpkey -algorithm X25519 -out "$out/pkcs8-x25519.pem"
+openssl pkey -in "$out/pkcs8-x25519.pem" -pubout -out "$out/spki-x25519.pem"
 openssl pkcs8 -topk8 -in "$out/pkcs8-rsa.pem" -v2 aes-256-cbc -passout "pass:$pass" \
   -out "$out/pkcs8-rsa-enc.pem"
 openssl rsa -in "$out/pkcs8-rsa.pem" -traditional -out "$out/pkcs1-rsa.pem" 2>/dev/null

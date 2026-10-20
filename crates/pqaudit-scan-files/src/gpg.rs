@@ -108,16 +108,37 @@ fn header(data: &[u8]) -> Option<(u8, usize, usize)> {
 }
 
 /// Return true if the start of a file looks like binary OpenPGP key packets.
-pub fn looks_like_packets(head: &[u8]) -> bool {
-    let Some((tag, _, header_length)) = header(head) else {
+///
+/// The first packet must be a key packet (tag 5, 6, 7, or 14) of version 2 to 6.
+/// The reader reports a version or an algorithm that it does not read.
+/// If `strict` is true, the algorithm must be one that OpenPGP defines.
+/// A caller sets `strict` for files with no key-like name, to avoid false matches.
+pub fn looks_like_packets(head: &[u8], strict: bool) -> bool {
+    let Some((tag, length, header_length)) = header(head) else {
         return false;
     };
-    matches!(tag, TAG_PUBLIC_KEY | TAG_SECRET_KEY)
-        && head.get(header_length) == Some(&4)
-        && matches!(
-            head.get(header_length + 5),
-            Some(1..=3 | 16..=19 | 22 | 25..=28)
-        )
+    if !matches!(
+        tag,
+        TAG_PUBLIC_KEY | TAG_SECRET_KEY | TAG_PUBLIC_SUBKEY | TAG_SECRET_SUBKEY
+    ) || length < 6
+    {
+        return false;
+    }
+    let Some(&version) = head.get(header_length) else {
+        return false;
+    };
+    if !(2..=6).contains(&version) {
+        return false;
+    }
+    if !strict {
+        return true;
+    }
+    // Versions 2 and 3 have a validity period of 2 bytes before the algorithm.
+    let algorithm_at = if version < 4 { 7 } else { 5 };
+    matches!(
+        head.get(header_length + algorithm_at),
+        Some(1..=3 | 16..=22 | 25..=28)
+    )
 }
 
 /// A reader of the fields of a public key packet.

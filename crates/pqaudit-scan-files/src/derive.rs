@@ -8,11 +8,18 @@
 //! The key types of the libraries wipe themselves on drop.
 //! One by-value call of a library function can leave a short-lived copy on the stack.
 
+use curve25519_dalek::montgomery::MontgomeryPoint;
 use ed25519_dalek::SigningKey;
 use ml_dsa::signature::Keypair;
 use ml_dsa::{MlDsa44, MlDsa65, MlDsa87, MlDsaParams};
 use ml_kem::{DecapsulationKey, KeyExport, MlKem1024, MlKem512, MlKem768};
 use zeroize::Zeroizing;
+
+/// Derive an X25519 public key from a 32-byte seed.
+pub(crate) fn x25519(seed: &[u8]) -> Option<Vec<u8>> {
+    let seed: Zeroizing<[u8; 32]> = Zeroizing::new(seed.try_into().ok()?);
+    Some(MontgomeryPoint::mul_base_clamped(*seed).to_bytes().to_vec())
+}
 
 /// Derive an Ed25519 public key from a 32-byte seed.
 pub(crate) fn ed25519(seed: &[u8]) -> Option<Vec<u8>> {

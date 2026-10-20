@@ -256,7 +256,7 @@ pub(crate) fn scan_file(
         errors.push(changed());
         return Outcome::Failed;
     }
-    let Some(format) = sniff::resolve(named, &data) else {
+    let Some(format) = sniff::resolve(named, &data, sniff::has_key_extension(path)) else {
         // A file with a key-like name and other content has no keys.
         return if sniff::has_key_extension(path) {
             Outcome::NotRead

@@ -246,6 +246,10 @@ fn derived_public(oid: &str, key_field: &[u8]) -> Option<Vec<u8>> {
             let (seed, _) = der::read_tag(key_field, OCTET_STRING)?;
             derive::ed25519(seed.content)?
         }
+        "1.3.101.110" => {
+            let (seed, _) = der::read_tag(key_field, OCTET_STRING)?;
+            derive::x25519(seed.content)?
+        }
         "2.16.840.1.101.3.4.4.1" | "2.16.840.1.101.3.4.4.2" | "2.16.840.1.101.3.4.4.3" => {
             let level = match oid {
                 "2.16.840.1.101.3.4.4.1" => 512,
@@ -274,7 +278,9 @@ fn derived_public(oid: &str, key_field: &[u8]) -> Option<Vec<u8>> {
                 "2.16.840.1.101.3.4.3.18" => 65,
                 _ => 87,
             };
-            // An expanded ML-DSA key does not hold the public key. The tool cannot find it.
+            // An expanded ML-DSA key does not hold the public key. The library function that
+            // makes a key from the expanded form is on the deprecation list of the library.
+            // Its documentation says that it can panic on a bad key. The tool does not call it. Such a key gets a place fingerprint.
             let (seed, _) = pq_fields(key_field);
             derive::ml_dsa(level, seed?)?
         }

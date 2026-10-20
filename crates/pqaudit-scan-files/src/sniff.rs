@@ -65,14 +65,14 @@ pub(crate) fn by_name(path: &Path) -> Option<Format> {
 }
 
 /// Find the format from the first bytes of a file. Return `None` for other files.
-pub(crate) fn by_content(head: &[u8]) -> Option<Format> {
+pub(crate) fn by_content(head: &[u8], key_extension: bool) -> Option<Format> {
     if let Some(kind) = store_by_content(head) {
         return Some(Format::Store(kind));
     }
     if pem::has_kind(head, BlockKind::Certificate) || pem::has_kind(head, BlockKind::Key) {
         return Some(Format::Pem);
     }
-    if pem::has_pgp_key_armor(head) || gpg::looks_like_packets(head) {
+    if pem::has_pgp_key_armor(head) || gpg::looks_like_packets(head, !key_extension) {
         return Some(Format::Pgp);
     }
     if head.get(8..12) == Some(b"KBXf") {
@@ -96,9 +96,9 @@ pub(crate) fn has_key_extension(path: &Path) -> bool {
 /// Find the format of a file from its name and its first bytes.
 ///
 /// A key store magic number in the content beats the name.
-pub(crate) fn resolve(named: Option<Format>, head: &[u8]) -> Option<Format> {
+pub(crate) fn resolve(named: Option<Format>, head: &[u8], key_extension: bool) -> Option<Format> {
     if let Some(kind) = store_by_content(head) {
         return Some(Format::Store(kind));
     }
-    named.or_else(|| by_content(head))
+    named.or_else(|| by_content(head, key_extension))
 }

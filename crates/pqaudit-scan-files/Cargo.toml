@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 base64 = "0.23.1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+curve25519-dalek = "5.0.0"
 ed25519-dalek = { version = "3.0.0", features = ["zeroize"] }
 ml-dsa = { version = "0.1.1", features = ["zeroize"] }
 ml-kem = { version = "0.3.3", features = ["zeroize"] }

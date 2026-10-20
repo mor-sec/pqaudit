@@ -181,37 +181,50 @@ fn tokens(line: &[u8]) -> Vec<&[u8]> {
     out
 }
 
+/// The tokens of a line, the index of the key type token, and the decoded blob.
+type FoundBlob<'a> = (usize, Vec<&'a [u8]>, Vec<u8>);
+
+/// Find the key type token and the blob of a line.
+///
+/// The blob must decode from base64 and start with a string that equals the type token.
+/// The key type can be one that the tool does not read, for example a certificate type.
+/// Return the index of the type token, the tokens, and the blob.
+fn find_blob(line: &[u8]) -> Option<FoundBlob<'_>> {
+    let tokens = tokens(line);
+    for (index, token) in tokens.iter().enumerate() {
+        let Some(encoded) = tokens.get(index + 1) else {
+            break;
+        };
+        let Ok(blob) = STANDARD.decode(encoded) else {
+            continue;
+        };
+        let mut wire = Wire { data: &blob };
+        if wire.string() == Some(*token) {
+            return Some((index, tokens, blob));
+        }
+    }
+    None
+}
+
 /// Read one line. Return `None` if the line is blank or a comment.
 fn read_line(line: &[u8]) -> Option<Result<FoundKey, KeyProblem>> {
     let line = line.trim_ascii();
     if line.is_empty() || line[0] == b'#' {
         return None;
     }
-    let tokens = tokens(line);
-    for (index, token) in tokens.iter().enumerate() {
-        let Some(encoded) = tokens.get(index + 1) else {
-            break;
-        };
-        // The blob starts with the key type. A host name that looks like a type does not match.
-        let Ok(blob) = STANDARD.decode(encoded) else {
-            continue;
-        };
-        let mut wire = Wire { data: &blob };
-        if wire.string() != Some(*token) {
-            continue;
-        }
-        let comment = tokens
-            .get(index + 2..)
-            .filter(|rest| !rest.is_empty())
-            .map(|rest| {
-                rest.iter()
-                    .map(|token| String::from_utf8_lossy(token))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            });
-        return Some(key_from_blob(&blob, comment, messages::EVIDENCE_SSH_PUBLIC));
-    }
-    Some(Err(KeyProblem::Invalid))
+    let Some((index, tokens, blob)) = find_blob(line) else {
+        return Some(Err(KeyProblem::Invalid));
+    };
+    let comment = tokens
+        .get(index + 2..)
+        .filter(|rest| !rest.is_empty())
+        .map(|rest| {
+            rest.iter()
+                .map(|token| String::from_utf8_lossy(token))
+                .collect::<Vec<_>>()
+                .join(" ")
+        });
+    Some(key_from_blob(&blob, comment, messages::EVIDENCE_SSH_PUBLIC))
 }
 
 /// Read all public key lines of a text.
@@ -235,9 +248,14 @@ pub fn scan_text(data: &[u8]) -> SshScan {
     scan
 }
 
-/// Return true if the start of a file has a valid SSH public key line.
+/// Return true if the start of a file has a line with an SSH key type and a matching blob.
+///
+/// The key type can be one that the tool does not read. The reader then reports an error.
 pub fn looks_like_keys(head: &[u8]) -> bool {
     head.split(|byte| *byte == b'\n')
         .take(SNIFF_LINES)
-        .any(|line| matches!(read_line(line), Some(Ok(_))))
+        .any(|line| {
+            let line = line.trim_ascii();
+            !line.is_empty() && line[0] != b'#' && find_blob(line).is_some()
+        })
 }

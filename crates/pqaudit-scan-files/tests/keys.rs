@@ -503,6 +503,7 @@ fn private_parts() -> Vec<(&'static str, Vec<u8>)> {
         "pkcs8-rsa1024.pem",
         "pkcs8-ec.pem",
         "pkcs8-ed25519.pem",
+        "pkcs8-x25519.pem",
         "pkcs8-rsa-enc.pem",
         "pkcs8-mlkem768.pem",
         "pkcs8-mlkem768-seed.pem",
@@ -764,6 +765,16 @@ fn private_key_and_public_key_of_seed_based_algorithms_give_one_item() {
     assert_eq!(finding.occurrences.len(), 2);
     assert!(finding.fingerprint.0.starts_with("key:"));
 
+    // X25519: the tool computes the public key from the private key.
+    let out = scan_paths(&[
+        key_fixture("pkcs8-x25519.pem"),
+        key_fixture("spki-x25519.pem"),
+    ]);
+    let finding = only_finding(&out);
+    assert_eq!(finding.algorithm.as_ref().unwrap().name, "X25519");
+    assert_eq!(finding.threat_type, ThreatType::Hndl);
+    assert_eq!(finding.occurrences.len(), 2);
+
     // ML-DSA with a seed.
     let out = scan_paths(&[
         key_fixture("pkcs8-mldsa65.pem"),
@@ -815,4 +826,46 @@ fn underivable_private_key_gets_a_place_fingerprint_with_the_host_name() {
     // The public key of the same key has a different fingerprint kind.
     let public = scan_key("spki-mldsa65.pem");
     assert_ne!(only_inventory(&public).fingerprint, item.fingerprint);
+}
+
+fn short_key_packet(version: u8) -> Vec<u8> {
+    // A new-format packet with the tag 6 and a body of 40 bytes.
+    let mut packet = vec![0xc6, 40, version, 0, 0, 0, 0, 22];
+    packet.resize(42, 0x55);
+    packet
+}
+
+#[test]
+fn key_files_of_unsupported_versions_and_types_are_errors_not_skipped() {
+    let blob = |kind: &str| {
+        let mut bytes = (kind.len() as u32).to_be_bytes().to_vec();
+        bytes.extend_from_slice(kind.as_bytes());
+        bytes.extend_from_slice(&[0, 0, 0, 4, 1, 2, 3, 4]);
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes)
+    };
+    let cert_type = "ssh-ed25519-cert-v01@openssh.com";
+    let (_dir, out) = write_files(&[
+        ("v3.gpg", short_key_packet(3)),
+        ("v5.gpg", short_key_packet(5)),
+        ("v6.gpg", short_key_packet(6)),
+        (
+            "id_ed25519-cert.pub",
+            format!("{cert_type} {} user@host\n", blob(cert_type)).into_bytes(),
+        ),
+        (
+            "host_ed448.pub",
+            format!("ssh-ed448 {} \n", blob("ssh-ed448")).into_bytes(),
+        ),
+    ]);
+    assert_eq!(out.files_not_read, 0);
+    assert_eq!(out.errors.len(), 5, "errors: {:?}", out.errors);
+    for name in ["v3.gpg", "v5.gpg", "v6.gpg"] {
+        let error = out
+            .errors
+            .iter()
+            .find(|e| e.location.ends_with(name))
+            .unwrap();
+        assert!(error.reason.contains("version"), "{name}: {}", error.reason);
+    }
+    assert!(out.findings.is_empty() && out.inventory.is_empty());
 }
