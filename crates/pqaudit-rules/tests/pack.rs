@@ -176,3 +176,44 @@ fn content_hash_changes_with_content() {
     let hb = RulesPack::load_dir(b.path()).unwrap().content_hash;
     assert_ne!(ha, hb);
 }
+
+const PROFILE: &str = "id: p\nname: P\nmilestones:\n  - date: 2030-12-31\n    kind: migration\n    applies_to: {teir: high}\n    description: d\n    source_title: t\n    source_url: https://example.com\n    as_of: 2026-10-20\n";
+
+#[test]
+fn unknown_field_is_error_with_file_name() {
+    let dir = tempfile::tempdir().unwrap();
+    small_pack(dir.path(), RULE);
+    write(dir.path(), "profiles/p.yaml", PROFILE);
+    let error = RulesPack::load_dir(dir.path()).unwrap_err();
+    assert!(matches!(error, PackError::Parse { .. }), "{error}");
+    assert!(error.to_string().contains("profiles/p.yaml"), "{error}");
+    assert!(error.to_string().contains("teir"), "{error}");
+}
+
+#[test]
+fn unknown_rule_field_is_error() {
+    let dir = tempfile::tempdir().unwrap();
+    small_pack(dir.path(), &format!("{RULE}  extra: 1\n"));
+    let error = RulesPack::load_dir(dir.path()).unwrap_err();
+    assert!(error.to_string().contains("rules/test.yaml"), "{error}");
+}
+
+#[test]
+fn misplaced_yaml_files_are_errors() {
+    for name in [
+        "rules/test.yml",
+        "other/x.yaml",
+        "rules/sub/x.yaml",
+        "stray.yaml",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        small_pack(dir.path(), RULE);
+        write(dir.path(), name, "[]\n");
+        let error = RulesPack::load_dir(dir.path()).unwrap_err();
+        assert!(
+            matches!(error, PackError::Misplaced { .. }),
+            "{name}: {error}"
+        );
+        assert!(error.to_string().contains(name), "{error}");
+    }
+}

@@ -19,3 +19,12 @@ milestones:
     source_title: "NIST IR 8547 (Initial Public Draft): Transition to Post-Quantum Cryptography Standards"
     source_url: https://csrc.nist.gov/pubs/ir/8547/ipd
     as_of: 2026-10-20
+  - date: 2035-12-31
+    kind: migration
+    applies_to: {tier: all}
+    description: >-
+      NSM-10 sets a goal for United States national security systems.
+      The goal is to reduce as much quantum risk as is feasible by 2035.
+    source_title: "National Security Memorandum 10 (NSM-10), 4 May 2022"
+    source_url: https://bidenwhitehouse.archives.gov/briefing-room/statements-releases/2022/05/04/national-security-memorandum-on-promoting-united-states-leadership-in-quantum-computing-while-mitigating-risks-to-vulnerable-cryptographic-systems/
+    as_of: 2026-10-20

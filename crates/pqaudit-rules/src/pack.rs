@@ -118,6 +118,7 @@ pub enum MilestoneKind {
 
 /// A rule that the scanners apply.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RuleDef {
     /// The rule ID, for example `tls.no-pq-kex`.
     pub id: String,
@@ -153,6 +154,7 @@ pub struct RuleDef {
 
 /// Facts about one algorithm.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AlgorithmFact {
     /// The algorithm name.
     pub name: String,
@@ -175,6 +177,7 @@ pub struct AlgorithmFact {
 
 /// The assets and threats that a milestone covers.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AppliesTo {
     /// The asset tiers. `None` means all tiers.
     #[serde(default)]
@@ -189,6 +192,7 @@ pub struct AppliesTo {
 
 /// A date in a deadline profile.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Milestone {
     /// The date of the milestone.
     pub date: NaiveDate,
@@ -209,6 +213,7 @@ pub struct Milestone {
 
 /// The deadlines of one country or body.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DeadlineProfile {
     /// The profile ID, for example `uk`.
     pub id: String,
@@ -260,6 +265,12 @@ pub enum PackError {
         /// The file.
         path: String,
     },
+    /// A YAML file is in a wrong place or has the wrong extension.
+    #[error("The file {path} is in a wrong place. Use a .yaml file in rules/ or profiles/.")]
+    Misplaced {
+        /// The file.
+        path: String,
+    },
     /// Two rules use the same ID or alias.
     #[error("The ID {id} is in the pack more than one time.")]
     Duplicate {
@@ -269,6 +280,7 @@ pub enum PackError {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PackManifest {
     id: String,
     version: semver::Version,
@@ -323,8 +335,15 @@ impl RulesPack {
         let mut algorithms = None;
         let mut profiles = Vec::new();
         for (name, bytes) in &files {
-            if !name.ends_with(".yaml") {
+            if !(name.ends_with(".yaml") || name.ends_with(".yml")) {
                 continue;
+            }
+            let in_place = name.ends_with(".yaml")
+                && (name == "algorithms.yaml"
+                    || is_direct_child(name, "rules/")
+                    || is_direct_child(name, "profiles/"));
+            if !in_place {
+                return Err(PackError::Misplaced { path: name.clone() });
             }
             if name == "algorithms.yaml" {
                 algorithms = Some(
@@ -379,6 +398,11 @@ impl RulesPack {
     pub fn profile(&self, id: &str) -> Option<&DeadlineProfile> {
         self.profiles.iter().find(|profile| profile.id == id)
     }
+}
+
+fn is_direct_child(name: &str, dir: &str) -> bool {
+    name.strip_prefix(dir)
+        .is_some_and(|rest| !rest.contains('/'))
 }
 
 fn collect_dir(
