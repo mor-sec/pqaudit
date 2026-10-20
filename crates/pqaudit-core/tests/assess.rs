@@ -114,7 +114,7 @@ fn overrides_applied_by_fingerprint() {
     let overrides = r#"
 [[override]]
 fingerprint = "key:aa"
-priority = "critical"
+priority = "low"
 reason = "The board asked for it."
 by = "Jo"
 date = 2026-10-01
@@ -130,8 +130,8 @@ date = 2026-10-01
         first.override_.as_ref().unwrap().reason,
         "The board asked for it."
     );
-    assert_eq!(first.effective_band, Band::Critical);
-    assert_eq!(first.band, Band::Low);
+    assert_eq!(first.effective_band, Band::Low);
+    assert_eq!(first.band, Band::Critical);
     assert!(out.findings[1].override_.is_none());
     assert_eq!(out.findings[1].effective_band, out.findings[1].band);
     assert!(out.orphaned_overrides.is_empty());

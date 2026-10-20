@@ -89,8 +89,95 @@ pub const PACK_MISMATCH: &str =
 pub const DUPLICATE_OVERRIDE: &str =
     "Two overrides have the fingerprint {fingerprint}. Keep one override for each fingerprint.";
 
+/// The note for a threat type. The tool fills in {threat}.
+pub const NOTE_THREAT: &str = "The threat type is {threat}.";
+
+/// The note for an exposure. The tool fills in {exposure}.
+pub const NOTE_EXPOSURE: &str = "The exposure is {exposure}.";
+
+/// The note for an exposure that the customer did not set.
+pub const NOTE_EXPOSURE_UNASSESSED: &str =
+    "The exposure has the status unassessed. The tool uses the cautious value 1.0.";
+
+/// The note for a classification. The tool fills in {class}.
+pub const NOTE_SENSITIVITY: &str = "The classification is {class}.";
+
+/// The note for a classification that the customer did not set.
+pub const NOTE_SENSITIVITY_UNASSESSED: &str =
+    "The classification has the status unassessed. The tool uses the cautious value 1.0.";
+
+/// The note for a classification that the map does not list. The tool fills in {class}.
+pub const NOTE_SENSITIVITY_UNKNOWN: &str =
+    "The classification {class} is not in the classification map. The tool uses the cautious value 1.0.";
+
+/// The note for a data lifespan that the customer did not set. The tool fills in {years}.
+pub const NOTE_LIFESPAN_UNASSESSED: &str =
+    "The data lifespan has the status unassessed. The tool uses {years} years.";
+
+/// The note for the certificate lifetime in the Mosca factor. The tool fills in {years}.
+pub const NOTE_LIFESPAN_CERT: &str =
+    "The certificate stays valid for {years} years. The tool uses this time as the lifespan.";
+
+/// The note for the Mosca margin. The tool fills in {lifespan}, {migration}, {until}, and {margin}.
+pub const NOTE_MOSCA: &str = "The lifespan is {lifespan} years. The fix takes {migration} years. A quantum computer comes in {until} years. The margin is {margin} years.";
+
+/// The note for a finding with no deadline.
+pub const NOTE_DEADLINE_NONE: &str = "No deadline applies.";
+
+/// The note for a deadline in the future. The tool fills in {date} and {years}.
+pub const NOTE_DEADLINE: &str = "The deadline is {date}. {years} years remain.";
+
+/// The note for a deadline in the past. The tool fills in {date}.
+pub const NOTE_DEADLINE_PASSED: &str = "The deadline {date} has passed.";
+
+/// The note for the number of occurrences. The tool fills in {count}.
+pub const NOTE_SCALE: &str = "The number of occurrences is {count}.";
+
+/// The reason for the change type of the rule. The tool fills in {change}.
+pub const REASON_CHANGE: &str = "The fix needs this kind of change: {change}.";
+
+/// The reason for a CA certificate.
+pub const REASON_CA: &str = "The certificate is a CA. Each client that trusts it must also change.";
+
+/// The reason for a hardware constraint.
+pub const REASON_HARDWARE: &str =
+    "The asset has a hardware constraint. The fix needs new hardware or firmware.";
+
+/// The reason for a vendor asset.
+pub const REASON_VENDOR: &str = "A vendor supplies the asset. The vendor must make the fix.";
+
+/// The reason for an asset that partners can reach.
+pub const REASON_PARTNER: &str = "Partners can reach the asset. The partners must also change.";
+
+/// The reason for a rule with many size impacts. The tool fills in {count}.
+pub const REASON_SIZE_IMPACT: &str =
+    "The fix makes {count} parts larger. Test the size limits of each part.";
+
+/// The reason that gives the size. The tool fills in {size} and {years}.
+pub const REASON_SIZE: &str = "The size is {size}. The migration takes about {years} years.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
+    ("NOTE_THREAT", NOTE_THREAT),
+    ("NOTE_EXPOSURE", NOTE_EXPOSURE),
+    ("NOTE_EXPOSURE_UNASSESSED", NOTE_EXPOSURE_UNASSESSED),
+    ("NOTE_SENSITIVITY", NOTE_SENSITIVITY),
+    ("NOTE_SENSITIVITY_UNASSESSED", NOTE_SENSITIVITY_UNASSESSED),
+    ("NOTE_SENSITIVITY_UNKNOWN", NOTE_SENSITIVITY_UNKNOWN),
+    ("NOTE_LIFESPAN_UNASSESSED", NOTE_LIFESPAN_UNASSESSED),
+    ("NOTE_LIFESPAN_CERT", NOTE_LIFESPAN_CERT),
+    ("NOTE_MOSCA", NOTE_MOSCA),
+    ("NOTE_DEADLINE_NONE", NOTE_DEADLINE_NONE),
+    ("NOTE_DEADLINE", NOTE_DEADLINE),
+    ("NOTE_DEADLINE_PASSED", NOTE_DEADLINE_PASSED),
+    ("NOTE_SCALE", NOTE_SCALE),
+    ("REASON_CHANGE", REASON_CHANGE),
+    ("REASON_CA", REASON_CA),
+    ("REASON_HARDWARE", REASON_HARDWARE),
+    ("REASON_VENDOR", REASON_VENDOR),
+    ("REASON_PARTNER", REASON_PARTNER),
+    ("REASON_SIZE_IMPACT", REASON_SIZE_IMPACT),
+    ("REASON_SIZE", REASON_SIZE),
     ("UNKNOWN_PROFILE", UNKNOWN_PROFILE),
     ("UNKNOWN_RULE", UNKNOWN_RULE),
     ("INVALID_GLOB", INVALID_GLOB),

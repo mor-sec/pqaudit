@@ -1,5 +1,6 @@
 //! The command handlers.
 
+pub mod explain;
 pub mod init;
 pub mod merge;
 pub mod profiles;

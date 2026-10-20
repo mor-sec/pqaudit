@@ -80,8 +80,14 @@ pub enum Command {
     Report,
     /// Make a cryptography bill of materials (CBOM).
     Cbom,
-    /// Explain a finding or a rule.
-    Explain,
+    /// Explain a finding: its score, complexity, tests, and fix.
+    Explain {
+        /// The ID of the finding, for example `F-1a2b3c4d`.
+        finding_id: String,
+        /// Read this results file. The default is `results/merged.pqr` in the engagement directory.
+        #[arg(long, value_name = "FILE")]
+        results: Option<PathBuf>,
+    },
     /// Show, check, or update the rules pack.
     Rules {
         #[command(subcommand)]

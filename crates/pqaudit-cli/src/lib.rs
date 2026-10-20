@@ -95,7 +95,11 @@ fn dispatch(cli: &Cli) -> ExitCode {
                 key_file: redact_key_file.as_deref(),
             },
         ),
-        Command::Report | Command::Cbom | Command::Explain => not_implemented(),
+        Command::Explain {
+            finding_id,
+            results,
+        } => commands::explain::run(cli, finding_id, results.as_deref()),
+        Command::Report | Command::Cbom => not_implemented(),
     }
 }
 

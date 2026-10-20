@@ -130,8 +130,122 @@ pub const NET_SCAN_SUMMARY: &str =
 pub const NET_NOTHING_TO_SCAN: &str =
     "The plan has no targets. The tool made no connection. Add a target to the file scope.toml.";
 
+/// The error when the tool cannot read the results file. The tool fills in {path} and {reason}.
+pub const EXPLAIN_READ: &str = "The tool cannot read the results file {path}. {reason}";
+
+/// The error for a finding ID that the results file does not have. The tool fills in {id}.
+pub const EXPLAIN_UNKNOWN_ID: &str = "The results file has no finding with the ID {id}.";
+
+/// The title line. The tool fills in {id} and {title}.
+pub const EXPLAIN_TITLE: &str = "Finding {id}: {title}";
+
+/// The rule line. The tool fills in {rule}.
+pub const EXPLAIN_RULE: &str = "Rule: {rule}";
+
+/// The description line. The tool fills in {text}.
+pub const EXPLAIN_DESCRIPTION: &str = "Description: {text}";
+
+/// The threat line. The tool fills in {threat}.
+pub const EXPLAIN_THREAT: &str = "Threat type: {threat}";
+
+/// The heading of the occurrences. The tool fills in {count}.
+pub const EXPLAIN_OCCURRENCES: &str = "Occurrences ({count}):";
+
+/// One occurrence. The tool fills in {location} and {evidence}.
+pub const EXPLAIN_OCCURRENCE: &str = "  {location}: {evidence}";
+
+/// The heading of the context.
+pub const EXPLAIN_CONTEXT: &str = "Context:";
+
+/// The asset line. The tool fills in {asset}.
+pub const EXPLAIN_ASSET: &str = "  asset: {asset}";
+
+/// One context field. The tool fills in {name} and {value}.
+pub const EXPLAIN_CONTEXT_LINE: &str = "  {name}: {value}";
+
+/// The value of a context field that the customer did not set.
+pub const EXPLAIN_UNASSESSED: &str = "unassessed";
+
+/// The value when no asset matches.
+pub const EXPLAIN_NO_ASSET: &str = "none";
+
+/// The flag for a finding with unassessed context.
+pub const EXPLAIN_UNASSESSED_FLAG: &str =
+    "The context has unassessed fields. The tool uses cautious values for them.";
+
+/// The deadline line. The tool fills in {date} and {profile}.
+pub const EXPLAIN_DEADLINE: &str = "Deadline: {date} (profile {profile})";
+
+/// The source of the deadline. The tool fills in {title}, {url}, and {description}.
+pub const EXPLAIN_DEADLINE_SOURCE: &str = "  Source: {title}, {url}. {description}";
+
+/// The deadline line when no deadline applies.
+pub const EXPLAIN_DEADLINE_NONE: &str = "Deadline: none applies";
+
+/// The CWE line. The tool fills in {ids}.
+pub const EXPLAIN_CWE: &str = "CWE: {ids}";
+
+/// The ATT&CK line. The tool fills in {ids}.
+pub const EXPLAIN_ATTACK: &str = "ATT&CK: {ids}";
+
+/// The heading of the score factors.
+pub const EXPLAIN_SCORE: &str = "Score factors (value x weight = contribution):";
+
+/// One score factor. The tool fills in {name}, {value}, {weight}, {contribution}, and {note}.
+pub const EXPLAIN_FACTOR: &str = "  {name}: {value} x {weight} = {contribution}. {note}";
+
+/// The total line. The tool fills in {total} and {band}.
+pub const EXPLAIN_TOTAL: &str = "Total: {total} of 100. Suggested band: {band}.";
+
+/// The override line. The tool fills in {band}, {reason}, {by}, and {date}.
+pub const EXPLAIN_OVERRIDE: &str = "Override: {band}. Reason: {reason} By {by} on {date}.";
+
+/// The override line when there is no override.
+pub const EXPLAIN_NO_OVERRIDE: &str = "Override: none";
+
+/// The complexity line. The tool fills in {size}, {change}, and {years}.
+pub const EXPLAIN_COMPLEXITY: &str =
+    "Complexity: {size}. Change type: {change}. Migration time: {years} years.";
+
+/// One reason for the complexity. The tool fills in {reason}.
+pub const EXPLAIN_REASON: &str = "  - {reason}";
+
+/// The tests line. The tool fills in {tests}.
+pub const EXPLAIN_TESTS: &str = "Necessary tests: {tests}";
+
+/// The remediation line. The tool fills in {text}.
+pub const EXPLAIN_REMEDIATION: &str = "Remediation: {text}";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
+    ("EXPLAIN_READ", EXPLAIN_READ),
+    ("EXPLAIN_UNKNOWN_ID", EXPLAIN_UNKNOWN_ID),
+    ("EXPLAIN_TITLE", EXPLAIN_TITLE),
+    ("EXPLAIN_RULE", EXPLAIN_RULE),
+    ("EXPLAIN_DESCRIPTION", EXPLAIN_DESCRIPTION),
+    ("EXPLAIN_THREAT", EXPLAIN_THREAT),
+    ("EXPLAIN_OCCURRENCES", EXPLAIN_OCCURRENCES),
+    ("EXPLAIN_OCCURRENCE", EXPLAIN_OCCURRENCE),
+    ("EXPLAIN_CONTEXT", EXPLAIN_CONTEXT),
+    ("EXPLAIN_ASSET", EXPLAIN_ASSET),
+    ("EXPLAIN_CONTEXT_LINE", EXPLAIN_CONTEXT_LINE),
+    ("EXPLAIN_UNASSESSED", EXPLAIN_UNASSESSED),
+    ("EXPLAIN_NO_ASSET", EXPLAIN_NO_ASSET),
+    ("EXPLAIN_UNASSESSED_FLAG", EXPLAIN_UNASSESSED_FLAG),
+    ("EXPLAIN_DEADLINE", EXPLAIN_DEADLINE),
+    ("EXPLAIN_DEADLINE_SOURCE", EXPLAIN_DEADLINE_SOURCE),
+    ("EXPLAIN_DEADLINE_NONE", EXPLAIN_DEADLINE_NONE),
+    ("EXPLAIN_CWE", EXPLAIN_CWE),
+    ("EXPLAIN_ATTACK", EXPLAIN_ATTACK),
+    ("EXPLAIN_SCORE", EXPLAIN_SCORE),
+    ("EXPLAIN_FACTOR", EXPLAIN_FACTOR),
+    ("EXPLAIN_TOTAL", EXPLAIN_TOTAL),
+    ("EXPLAIN_OVERRIDE", EXPLAIN_OVERRIDE),
+    ("EXPLAIN_NO_OVERRIDE", EXPLAIN_NO_OVERRIDE),
+    ("EXPLAIN_COMPLEXITY", EXPLAIN_COMPLEXITY),
+    ("EXPLAIN_REASON", EXPLAIN_REASON),
+    ("EXPLAIN_TESTS", EXPLAIN_TESTS),
+    ("EXPLAIN_REMEDIATION", EXPLAIN_REMEDIATION),
     ("SCOPE_LOAD", SCOPE_LOAD),
     ("AUDIT_OPEN", AUDIT_OPEN),
     ("AUDIT_FAILED", AUDIT_FAILED),

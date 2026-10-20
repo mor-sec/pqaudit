@@ -7,7 +7,7 @@ use chrono::NaiveDate;
 use pqaudit_rules::pack::{DeadlineProfile, Milestone, RuleDef, RulesPack, TestType};
 
 use crate::assets::{compile_paths, AssetContext, AssetIndex};
-use crate::complexity::{assess_complexity, Complexity};
+use crate::complexity::{assess_complexity, testing_scope, Complexity};
 use crate::deadlines::{self, DeadlineRef};
 use crate::engagement::{Assumptions, Band, Engagement, Override};
 use crate::messages;
@@ -214,6 +214,7 @@ pub fn assess(
             .find(|candidate| candidate.fingerprint == finding.fingerprint.0)
             .cloned();
         let effective_band = override_.as_ref().map_or(band, |o| o.priority);
+        let testing = testing_scope(rule, &context, &eng.scoring);
         findings.push(AssessedFinding {
             finding: finding.clone(),
             rule: rule.clone(),
@@ -225,7 +226,7 @@ pub fn assess(
             override_,
             effective_band,
             complexity,
-            testing: rule.testing.clone(),
+            testing,
         });
     }
 
