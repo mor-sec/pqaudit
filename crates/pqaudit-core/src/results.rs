@@ -13,6 +13,9 @@ use uuid::Uuid;
 /// The schema version that this tool reads and writes.
 pub const SCHEMA_VERSION: u32 = 1;
 
+/// The largest results file that the tool reads, in bytes. This applies after decompression too.
+pub const MAX_RESULTS_BYTES: u64 = 1 << 30;
+
 /// The first bytes of a zstd frame.
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
@@ -147,6 +150,11 @@ pub enum ResultsError {
     Io(io::Error),
     /// The file is not valid.
     Parse(String),
+    /// The file is larger than the limit.
+    TooLarge {
+        /// The limit in bytes.
+        limit: u64,
+    },
     /// The file has a newer schema than the tool supports.
     UnsupportedSchema {
         /// The schema version in the file.
@@ -161,6 +169,9 @@ impl std::fmt::Display for ResultsError {
         let text = match self {
             Self::Io(e) => messages::RESULTS_IO.replace("{reason}", &e.to_string()),
             Self::Parse(reason) => messages::RESULTS_PARSE.replace("{reason}", reason),
+            Self::TooLarge { limit } => {
+                messages::RESULTS_TOO_LARGE.replace("{limit}", &limit.to_string())
+            }
             Self::UnsupportedSchema { found, supported } => messages::UNSUPPORTED_SCHEMA
                 .replace("{found}", &found.to_string())
                 .replace("{supported}", &supported.to_string()),
@@ -200,11 +211,28 @@ impl ResultsFile {
     }
 
     /// Read a file. Find zstd by the magic bytes. Refuse a newer schema.
+    /// Refuse a file that is larger than `MAX_RESULTS_BYTES`, also after decompression.
     pub fn read(path: &Path) -> Result<Self, ResultsError> {
-        let raw = std::fs::read(path)?;
+        Self::read_with_limit(path, MAX_RESULTS_BYTES)
+    }
+
+    /// Read a file with a size limit in bytes. The limit applies before and after decompression.
+    pub fn read_with_limit(path: &Path, limit: u64) -> Result<Self, ResultsError> {
+        let mut raw = Vec::new();
+        std::fs::File::open(path)?
+            .take(limit + 1)
+            .read_to_end(&mut raw)?;
+        if raw.len() as u64 > limit {
+            return Err(ResultsError::TooLarge { limit });
+        }
         let json = if raw.starts_with(&ZSTD_MAGIC) {
             let mut text = Vec::new();
-            zstd::Decoder::new(raw.as_slice())?.read_to_end(&mut text)?;
+            zstd::Decoder::new(raw.as_slice())?
+                .take(limit + 1)
+                .read_to_end(&mut text)?;
+            if text.len() as u64 > limit {
+                return Err(ResultsError::TooLarge { limit });
+            }
             text
         } else {
             raw
@@ -214,7 +242,7 @@ impl ResultsFile {
         let found = value
             .pointer("/header/schema_version")
             .and_then(serde_json::Value::as_u64)
-            .ok_or_else(|| ResultsError::Parse("The header has no schema version.".into()))?;
+            .ok_or_else(|| ResultsError::Parse(messages::NO_SCHEMA_VERSION.into()))?;
         if found > u64::from(SCHEMA_VERSION) {
             return Err(ResultsError::UnsupportedSchema {
                 found: u32::try_from(found).unwrap_or(u32::MAX),

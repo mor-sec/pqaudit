@@ -173,3 +173,61 @@ fn committed_schema_matches_generated() {
     let committed = std::fs::read_to_string(path).unwrap();
     assert_eq!(generated, committed);
 }
+
+fn write_raw(name: &str, bytes: &[u8]) -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(name);
+    std::fs::write(&path, bytes).unwrap();
+    (dir, path)
+}
+
+#[test]
+fn zstd_bomb_is_rejected() {
+    let bomb = zstd::encode_all(vec![b' '; 1 << 20].as_slice(), 19).unwrap();
+    assert!(bomb.len() < 1000);
+    let (_dir, path) = write_raw("bomb.pqr", &bomb);
+    let err = ResultsFile::read_with_limit(&path, 1000).unwrap_err();
+    assert!(matches!(err, ResultsError::TooLarge { limit: 1000 }));
+}
+
+#[test]
+fn plain_file_over_cap_is_rejected() {
+    let (_dir, path) = write_raw("big.pqr", &[b' '; 2000]);
+    let err = ResultsFile::read_with_limit(&path, 1000).unwrap_err();
+    assert!(matches!(err, ResultsError::TooLarge { limit: 1000 }));
+}
+
+#[test]
+fn truncated_zstd_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("t.pqr");
+    sample().write(&path, true).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    std::fs::write(&path, &bytes[..bytes.len() / 2]).unwrap();
+    assert!(ResultsFile::read(&path).is_err());
+}
+
+#[test]
+fn corrupt_zstd_is_an_error() {
+    let mut bytes = vec![0x28, 0xB5, 0x2F, 0xFD];
+    bytes.extend_from_slice(&[0xFF; 64]);
+    let (_dir, path) = write_raw("c.pqr", &bytes);
+    assert!(ResultsFile::read(&path).is_err());
+}
+
+#[test]
+fn invalid_json_is_a_parse_error() {
+    let (_dir, path) = write_raw("j.pqr", b"{not json");
+    assert!(matches!(
+        ResultsFile::read(&path),
+        Err(ResultsError::Parse(_))
+    ));
+}
+
+#[test]
+fn missing_schema_version_is_a_parse_error() {
+    let (_dir, path) = write_raw("m.pqr", br#"{"header":{}}"#);
+    let err = ResultsFile::read(&path).unwrap_err();
+    assert!(matches!(err, ResultsError::Parse(_)));
+    assert!(err.to_string().contains("schema version"));
+}
