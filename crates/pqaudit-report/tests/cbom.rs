@@ -630,3 +630,64 @@ fn no_key_bytes_in_the_text() {
     assert!(!text.contains("PRIVATE KEY"));
     assert!(!text.contains("\"value\":\"MII"));
 }
+
+fn level_of(bom: &Value, name: &str) -> Option<Value> {
+    let found = of_type(bom, "algorithm")
+        .into_iter()
+        .find(|c| c["name"] == name)
+        .unwrap_or_else(|| panic!("no algorithm {name}"));
+    found["cryptoProperties"]["algorithmProperties"]
+        .get("nistQuantumSecurityLevel")
+        .cloned()
+}
+
+#[test]
+fn unknown_security_level_is_omitted() {
+    let mut a = assessment(false);
+    a.findings.push(cert_finding(
+        8,
+        "c.example.com",
+        plain("made-up-kex"),
+        "made-up-signature",
+    ));
+    a.findings.push(cert_finding(
+        9,
+        "d.example.com",
+        plain("SLH-DSA"),
+        "SLH-DSA",
+    ));
+    a.findings.push(cert_finding(
+        10,
+        "e.example.com",
+        plain("SLH-DSA-SHA2-192s"),
+        "SLH-DSA-SHA2-256f",
+    ));
+    let value = render(&a, default_pack());
+    assert_eq!(level_of(&value, "made-up-kex"), None);
+    assert_eq!(level_of(&value, "made-up-signature"), None);
+    assert_eq!(level_of(&value, "SLH-DSA"), None);
+    assert_eq!(level_of(&value, "SLH-DSA-SHA2-192s"), Some(json!(3)));
+    assert_eq!(level_of(&value, "SLH-DSA-SHA2-256f"), Some(json!(5)));
+    // A name that the pack lists as classical keeps level 0.
+    assert_eq!(level_of(&value, "RSA"), Some(json!(0)));
+    assert!(validator().is_valid(&value));
+}
+
+#[test]
+fn cbom_is_reproducible() {
+    let a = assessment(false);
+    let first = serde_json::to_string(&render(&a, default_pack())).unwrap();
+    let second = serde_json::to_string(&render(&a, default_pack())).unwrap();
+    assert_eq!(first, second);
+    let value = render(&a, default_pack());
+    assert_eq!(value["metadata"]["timestamp"], "2026-10-01T09:00:00Z");
+    let mut other = assessment(false);
+    other.findings.push(cert_finding(
+        8,
+        "c.example.com",
+        rsa(4096),
+        "sha256WithRSAEncryption",
+    ));
+    let changed = render(&other, default_pack());
+    assert_ne!(value["serialNumber"], changed["serialNumber"]);
+}

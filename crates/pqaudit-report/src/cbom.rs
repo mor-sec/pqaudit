@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use chrono::{SecondsFormat, Utc};
+use chrono::{DateTime, SecondsFormat};
 use pqaudit_core::assess::Assessment;
 use pqaudit_core::{
     Algorithm, CertInfo, EndpointInfo, Fingerprint, KeyInfo, KeyKind, Location, Occurrence,
@@ -48,7 +48,7 @@ pub fn render(a: &Assessment, pack: &RulesPack) -> Value {
     }
     let (components, services, dependencies) = builder.finish();
     let mut metadata = json!({
-        "timestamp": Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+        "timestamp": timestamp(a),
         "tools": {
             "components": [{
                 "type": "application",
@@ -65,16 +65,50 @@ pub fn render(a: &Assessment, pack: &RulesPack) -> Value {
     if a.header.redacted {
         metadata["properties"] = json!([{"name": REDACTED, "value": "true"}]);
     }
+    let serial = serial_number(a, &components, &services, &dependencies);
     json!({
         "bomFormat": "CycloneDX",
         "specVersion": "1.6",
-        "serialNumber": format!("urn:uuid:{}", Uuid::new_v4()),
+        "serialNumber": serial,
         "version": 1,
         "metadata": metadata,
         "components": components,
         "services": services,
         "dependencies": dependencies,
     })
+}
+
+/// The time of the BOM. The variable `SOURCE_DATE_EPOCH` wins if the user sets it. Else the scan end time.
+///
+/// The function never reads the clock, so the same input gives the same BOM.
+fn timestamp(a: &Assessment) -> String {
+    let epoch = std::env::var("SOURCE_DATE_EPOCH")
+        .ok()
+        .and_then(|text| text.trim().parse::<i64>().ok())
+        .and_then(|seconds| DateTime::from_timestamp(seconds, 0));
+    epoch
+        .unwrap_or(a.header.finished)
+        .to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
+/// The serial number: a version 5 UUID over the content of the BOM and the runs.
+fn serial_number(
+    a: &Assessment,
+    components: &[Value],
+    services: &[Value],
+    dependencies: &[Value],
+) -> String {
+    let content = json!({
+        "components": components,
+        "services": services,
+        "dependencies": dependencies,
+        "runs": a.header.runs,
+    });
+    let text = serde_json::to_string(&content).unwrap_or_default();
+    format!(
+        "urn:uuid:{}",
+        Uuid::new_v5(&Uuid::NAMESPACE_OID, text.as_bytes())
+    )
 }
 
 /// One item of the findings or of the inventory.
@@ -344,10 +378,9 @@ impl<'p> Builder<'p> {
             if let Some(curve) = curve {
                 properties.insert("curve".to_string(), json!(curve));
             }
-            properties.insert(
-                "nistQuantumSecurityLevel".to_string(),
-                json!(fact.map_or(0, |fact| fact.nist_quantum_level)),
-            );
+            if let Some(level) = security_level(self.pack, name) {
+                properties.insert("nistQuantumSecurityLevel".to_string(), json!(level));
+            }
             let mut crypto = json!({
                 "assetType": "algorithm",
                 "algorithmProperties": properties,
@@ -382,16 +415,14 @@ impl<'p> Builder<'p> {
             } else {
                 name
             };
-            let level = self
-                .pack
-                .algorithm(base)
-                .map_or(0, |fact| fact.nist_quantum_level);
+            let mut properties = Map::new();
+            properties.insert("primitive".to_string(), json!("signature"));
+            if let Some(level) = security_level(self.pack, base) {
+                properties.insert("nistQuantumSecurityLevel".to_string(), json!(level));
+            }
             let mut crypto = json!({
                 "assetType": "algorithm",
-                "algorithmProperties": {
-                    "primitive": "signature",
-                    "nistQuantumSecurityLevel": level,
-                },
+                "algorithmProperties": properties,
             });
             if let Some(oid) = self.pack.algorithm(name).and_then(|fact| fact.oid.as_ref()) {
                 crypto["oid"] = json!(oid);
@@ -497,6 +528,24 @@ fn primitive_name(primitive: Primitive) -> &'static str {
         Primitive::Hash => "hash",
         Primitive::Cipher => "block-cipher",
     }
+}
+
+/// The NIST quantum security level of an algorithm, if the tool knows it.
+///
+/// A name that the pack does not list has no level.
+/// SLH-DSA has levels 1, 3, and 5, so the level comes from the size in the name.
+/// The plain name `SLH-DSA` has no level.
+fn security_level(pack: &RulesPack, name: &str) -> Option<u8> {
+    if let Some(rest) = name.strip_prefix("SLH-DSA") {
+        let size = rest.trim_end_matches(['s', 'f']).rsplit('-').next()?;
+        return match size {
+            "128" => Some(1),
+            "192" => Some(3),
+            "256" => Some(5),
+            _ => None,
+        };
+    }
+    pack.algorithm(name).map(|fact| fact.nist_quantum_level)
 }
 
 /// The protocol version in an SSH banner. The banner `SSH-2.0-name` gives `2.0`.

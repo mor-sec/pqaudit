@@ -8,13 +8,13 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 minijinja = { version = "3.0.1", features = ["serde"] }
 pqaudit-core = { version = "0.1.0", path = "../pqaudit-core" }
 pqaudit-rules = { version = "0.1.0", path = "../pqaudit-rules" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-uuid = { version = "1.28.0", features = ["v4"] }
+uuid = { version = "1.28.0", features = ["v5"] }
 
 [dev-dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["serde"] }

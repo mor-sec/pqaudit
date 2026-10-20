@@ -168,10 +168,10 @@ fn no_key_bytes_in_cbom() {
         for window in secret.windows(16) {
             assert!(!text.contains(&hex(window)), "{name}: hex window");
         }
-        // A window has at least 21 full base64 characters in one of 3 alignments.
+        // A window has at least 20 full base64 characters in one of 3 alignments.
         for shift in 0..3 {
             let encoded = STANDARD.encode(&secret[shift..]);
-            for window in encoded.as_bytes().windows(21) {
+            for window in encoded.as_bytes().windows(20) {
                 let window = std::str::from_utf8(window).unwrap();
                 assert!(!text.contains(window), "{name}: base64 window");
             }
