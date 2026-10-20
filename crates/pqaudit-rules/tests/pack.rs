@@ -135,6 +135,17 @@ fn us_profile_milestones() {
         MilestoneKind::Migration,
         Some(TierScope::All)
     ));
+    let on_2035: Vec<&str> = pack
+        .profile("us")
+        .unwrap()
+        .milestones
+        .iter()
+        .filter(|m| m.date == date("2035-12-31"))
+        .map(|m| m.source_title.as_str())
+        .collect();
+    assert_eq!(on_2035.len(), 2, "{on_2035:?}");
+    assert!(on_2035.iter().any(|t| t.contains("NIST IR 8547")));
+    assert!(on_2035.iter().any(|t| t.contains("NSM-10")));
 }
 
 #[test]
