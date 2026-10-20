@@ -40,7 +40,7 @@ struct Builder<'a> {
 /// Make the output of a scan from the results of the probes.
 pub(crate) fn build(
     targets: &[PlannedTarget],
-    results: Vec<TargetResult>,
+    results: Vec<Option<TargetResult>>,
     run_id: Uuid,
     pack: &RulesPack,
 ) -> NetOutput {
@@ -53,12 +53,13 @@ pub(crate) fn build(
     };
     for (target, result) in targets.iter().zip(results) {
         match result {
-            TargetResult::Tls(result) => {
+            None => builder.error(target, messages::TARGET_STOPPED.to_string()),
+            Some(TargetResult::Tls(result)) => {
                 builder.tls(target, result.obs, result.chain, result.failures);
             }
             // The SSH findings come with the SSH probe.
-            TargetResult::Ssh(Ok(_)) => {}
-            TargetResult::Ssh(Err(reason)) => builder.error(target, reason),
+            Some(TargetResult::Ssh(Ok(_))) => {}
+            Some(TargetResult::Ssh(Err(reason))) => builder.error(target, reason),
         }
     }
     builder.finish()

@@ -645,10 +645,26 @@ async fn two_sni_names_share_the_handshake_budget() {
     // The default limit is 3 handshakes for each port, over all names.
     assert_eq!(count.load(Ordering::SeqCst), 3);
     assert_eq!(read_entries(&dir).len(), 3);
-    assert_eq!(out.errors.len(), 1, "{:?}", out.errors);
-    assert!(out.errors[0]
+    // The second name has a budget of 1. The third name has none. Both are errors.
+    assert_eq!(out.errors.len(), 2, "{:?}", out.errors);
+    assert!(out.errors[0].location.contains("b.test"));
+    assert!(out.errors[0].reason.contains("part of the handshake limit"));
+    assert!(out.errors[1].location.contains("c.test"));
+    assert!(out.errors[1]
         .reason
         .contains("all handshakes for this address"));
+    // The second name still gets a verdict: with a budget of 1 the tool runs the hybrid handshake.
+    let second = out
+        .inventory
+        .iter()
+        .find(|item| {
+            item.kind == pqaudit_core::InventoryKind::Endpoint
+                && item.occurrences.iter().any(
+                    |o| matches!(&o.location, Location::Endpoint { host, .. } if host == "b.test"),
+                )
+        })
+        .expect("an endpoint item for the second name");
+    assert!(second.pq_ready);
 }
 
 #[tokio::test]

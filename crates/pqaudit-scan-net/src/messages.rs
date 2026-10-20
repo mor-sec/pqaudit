@@ -107,7 +107,11 @@ pub const HANDSHAKE_LIMIT_USED: &str =
 
 /// The note when other names used part of the handshake limit of this address and port.
 pub const HANDSHAKE_LIMIT_PART: &str =
-    "Other names used part of the handshake limit for this address and port. The probe is not complete.";
+    "Other names used part of the handshake limit for this address and port. The probe of this name is not complete.";
+
+/// The error for a target that the tool did not finish because the user stopped the scan.
+pub const TARGET_STOPPED: &str =
+    "The user stopped the scan before the tool finished this target. The results for it are not complete.";
 
 /// The error when the system cannot give random bytes.
 pub const RANDOM_FAILED: &str = "The system cannot give random bytes.";
@@ -167,6 +171,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("SSH_NOT_AVAILABLE", SSH_NOT_AVAILABLE),
     ("HANDSHAKE_LIMIT_USED", HANDSHAKE_LIMIT_USED),
     ("HANDSHAKE_LIMIT_PART", HANDSHAKE_LIMIT_PART),
+    ("TARGET_STOPPED", TARGET_STOPPED),
     ("RANDOM_FAILED", RANDOM_FAILED),
     ("NO_HANDSHAKE", NO_HANDSHAKE),
     ("EVIDENCE_PQ_READY", EVIDENCE_PQ_READY),

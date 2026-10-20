@@ -325,7 +325,8 @@ async fn probe_tls(
         };
     }
     if budget < wanted {
-        obs.errors.push(messages::HANDSHAKE_LIMIT_PART.to_string());
+        // The probe is not complete. This is a failure, so the scan exits with 3.
+        failures.push(messages::HANDSHAKE_LIMIT_PART.to_string());
     }
     let (hybrid, classical) = match (hybrid_setup(), classical_setup()) {
         (Ok(hybrid), Ok(classical)) => (hybrid, classical),
@@ -343,7 +344,8 @@ async fn probe_tls(
     let mut chain_der: Vec<Vec<u8>> = Vec::new();
     let mut hybrid_rejected: Option<String> = None;
     let mut stop = false;
-    if budget >= 2 {
+    // With one handshake, the tool does the hybrid one. It gives the verdict and the chain.
+    if budget >= 1 {
         match handshake(ctx, t, PROBE_HYBRID, &hybrid).await {
             Ok(shake) => {
                 obs.pq_hybrid_supported = Some(true);
@@ -357,7 +359,7 @@ async fn probe_tls(
             Err(failure) => hybrid_rejected = Some(failure.text),
         }
     }
-    if !stop && budget >= 1 {
+    if !stop && budget >= 2 {
         match handshake(ctx, t, PROBE_CLASSICAL, &classical).await {
             Ok(shake) => {
                 adopt(&mut obs, &shake);
@@ -377,6 +379,10 @@ async fn probe_tls(
                 failures.push(failure.text);
             }
         }
+    }
+    // With one handshake there is no classical handshake to confirm a hybrid rejection.
+    if let Some(reason) = hybrid_rejected.take() {
+        failures.push(messages::HYBRID_REJECTED.replace("{reason}", &reason));
     }
     if !stop && legacy_tls_check && budget >= 3 {
         match tls_legacy::probe(ctx, t).await {

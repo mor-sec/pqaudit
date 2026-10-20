@@ -289,17 +289,29 @@ fn full_scan_writes_findings_audit_log_and_results() {
 
 #[cfg(unix)]
 #[test]
-fn ctrl_c_audits_open_connections_and_writes_partial_results() {
+fn ctrl_c_keeps_finished_results_and_audits_open_connections() {
     use std::process::{Command as Std, Stdio};
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
+    use std::sync::mpsc;
+    // A fast target on 127.0.0.1 and a held target on 127.0.0.2. They use different addresses,
+    // so the pacing of one does not delay the other.
+    let fast = classical_tls_server();
+    let held = TcpListener::bind("127.0.0.2:0").unwrap();
+    let held_port = held.local_addr().unwrap().port();
+    let (ready_tx, ready_rx) = mpsc::channel();
     thread::spawn(move || {
-        let mut held = Vec::new();
-        while let Ok((stream, _)) = listener.accept() {
-            held.push(stream);
+        let mut kept = Vec::new();
+        while let Ok((stream, _)) = held.accept() {
+            kept.push(stream);
+            let _ = ready_tx.send(());
         }
     });
-    let setup = Setup::new(&scope_for(port, ""));
+    let scope = format!(
+        "allowed_cidrs = [\"127.0.0.0/8\"]\n\
+         [[target]]\nhost = \"127.0.0.1\"\nports = [{}]\nprotocol = \"tls\"\n\
+         [[target]]\nhost = \"127.0.0.2\"\nports = [{held_port}]\nprotocol = \"tls\"\n",
+        fast.port()
+    );
+    let setup = Setup::new(&scope);
     let mut child = Std::new(assert_cmd::cargo::cargo_bin("pqaudit"))
         .env("PQAUDIT_DATA_DIR", setup.dir.path().join("data"))
         .arg("--engagement")
@@ -309,20 +321,63 @@ fn ctrl_c_audits_open_connections_and_writes_partial_results() {
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    // Wait for the connection. The default read timeout is 10 seconds.
-    thread::sleep(Duration::from_millis(1500));
+    // The held server accepted a connection, so the scan runs and the handler is in place.
+    ready_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    // Wait until the fast target finishes: its classical handshake has a final audit line.
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    while !setup
+        .audit_log()
+        .exists_and(|text| text.contains("tls-classical") && text.contains("\"ok\""))
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the fast target did not finish"
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
+    // Give the scan time to store the result of the finished target.
+    thread::sleep(Duration::from_millis(300));
     Std::new("kill")
         .args(["-INT", &child.id().to_string()])
         .status()
         .unwrap();
     let status = child.wait().unwrap();
     assert_eq!(status.code(), Some(3));
+
     let lines = setup.audit_lines();
-    assert_eq!(lines.len(), 1, "{lines:?}");
-    assert_eq!(lines[0]["outcome"], "aborted");
+    assert_eq!(lines.len(), 3, "{lines:?}");
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|line| line["outcome"] == "aborted")
+            .count(),
+        1
+    );
     let files = setup.results();
     assert_eq!(files.len(), 1);
     let results = ResultsFile::read(&files[0]).unwrap();
-    assert_eq!(results.errors.len(), 1);
-    assert!(results.header.audit_log_hash.is_some());
+    // The finished target keeps its finding.
+    assert!(results
+        .findings
+        .iter()
+        .any(|finding| finding.rule_id == "tls.no-pq-kex"));
+    // The held target gives one error with its own address.
+    assert_eq!(results.errors.len(), 1, "{:?}", results.errors);
+    assert!(results.errors[0].location.contains("127.0.0.2"));
+    let log = fs::read(setup.audit_log()).unwrap();
+    assert_eq!(
+        results.header.audit_log_hash.as_deref(),
+        Some(sha256_hex(&log).as_str())
+    );
+}
+
+/// A helper for the wait loop: read a file and test its text.
+trait ExistsAnd {
+    fn exists_and(&self, test: impl Fn(&str) -> bool) -> bool;
+}
+
+impl ExistsAnd for PathBuf {
+    fn exists_and(&self, test: impl Fn(&str) -> bool) -> bool {
+        fs::read_to_string(self).is_ok_and(|text| test(&text))
+    }
 }

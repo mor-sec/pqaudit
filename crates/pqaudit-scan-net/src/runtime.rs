@@ -5,6 +5,7 @@
 //! The runtime connects only to `PlannedTarget::ip`. It never resolves a name.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -347,7 +348,8 @@ pub(crate) enum TargetResult {
 /// Probe all targets of the plan and make the findings.
 ///
 /// The scan obeys the limits of the plan. A global limit caps the probes at the same time.
-/// `ProbeCtx::connect` applies the limits for each IP address. The tool never runs a failed probe again.
+/// `ProbeCtx::connect` applies the limits for each IP address.
+/// The tool never runs a failed probe again.
 /// The caller must check the plan and the allowed hours before it calls this function.
 pub async fn run(
     plan: &TargetPlan,
@@ -356,23 +358,50 @@ pub async fn run(
     run_id: Uuid,
     pack: &RulesPack,
 ) -> NetOutput {
+    run_until(plan, probes, audit, run_id, pack, std::future::pending()).await
+}
+
+/// Probe the targets like `run`, but stop when the `stop` future finishes.
+///
+/// On a stop, the tool drops the probes that are not done. Each open connection then writes
+/// an `aborted` audit line. The output has the results of the finished targets.
+/// Each target that is not done gives its own scan error.
+pub async fn run_until(
+    plan: &TargetPlan,
+    probes: &dyn Probes,
+    audit: &AuditLog,
+    run_id: Uuid,
+    pack: &RulesPack,
+    stop: impl Future<Output = ()>,
+) -> NetOutput {
     let ctx = ProbeCtx::new(plan.limits, audit, run_id);
     let global = Semaphore::new(plan.limits.concurrency.max(1));
-    let jobs = plan.targets.iter().map(|target| {
+    // Each job stores its result when it finishes. A stop keeps the stored results.
+    let slots: Vec<Mutex<Option<TargetResult>>> =
+        plan.targets.iter().map(|_| Mutex::new(None)).collect();
+    let jobs = plan.targets.iter().zip(&slots).map(|(target, slot)| {
         let ctx = &ctx;
         let global = &global;
         async move {
-            let _slot = global
+            let _permit = global
                 .acquire()
                 .await
                 .expect("the semaphore is never closed");
-            match target.protocol {
+            let result = match target.protocol {
                 Protocol::Tls => TargetResult::Tls(probes.tls(target, ctx).await),
                 Protocol::Ssh => TargetResult::Ssh(probes.ssh(target, ctx).await),
-            }
+            };
+            *slot.lock().unwrap_or_else(PoisonError::into_inner) = Some(result);
         }
     });
-    let results = join_all(jobs).await;
+    tokio::select! {
+        _ = join_all(jobs) => {}
+        () = stop => {}
+    }
+    let results = slots
+        .into_iter()
+        .map(|slot| slot.into_inner().unwrap_or_else(PoisonError::into_inner))
+        .collect();
     findings::build(&plan.targets, results, run_id, pack)
 }
 

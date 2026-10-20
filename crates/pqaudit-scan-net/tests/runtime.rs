@@ -11,7 +11,7 @@ use pqaudit_core::{Protocol, TlsObservation};
 use pqaudit_rules::embedded::default_pack;
 use pqaudit_scan_net::audit::{AuditEntry, AuditLog};
 use pqaudit_scan_net::runtime::{
-    check_allowed_hours, check_hours, run, ProbeCtx, Probes, SshObservationResult,
+    check_allowed_hours, check_hours, run, run_until, ProbeCtx, Probes, SshObservationResult,
     TlsObservationWithCerts,
 };
 use pqaudit_scan_net::scope::{HoursWindow, Limits, PlannedTarget, ScopeError, TargetPlan};
@@ -458,4 +458,51 @@ async fn handshake_budget_is_per_address_and_port() {
         ctx.claim_handshakes(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 443, 3),
         3
     );
+}
+
+#[tokio::test]
+async fn stopped_run_keeps_finished_results_and_reports_the_rest() {
+    // The first target finishes at once. The second one connects and then waits for ever.
+    struct Mixed;
+    #[async_trait]
+    impl Probes for Mixed {
+        async fn tls(&self, t: &PlannedTarget, ctx: &ProbeCtx<'_>) -> TlsObservationWithCerts {
+            if t.port == 1 {
+                let mut done = empty_obs(true);
+                done.obs.pq_hybrid_supported = Some(false);
+                return done;
+            }
+            let _connected = ctx.connect(t, "tls-hybrid").await;
+            std::future::pending::<()>().await;
+            empty_obs(false)
+        }
+        async fn ssh(&self, _t: &PlannedTarget, _ctx: &ProbeCtx<'_>) -> SshObservationResult {
+            Err(String::new())
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let audit = audit_in(&dir);
+    let good = five_byte_server().await;
+    let mut limits = Limits::DEFAULT;
+    limits.min_interval = Duration::from_millis(10);
+    let targets = vec![
+        target(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 9)), 1),
+        target(good.ip(), good.port()),
+    ];
+    let out = run_until(
+        &plan(targets, limits),
+        &Mixed,
+        &audit,
+        Uuid::new_v4(),
+        default_pack(),
+        tokio::time::sleep(Duration::from_millis(300)),
+    )
+    .await;
+    // The finished target gives its finding.
+    assert!(out.findings.iter().any(|f| f.rule_id == "tls.no-pq-kex"));
+    // The other target gives one error with its own address.
+    assert_eq!(out.errors.len(), 1, "{:?}", out.errors);
+    assert!(out.errors[0].location.contains(&good.port().to_string()));
+    let outcomes: Vec<String> = read_entries(&dir).into_iter().map(|e| e.outcome).collect();
+    assert_eq!(outcomes, ["aborted"]);
 }
