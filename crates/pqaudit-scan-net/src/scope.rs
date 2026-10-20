@@ -224,10 +224,41 @@ impl Selector {
     fn from_keys(host: Option<String>, cidr: Option<IpNet>, kind: &str) -> Result<Self, String> {
         match (host, cidr) {
             (Some(host), None) => Host::parse(&host).map(Self::Host),
-            (None, Some(cidr)) => Ok(Self::Cidr(cidr.trunc())),
+            (None, Some(cidr)) => canonical_net(cidr).map(Self::Cidr),
             _ => Err(kind.to_string()),
         }
     }
+}
+
+/// Make a canonical range. A mapped IPv6 range becomes an IPv4 range.
+///
+/// Addresses are canonical too, so both sides of a match use one family.
+/// A range that is wider than the mapped range and that holds it is an error.
+fn canonical_net(net: IpNet) -> Result<IpNet, String> {
+    let net = net.trunc();
+    let IpNet::V6(v6) = net else { return Ok(net) };
+    let mapped_base = std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0, 0);
+    if v6.prefix_len() >= 96 {
+        return Ok(match v6.network().to_ipv4_mapped() {
+            Some(v4) => IpNet::V4(
+                ipnet::Ipv4Net::new(v4, v6.prefix_len() - 96).expect("the prefix is at most 32"),
+            ),
+            None => net,
+        });
+    }
+    if v6.contains(&mapped_base) {
+        return Err(messages::MAPPED_RANGE_WIDE.to_string());
+    }
+    Ok(net)
+}
+
+fn canonical_nets<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<IpNet>, D::Error> {
+    Vec::<IpNet>::deserialize(deserializer)?
+        .into_iter()
+        .map(|net| canonical_net(net).map_err(serde::de::Error::custom))
+        .collect()
 }
 
 #[derive(Deserialize)]
@@ -319,6 +350,7 @@ pub struct ScopeFile {
     /// If true, each address of a host name must be in an allowed range.
     pub require_ip_in_cidr: Option<bool>,
     /// The ranges that host names can resolve to. These are not targets.
+    #[serde(deserialize_with = "canonical_nets")]
     pub allowed_cidrs: Vec<IpNet>,
     /// The hours in which the scan can start, in local time.
     pub allowed_hours: Option<HoursWindow>,
@@ -647,7 +679,7 @@ fn addresses(net: &IpNet) -> Vec<IpAddr> {
         IpNet::V6(net) => {
             let start = u128::from(net.network());
             (0..address_count(&IpNet::V6(*net)))
-                .map(|n| IpAddr::V6(std::net::Ipv6Addr::from(start + n)))
+                .map(|n| IpAddr::V6(std::net::Ipv6Addr::from(start + n)).to_canonical())
                 .collect()
         }
     }
@@ -720,7 +752,7 @@ pub fn build_plan(scope: &ScopeFile, resolver: &dyn Resolver) -> Result<TargetPl
                         continue;
                     }
                 };
-                let ips: Vec<IpAddr> = ips.into_iter().filter(|ip| !is_excluded(ip)).collect();
+                // Check every resolved address first. Then apply the exclusions.
                 let outside: Vec<IpAddr> = ips
                     .iter()
                     .filter(|ip| require_ip_in_cidr && !allowed.iter().any(|net| net.contains(*ip)))
@@ -733,6 +765,7 @@ pub fn build_plan(scope: &ScopeFile, resolver: &dyn Resolver) -> Result<TargetPl
                     });
                     continue;
                 }
+                let ips = ips.into_iter().filter(|ip| !is_excluded(ip)).collect();
                 (Some(name.clone()), ips)
             }
             Selector::Cidr(net) => {

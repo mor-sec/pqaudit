@@ -238,8 +238,8 @@ fn excluded_host_address_is_removed_from_other_targets() {
 }
 
 #[test]
-fn excluded_address_does_not_refuse_a_host() {
-    let resolver = FakeResolver::with("a.example", &["10.0.0.5", "203.0.113.9"]);
+fn excluded_bad_address_still_refuses_the_host() {
+    let resolver = FakeResolver::with("a.example", &["10.0.1.5", "203.0.113.9"]);
     let text = r#"
         allowed_cidrs = ["10.0.0.0/16"]
         [[target]]
@@ -250,9 +250,66 @@ fn excluded_address_does_not_refuse_a_host() {
         cidr = "203.0.113.9/32"
     "#;
     let plan = plan(text, &resolver);
-    assert!(!plan.is_refused());
-    assert_eq!(plan.targets.len(), 1);
-    assert_eq!(plan.targets[0].ip, ip("10.0.0.5"));
+    assert!(plan.is_refused());
+    assert!(plan.refused[0].reason.to_string().contains("203.0.113.9"));
+    assert!(plan.targets.is_empty());
+}
+
+#[test]
+fn mapped_exclude_cidr_matches_resolved_address() {
+    let resolver = FakeResolver::with("a.example", &["10.0.1.5", "10.0.1.6"]);
+    let text = r#"
+        [[target]]
+        host = "a.example"
+        ports = [443]
+        protocol = "tls"
+        [[exclude]]
+        cidr = "::ffff:10.0.1.5/128"
+    "#;
+    let plan = plan(text, &resolver);
+    let ips: Vec<IpAddr> = plan.targets.iter().map(|t| t.ip).collect();
+    assert_eq!(ips, vec![ip("10.0.1.6")]);
+}
+
+#[test]
+fn mapped_target_cidr_is_matched_by_v4_exclude() {
+    let text = r#"
+        [[target]]
+        cidr = "::ffff:10.0.1.0/126"
+        ports = [22]
+        protocol = "ssh"
+        [[exclude]]
+        cidr = "10.0.1.1/32"
+    "#;
+    let plan = plan(text, &FakeResolver::default());
+    let ips: Vec<IpAddr> = plan.targets.iter().map(|t| t.ip).collect();
+    assert_eq!(ips, vec![ip("10.0.1.0"), ip("10.0.1.2"), ip("10.0.1.3")]);
+}
+
+#[test]
+fn mapped_allowed_cidr_allows_v4_address() {
+    let resolver = FakeResolver::with("a.example", &["10.0.1.5"]);
+    let text = r#"
+        allowed_cidrs = ["::ffff:10.0.0.0/112"]
+        [[target]]
+        host = "a.example"
+        ports = [443]
+        protocol = "tls"
+    "#;
+    assert!(!plan(text, &resolver).is_refused());
+}
+
+#[test]
+fn wide_range_holding_the_mapped_range_is_a_parse_error() {
+    for cidr in ["::/0", "::ffff:0:0/95", "::/80"] {
+        for key in ["allowed_cidrs = [\"X\"]", "[[exclude]]\ncidr = \"X\""] {
+            let text = key.replace('X', cidr);
+            let error = ScopeFile::parse(&text, "scope.toml").unwrap_err();
+            assert!(matches!(error, ScopeError::Parse { .. }), "{text}");
+        }
+    }
+    // A plain IPv6 range stays valid.
+    assert!(ScopeFile::parse("allowed_cidrs = [\"2001:db8::/32\"]", "scope.toml").is_ok());
 }
 
 #[test]

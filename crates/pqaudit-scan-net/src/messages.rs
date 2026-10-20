@@ -39,6 +39,10 @@ pub const HOST_INVALID: &str =
 pub const HOURS_INVALID: &str =
     "The value of allowed_hours must have the form HH:MM-HH:MM. The two times must differ.";
 
+/// The reason when an IPv6 range is wider than the IPv4-mapped range and holds it.
+pub const MAPPED_RANGE_WIDE: &str =
+    "This IPv6 range holds the IPv4-mapped range ::ffff:0:0/96. Use a smaller range or an IPv4 range.";
+
 /// The reason when a host name does not resolve. The tool fills in {reason}.
 pub const REFUSE_RESOLVE: &str = "The host name does not resolve. {reason}";
 
@@ -71,6 +75,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("PORT_ZERO", PORT_ZERO),
     ("HOST_INVALID", HOST_INVALID),
     ("HOURS_INVALID", HOURS_INVALID),
+    ("MAPPED_RANGE_WIDE", MAPPED_RANGE_WIDE),
     ("REFUSE_RESOLVE", REFUSE_RESOLVE),
     ("REFUSE_NO_ADDRESSES", REFUSE_NO_ADDRESSES),
     ("REFUSE_OUTSIDE", REFUSE_OUTSIDE),
