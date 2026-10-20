@@ -47,6 +47,10 @@ pub const UNKNOWN_KEY: &str =
 /// The error when a merge has no input files.
 pub const MERGE_NO_INPUTS: &str = "The merge has no input files.";
 
+/// The error when the inputs of a merge are a mix of two kinds of file.
+pub const MERGE_MIXED_REDACTION: &str =
+    "The input files are a mix of redacted files and plain files. Add the flag --redact to the command.";
+
 /// The error when results files belong to different engagements. The tool fills in {first} and {other}.
 pub const MERGE_ENGAGEMENT_MISMATCH: &str =
     "The results files belong to different engagements: {first} and {other}. Merge files of one engagement only.";
@@ -70,6 +74,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("REDACT_KEY_IO", REDACT_KEY_IO),
     ("REDACT_KEY_INVALID", REDACT_KEY_INVALID),
     ("REDACT_KEY_RANDOM", REDACT_KEY_RANDOM),
+    ("MERGE_MIXED_REDACTION", MERGE_MIXED_REDACTION),
     ("MERGE_NO_INPUTS", MERGE_NO_INPUTS),
     ("MERGE_ENGAGEMENT_MISMATCH", MERGE_ENGAGEMENT_MISMATCH),
     ("MERGE_PACK_MISMATCH", MERGE_PACK_MISMATCH),

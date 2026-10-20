@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use pqaudit_core::merge::{merge, redact, RedactKey};
+use pqaudit_core::merge::{merge, redact, RedactKey, RedactKeyError};
 use pqaudit_core::ResultsFile;
 
 use crate::cli::Cli;
@@ -45,30 +45,19 @@ pub fn run(cli: &Cli, args: MergeArgs<'_>) -> ExitCode {
             }
         }
     }
-    let key_path = key_file
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| cli.engagement.join("redact.key"));
-    // The tool makes a new key only for the default key file. A key file that the user names must exist.
-    let key = if redact_output && key_file.is_none() {
-        RedactKey::load_or_create(&key_path).map(Some)
-    } else if redact_output || key_file.is_some() || key_path.exists() {
-        RedactKey::load(&key_path).map(Some)
-    } else {
-        Ok(None)
-    };
-    let key = match key {
-        Ok(key) => key,
-        Err(error) => {
-            eprintln!("{error}");
-            return ExitCode::Error;
-        }
-    };
-    if let Some(key) = key.as_ref().filter(|_| redact_output) {
+    if redact_output {
+        let key = match load_key(cli, key_file) {
+            Ok(key) => key,
+            Err(error) => {
+                eprintln!("{error}");
+                return ExitCode::Error;
+            }
+        };
         for file in &mut files {
-            redact(file, key);
+            redact(file, &key);
         }
     }
-    let merged = match merge(files, key.as_ref()) {
+    let merged = match merge(files) {
         Ok(merged) => merged,
         Err(error) => {
             eprintln!(
@@ -108,4 +97,12 @@ pub fn run(cli: &Cli, args: MergeArgs<'_>) -> ExitCode {
     }
     println!("{} {}", messages::SCAN_RESULTS, path.display());
     ExitCode::Success
+}
+
+/// Read the key file. The tool makes a new key only for the default key file.
+fn load_key(cli: &Cli, key_file: Option<&Path>) -> Result<RedactKey, RedactKeyError> {
+    match key_file {
+        Some(path) => RedactKey::load(path),
+        None => RedactKey::load_or_create(&cli.engagement.join("redact.key")),
+    }
 }

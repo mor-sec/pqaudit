@@ -159,7 +159,7 @@ fn net_result() -> ResultsFile {
 
 #[test]
 fn same_cert_from_files_and_net_merges() {
-    let merged = merge(vec![files_result(), net_result()], None).unwrap();
+    let merged = merge(vec![files_result(), net_result()]).unwrap();
     assert_eq!(merged.header.scanner, ScannerKind::Merged);
     assert_eq!(merged.header.runs.len(), 2);
     let cert_findings: Vec<_> = merged
@@ -179,7 +179,7 @@ fn same_cert_from_files_and_net_merges() {
 
 #[test]
 fn distinct_findings_kept() {
-    let merged = merge(vec![files_result(), net_result()], None).unwrap();
+    let merged = merge(vec![files_result(), net_result()]).unwrap();
     assert_eq!(merged.findings.len(), 2);
     let ids: Vec<_> = merged.findings.iter().map(|f| f.id.clone()).collect();
     assert!(ids.iter().all(|id| id.len() == 10
@@ -190,7 +190,7 @@ fn distinct_findings_kept() {
     let mut a = files_result();
     a.findings
         .push(finding("x", place.clone(), "key.x", vec![]));
-    let merged = merge(vec![a, net_result()], None).unwrap();
+    let merged = merge(vec![a, net_result()]).unwrap();
     assert!(merged.findings.iter().any(|f| f.fingerprint == place));
 }
 
@@ -200,7 +200,7 @@ fn different_rules_for_one_subject_go_to_also() {
     let mut b = net_result();
     b.findings[0].rule_id = "cert.expired".into();
     b.findings[0].also = vec!["cert.other".into()];
-    let merged = merge(vec![a, b], None).unwrap();
+    let merged = merge(vec![a, b]).unwrap();
     let f = &merged.findings[0];
     assert_eq!(f.rule_id, "cert.rsa-2048");
     assert_eq!(f.also, vec!["cert.expired", "cert.other"]);
@@ -208,8 +208,8 @@ fn different_rules_for_one_subject_go_to_also() {
 
 #[test]
 fn occurrences_not_duplicated_on_remerge() {
-    let ab = merge(vec![files_result(), net_result()], None).unwrap();
-    let again = merge(vec![ab.clone(), net_result()], None).unwrap();
+    let ab = merge(vec![files_result(), net_result()]).unwrap();
+    let again = merge(vec![ab.clone(), net_result()]).unwrap();
     assert_eq!(again.findings, ab.findings);
     assert_eq!(again.header.runs, ab.header.runs);
     assert_eq!(again.errors, ab.errors);
@@ -231,7 +231,7 @@ fn inventory_is_merged_by_fingerprint() {
     a.inventory = vec![item("/a", 1)];
     let mut b = net_result();
     b.inventory = vec![item("/a", 1), item("/b", 2)];
-    let merged = merge(vec![a, b], None).unwrap();
+    let merged = merge(vec![a, b]).unwrap();
     assert_eq!(merged.inventory.len(), 1);
     assert_eq!(merged.inventory[0].occurrences.len(), 2);
 }
@@ -240,16 +240,16 @@ fn inventory_is_merged_by_fingerprint() {
 fn engagement_mismatch_errors() {
     let mut b = net_result();
     b.header.engagement = "other".into();
-    let err = merge(vec![files_result(), b], None).unwrap_err();
+    let err = merge(vec![files_result(), b]).unwrap_err();
     assert!(matches!(err, MergeError::EngagementMismatch { .. }));
-    assert!(matches!(merge(vec![], None), Err(MergeError::NoInputs)));
+    assert!(matches!(merge(vec![]), Err(MergeError::NoInputs)));
 }
 
 #[test]
 fn pack_version_mismatch_warns() {
     let mut b = net_result();
     b.header.rules_pack.version = "1.10.0".into();
-    let merged = merge(vec![files_result(), b], None).unwrap();
+    let merged = merge(vec![files_result(), b]).unwrap();
     assert_eq!(merged.header.rules_pack.version, "1.10.0");
     let warning = merged
         .errors
@@ -456,7 +456,7 @@ fn two_ips_of_one_host_stay_two_occurrences() {
             IpAddr::V6(v6) => assert_eq!(&v6.segments()[..2], &[0x2001, 0x0db8]),
         }
     }
-    let again = merge(vec![red.clone(), red.clone()], None).unwrap();
+    let again = merge(vec![red.clone(), red.clone()]).unwrap();
     assert_eq!(again.findings[0].occurrences.len(), 2);
 }
 
@@ -515,28 +515,33 @@ fn only_exact_redacted_shape_passes_through() {
 }
 
 #[test]
-fn plain_and_redacted_files_of_one_engagement_merge() {
+fn mixed_plain_and_redacted_inputs_are_refused() {
     let red = redacted_copy(&net_result());
-    assert_ne!(red.header.engagement, "acme");
-    let merged = merge(vec![files_result(), red.clone()], Some(&key())).unwrap();
-    assert_eq!(merged.header.engagement, "acme");
-    assert!(!merged.header.redacted);
-    assert!(matches!(
-        merge(vec![files_result(), red], None),
-        Err(MergeError::EngagementMismatch { .. })
-    ));
+    let err = merge(vec![files_result(), red]).unwrap_err();
+    assert_eq!(err, MergeError::MixedRedaction);
+    assert!(err.to_string().contains("--redact"));
+}
+
+#[test]
+fn plain_files_redacted_first_then_merged() {
+    let merged = merge(vec![
+        redacted_copy(&files_result()),
+        redacted_copy(&net_result()),
+    ])
+    .unwrap();
+    assert!(merged.header.redacted);
 }
 
 #[test]
 fn separately_redacted_files_merge() {
     let a = redacted_copy(&files_result());
     let b = redacted_copy(&net_result());
-    let merged = merge(vec![a, b], None).unwrap();
+    let merged = merge(vec![a, b]).unwrap();
     assert!(merged.header.redacted);
     assert_eq!(merged.findings.len(), 2);
     let mut other = net_result();
     redact(&mut other, &RedactKey::from_bytes([9; 32]));
-    assert!(merge(vec![redacted_copy(&files_result()), other], None).is_err());
+    assert!(merge(vec![redacted_copy(&files_result()), other]).is_err());
 }
 
 #[test]
@@ -546,7 +551,7 @@ fn run_hashes_are_kept() {
     net.header.audit_log_hash = Some("66".into());
     net.header.runs[0].scope_hash = Some("55".into());
     net.header.runs[0].audit_log_hash = Some("66".into());
-    let merged = merge(vec![files_result(), net.clone()], None).unwrap();
+    let merged = merge(vec![files_result(), net.clone()]).unwrap();
     assert_eq!(merged.header.scope_hash.as_deref(), Some("55"));
     assert_eq!(merged.header.audit_log_hash.as_deref(), Some("66"));
     let run = merged
@@ -561,7 +566,7 @@ fn run_hashes_are_kept() {
     other.header.scope_hash = Some("77".into());
     other.header.runs[0].run_id = Uuid::from_u128(5);
     other.header.runs[0].scope_hash = Some("77".into());
-    let merged = merge(vec![net, other, files_result()], None).unwrap();
+    let merged = merge(vec![net, other, files_result()]).unwrap();
     assert_eq!(merged.header.scope_hash, None);
     let hashes: Vec<_> = merged
         .header
@@ -580,8 +585,8 @@ fn merge_is_order_independent() {
     b.findings[0].rule_id = "cert.expired".into();
     b.findings[0].source = Source::Net;
     b.findings[0].purpose = Purpose::KeyExchange;
-    let ab = merge(vec![a.clone(), b.clone()], None).unwrap();
-    let ba = merge(vec![b, a], None).unwrap();
+    let ab = merge(vec![a.clone(), b.clone()]).unwrap();
+    let ba = merge(vec![b, a]).unwrap();
     assert_eq!(ab, ba);
     assert_eq!(ab.findings[0].source, Source::File);
 }
@@ -606,4 +611,39 @@ fn key_file_is_created_once_with_private_mode() {
             0o600
         );
     }
+}
+
+#[test]
+fn oversized_or_odd_key_files_are_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    let big = dir.path().join("big.key");
+    std::fs::write(&big, "a".repeat(100_000)).unwrap();
+    assert!(RedactKey::load(&big).is_err());
+    let good = dir.path().join("good.key");
+    std::fs::write(&good, format!("{}\n", "ab".repeat(32))).unwrap();
+    assert!(RedactKey::load(&good).is_ok());
+    std::fs::write(&good, format!("{}\n\n", "ab".repeat(32))).unwrap();
+    assert!(RedactKey::load(&good).is_err());
+    std::fs::write(&good, "  ".to_string() + &"ab".repeat(32)).unwrap();
+    assert!(RedactKey::load(&good).is_err());
+    assert!(RedactKey::load(dir.path()).is_err());
+}
+
+#[test]
+fn header_hashes_come_from_all_runs() {
+    let net = |run: u128, hash: &str| {
+        let mut f = net_result();
+        f.header.scope_hash = Some(hash.into());
+        f.header.runs[0].run_id = Uuid::from_u128(run);
+        f.header.runs[0].scope_hash = Some(hash.into());
+        f
+    };
+    let net1 = net(2, "55");
+    let net2 = net(3, "77");
+    let both = merge(vec![net1.clone(), net2]).unwrap();
+    assert_eq!(both.header.scope_hash, None);
+    let again = merge(vec![both, net1.clone()]).unwrap();
+    assert_eq!(again.header.scope_hash, None);
+    let alone = merge(vec![net1.clone(), net1]).unwrap();
+    assert_eq!(alone.header.scope_hash.as_deref(), Some("55"));
 }

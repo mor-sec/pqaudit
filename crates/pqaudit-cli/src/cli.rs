@@ -73,7 +73,7 @@ pub enum Command {
         #[arg(long)]
         redact: bool,
         /// Use this key file for redaction. The default is `redact.key` in the engagement directory.
-        #[arg(long, value_name = "PATH")]
+        #[arg(long, value_name = "PATH", requires = "redact")]
         redact_key_file: Option<PathBuf>,
     },
     /// Make a report from a results file.

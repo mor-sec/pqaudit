@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
 use pqaudit_core::{ResultsFile, ScannerKind};
+use predicates::prelude::*;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -113,7 +114,7 @@ fn redact_default_output_and_key_file() {
         .code(0);
     let red = dir.path().join("eng/results/merged.redacted.pqr");
     assert!(ResultsFile::read(&red).unwrap().header.redacted);
-    // A redacted file and a plain file merge with the same key.
+    // A mix of a redacted file and a plain file needs the flag --redact.
     let out = dir.path().join("mixed.pqr");
     pqaudit(dir.path())
         .arg("merge")
@@ -122,7 +123,19 @@ fn redact_default_output_and_key_file() {
         .arg("--output")
         .arg(&out)
         .assert()
+        .code(1)
+        .stderr(predicate::str::contains("--redact"));
+    assert!(!out.exists());
+    pqaudit(dir.path())
+        .arg("merge")
+        .arg(&red)
+        .arg(&b)
+        .arg("--redact")
+        .arg("--output")
+        .arg(&out)
+        .assert()
         .code(0);
+    assert!(ResultsFile::read(&out).unwrap().header.redacted);
     // Another folder has no key. A key file that does not exist is an error.
     let other = tempfile::tempdir().unwrap();
     pqaudit(other.path())

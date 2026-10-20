@@ -11,6 +11,7 @@ use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
+use std::io::Read;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use uuid::Uuid;
@@ -24,6 +25,9 @@ const REDACTED_PREFIX: &str = "redacted:";
 /// The number of hex digits after the prefix of a redacted value.
 const REDACTED_DIGITS: usize = 12;
 
+/// The most bytes that the tool reads from a key file.
+const KEY_FILE_READ_LIMIT: u64 = 256;
+
 /// An error when the tool merges results files.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MergeError {
@@ -36,12 +40,15 @@ pub enum MergeError {
         /// The other engagement.
         other: String,
     },
+    /// The inputs are a mix of redacted files and plain files.
+    MixedRedaction,
 }
 
 impl std::fmt::Display for MergeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let text = match self {
             Self::NoInputs => messages::MERGE_NO_INPUTS.to_string(),
+            Self::MixedRedaction => messages::MERGE_MIXED_REDACTION.to_string(),
             Self::EngagementMismatch { first, other } => messages::MERGE_ENGAGEMENT_MISMATCH
                 .replace("{first}", first)
                 .replace("{other}", other),
@@ -105,14 +112,27 @@ impl RedactKey {
     /// Read a key file. The file holds 64 hex digits.
     pub fn load(path: &Path) -> Result<Self, RedactKeyError> {
         let shown = path.display().to_string();
-        let text = std::fs::read_to_string(path).map_err(|e| RedactKeyError::Io {
+        let io = |e: std::io::Error| RedactKeyError::Io {
             path: shown.clone(),
             reason: e.to_string(),
-        })?;
-        let text = text.trim();
-        if text.len() != 64 || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        };
+        let file = std::fs::File::open(path).map_err(io)?;
+        if !file.metadata().map_err(io)?.is_file() {
             return Err(RedactKeyError::Invalid { path: shown });
         }
+        let mut raw = Vec::new();
+        file.take(KEY_FILE_READ_LIMIT)
+            .read_to_end(&mut raw)
+            .map_err(io)?;
+        let digits = match raw.as_slice() {
+            [digits @ .., b'\n'] if digits.len() == 64 => digits,
+            digits if digits.len() == 64 => digits,
+            _ => return Err(RedactKeyError::Invalid { path: shown }),
+        };
+        if !digits.iter().all(u8::is_ascii_hexdigit) {
+            return Err(RedactKeyError::Invalid { path: shown });
+        }
+        let text = std::str::from_utf8(digits).expect("hex digits are ASCII");
         let mut bytes = [0u8; 32];
         for (i, byte) in bytes.iter_mut().enumerate() {
             *byte = u8::from_str_radix(&text[2 * i..2 * i + 2], 16).map_err(|_| {
@@ -175,11 +195,8 @@ impl RedactKey {
 ///
 /// Findings and inventory items with the same fingerprint become one item.
 /// The output does not depend on the order of the inputs.
-/// Give a key only to merge redacted files with plain files.
-pub fn merge(
-    mut inputs: Vec<ResultsFile>,
-    key: Option<&RedactKey>,
-) -> Result<ResultsFile, MergeError> {
+/// The inputs must be of one kind: all redacted, or all plain.
+pub fn merge(mut inputs: Vec<ResultsFile>) -> Result<ResultsFile, MergeError> {
     if inputs.is_empty() {
         return Err(MergeError::NoInputs);
     }
@@ -189,14 +206,11 @@ pub fn merge(
             f.header.runs.first().map_or(Uuid::nil(), |r| r.run_id),
         )
     });
-    let engagement = check_engagement(&inputs, key)?;
+    check_engagement(&inputs)?;
 
     let mut header = inputs[0].header.clone();
-    header.engagement = engagement;
     header.runs = Vec::new();
     header.redacted = inputs.iter().all(|f| f.header.redacted);
-    header.scope_hash = common(inputs.iter().map(|f| &f.header.scope_hash));
-    header.audit_log_hash = common(inputs.iter().map(|f| &f.header.audit_log_hash));
     header.started = inputs
         .iter()
         .map(|f| f.header.started)
@@ -222,7 +236,24 @@ pub fn merge(
     let mut errors: Vec<ScanError> = Vec::new();
     let mut seen_errors: HashSet<(String, String)> = HashSet::new();
     let mut seen_runs: HashSet<Uuid> = HashSet::new();
+    let mut scope_hashes: BTreeSet<String> = BTreeSet::new();
+    let mut audit_hashes: BTreeSet<String> = BTreeSet::new();
     for file in inputs {
+        // A file with no hash in its runs gives the hash of its header.
+        let run_scope = file.header.runs.iter().filter_map(|r| r.scope_hash.clone());
+        scope_hashes.extend(run_scope);
+        if file.header.runs.iter().all(|r| r.scope_hash.is_none()) {
+            scope_hashes.extend(file.header.scope_hash.clone());
+        }
+        let run_audit = file
+            .header
+            .runs
+            .iter()
+            .filter_map(|r| r.audit_log_hash.clone());
+        audit_hashes.extend(run_audit);
+        if file.header.runs.iter().all(|r| r.audit_log_hash.is_none()) {
+            audit_hashes.extend(file.header.audit_log_hash.clone());
+        }
         for run in file.header.runs {
             if seen_runs.insert(run.run_id) {
                 header.runs.push(run);
@@ -266,6 +297,8 @@ pub fn merge(
         );
     }
     header.scanner = ScannerKind::Merged;
+    header.scope_hash = single(scope_hashes);
+    header.audit_log_hash = single(audit_hashes);
     Ok(ResultsFile {
         header,
         findings,
@@ -274,37 +307,28 @@ pub fn merge(
     })
 }
 
-/// Check that all files have one engagement. Return the engagement name for the output.
-///
-/// A redacted file and a plain file match if the redacted form of the plain name is equal.
-fn check_engagement(inputs: &[ResultsFile], key: Option<&RedactKey>) -> Result<String, MergeError> {
+/// Check that the files have one engagement and one kind: all redacted, or all plain.
+fn check_engagement(inputs: &[ResultsFile]) -> Result<(), MergeError> {
     let first = &inputs[0].header;
-    let mixed = inputs.iter().any(|f| f.header.redacted != first.redacted);
-    let canon = |h: &ResultsHeader| match (h.redacted, key) {
-        (false, Some(key)) if mixed => redacted(&h.engagement, key),
-        _ => h.engagement.clone(),
-    };
-    let wanted = canon(first);
-    for file in &inputs[1..] {
-        if canon(&file.header) != wanted {
-            return Err(MergeError::EngagementMismatch {
-                first: first.engagement.clone(),
-                other: file.header.engagement.clone(),
-            });
-        }
+    if inputs.iter().any(|f| f.header.redacted != first.redacted) {
+        return Err(MergeError::MixedRedaction);
     }
-    let plain = inputs
+    match inputs[1..]
         .iter()
-        .find(|f| !f.header.redacted)
-        .unwrap_or(&inputs[0]);
-    Ok(plain.header.engagement.clone())
+        .find(|f| f.header.engagement != first.engagement)
+    {
+        Some(file) => Err(MergeError::EngagementMismatch {
+            first: first.engagement.clone(),
+            other: file.header.engagement.clone(),
+        }),
+        None => Ok(()),
+    }
 }
 
-/// The one value that all inputs share. If the inputs have two values or none, return `None`.
-fn common<'a>(values: impl Iterator<Item = &'a Option<String>>) -> Option<String> {
-    let set: BTreeSet<&String> = values.flatten().collect();
-    if set.len() == 1 {
-        set.into_iter().next().cloned()
+/// The one value in a set. If the set has two values or none, return `None`.
+fn single(values: BTreeSet<String>) -> Option<String> {
+    if values.len() == 1 {
+        values.into_iter().next()
     } else {
         None
     }
