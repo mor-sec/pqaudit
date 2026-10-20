@@ -109,6 +109,8 @@ fn sample() -> ResultsFile {
                 scanner: ScannerKind::Net,
                 host: "h".into(),
                 started: t,
+                scope_hash: Some("aa".into()),
+                audit_log_hash: None,
             }],
             redacted: false,
         },

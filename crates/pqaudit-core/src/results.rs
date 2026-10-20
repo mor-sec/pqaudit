@@ -97,6 +97,10 @@ pub struct RunInfo {
     pub host: String,
     /// The start time of the run.
     pub started: DateTime<Utc>,
+    /// The hash of the scope file that the run used.
+    pub scope_hash: Option<String>,
+    /// The hash of the audit log of the run.
+    pub audit_log_hash: Option<String>,
 }
 
 /// The header of a results file.

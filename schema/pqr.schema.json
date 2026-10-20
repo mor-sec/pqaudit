@@ -821,6 +821,13 @@
       "description": "One scanner run that is part of the results.",
       "type": "object",
       "properties": {
+        "audit_log_hash": {
+          "description": "The hash of the audit log of the run.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "host": {
           "description": "The host that ran the scanner.",
           "type": "string"
@@ -833,6 +840,13 @@
         "scanner": {
           "description": "The scanner of the run.",
           "$ref": "#/$defs/ScannerKind"
+        },
+        "scope_hash": {
+          "description": "The hash of the scope file that the run used.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "started": {
           "description": "The start time of the run.",

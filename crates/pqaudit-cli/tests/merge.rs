@@ -79,7 +79,10 @@ fn merge_redact_flag_removes_paths() {
         .arg("--output")
         .arg(&out)
         .assert()
-        .code(0);
+        .code(0)
+        .stdout(predicates::str::contains("fingerprints stay"));
+    let key_path = dir.path().join("eng/redact.key");
+    assert_eq!(fs::read_to_string(&key_path).unwrap().trim().len(), 64);
     let merged = ResultsFile::read(&out).unwrap();
     assert!(merged.header.redacted);
     let json = serde_json::to_string(&merged).unwrap();
@@ -97,4 +100,54 @@ fn merge_bad_input_exits_1() {
         .assert()
         .code(1);
     assert!(!dir.path().join("eng/results/merged.pqr").exists());
+}
+
+#[test]
+fn redact_default_output_and_key_file() {
+    let (dir, a, b) = setup();
+    pqaudit(dir.path())
+        .arg("merge")
+        .arg(&a)
+        .arg("--redact")
+        .assert()
+        .code(0);
+    let red = dir.path().join("eng/results/merged.redacted.pqr");
+    assert!(ResultsFile::read(&red).unwrap().header.redacted);
+    // A redacted file and a plain file merge with the same key.
+    let out = dir.path().join("mixed.pqr");
+    pqaudit(dir.path())
+        .arg("merge")
+        .arg(&red)
+        .arg(&b)
+        .arg("--output")
+        .arg(&out)
+        .assert()
+        .code(0);
+    // Another folder has no key. A key file that does not exist is an error.
+    let other = tempfile::tempdir().unwrap();
+    pqaudit(other.path())
+        .arg("merge")
+        .arg(&red)
+        .arg("--redact-key-file")
+        .arg(other.path().join("none.key"))
+        .assert()
+        .code(1);
+    // The same key from a file gives the same redacted values.
+    let copy = other.path().join("copy.key");
+    fs::copy(dir.path().join("eng/redact.key"), &copy).unwrap();
+    let out2 = other.path().join("out.pqr");
+    pqaudit(other.path())
+        .arg("merge")
+        .arg(&a)
+        .arg("--redact")
+        .arg("--redact-key-file")
+        .arg(&copy)
+        .arg("--output")
+        .arg(&out2)
+        .assert()
+        .code(0);
+    let first = ResultsFile::read(&red).unwrap();
+    let second = ResultsFile::read(&out2).unwrap();
+    assert_eq!(first.header.engagement, second.header.engagement);
+    assert_eq!(first, second);
 }

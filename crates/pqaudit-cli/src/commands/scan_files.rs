@@ -85,6 +85,8 @@ pub fn run(cli: &Cli, args: FilesArgs<'_>) -> ExitCode {
                 scanner: ScannerKind::Files,
                 host,
                 started,
+                scope_hash: None,
+                audit_log_hash: None,
             }],
             redacted: false,
         },

@@ -190,6 +190,11 @@ fn failed_connection_is_audited_and_exit_3() {
         Some(sha256_hex(&log).as_str())
     );
     assert_eq!(results.header.runs.len(), 1);
+    assert_eq!(results.header.runs[0].scope_hash, results.header.scope_hash);
+    assert_eq!(
+        results.header.runs[0].audit_log_hash,
+        results.header.audit_log_hash
+    );
     assert!(setup.results().is_empty(), "the output flag sets the path");
 }
 

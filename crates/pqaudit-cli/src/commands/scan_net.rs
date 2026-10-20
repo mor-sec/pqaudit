@@ -120,6 +120,7 @@ fn scan(
         }
     };
     let host = host_name();
+    let scope_hash = scope_hash(scope_bytes);
     let results = ResultsFile {
         header: ResultsHeader {
             schema_version: SCHEMA_VERSION,
@@ -136,13 +137,15 @@ fn scan(
             operator: engagement.config.assessor.clone(),
             started,
             finished,
-            scope_hash: Some(scope_hash(scope_bytes)),
-            audit_log_hash: Some(audit_hash),
+            scope_hash: Some(scope_hash.clone()),
+            audit_log_hash: Some(audit_hash.clone()),
             runs: vec![RunInfo {
                 run_id,
                 scanner: ScannerKind::Net,
                 host,
                 started,
+                scope_hash: Some(scope_hash),
+                audit_log_hash: Some(audit_hash),
             }],
             redacted: false,
         },

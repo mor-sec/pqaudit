@@ -4,18 +4,25 @@ use crate::finding::{
     CertInfo, EndpointInfo, Finding, InventoryItem, KeyInfo, Location, Occurrence, ScanError,
     SshObservation, TlsObservation,
 };
+use crate::fingerprint::Fingerprint;
 use crate::messages;
-use crate::results::{PackOriginRef, PackRef, ResultsFile, RunInfo, ScannerKind};
+use crate::results::{PackOriginRef, PackRef, ResultsFile, ResultsHeader, RunInfo, ScannerKind};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::path::Path;
+use uuid::Uuid;
 
 /// The location of the warning that a merge adds to the error list.
 pub const MERGE_WARNING_LOCATION: &str = "merge";
 
 /// The start of each redacted value.
 const REDACTED_PREFIX: &str = "redacted:";
+
+/// The number of hex digits after the prefix of a redacted value.
+const REDACTED_DIGITS: usize = 12;
 
 /// An error when the tool merges results files.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,118 +52,304 @@ impl std::fmt::Display for MergeError {
 
 impl std::error::Error for MergeError {}
 
+/// An error when the tool reads or makes a redaction key.
+#[derive(Debug)]
+pub enum RedactKeyError {
+    /// The tool cannot read or write the key file.
+    Io {
+        /// The path of the key file.
+        path: String,
+        /// The reason.
+        reason: String,
+    },
+    /// The key file does not hold 64 hex digits.
+    Invalid {
+        /// The path of the key file.
+        path: String,
+    },
+    /// The system cannot give random bytes.
+    Random(String),
+}
+
+impl std::fmt::Display for RedactKeyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = match self {
+            Self::Io { path, reason } => messages::REDACT_KEY_IO
+                .replace("{path}", path)
+                .replace("{reason}", reason),
+            Self::Invalid { path } => messages::REDACT_KEY_INVALID.replace("{path}", path),
+            Self::Random(reason) => messages::REDACT_KEY_RANDOM.replace("{reason}", reason),
+        };
+        f.write_str(&text)
+    }
+}
+
+impl std::error::Error for RedactKeyError {}
+
+/// The secret key of a redaction. The same key gives the same redacted values.
+#[derive(Clone, PartialEq, Eq)]
+pub struct RedactKey([u8; 32]);
+
+impl std::fmt::Debug for RedactKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("RedactKey(..)")
+    }
+}
+
+impl RedactKey {
+    /// Make a key from 32 bytes.
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
+    /// Read a key file. The file holds 64 hex digits.
+    pub fn load(path: &Path) -> Result<Self, RedactKeyError> {
+        let shown = path.display().to_string();
+        let text = std::fs::read_to_string(path).map_err(|e| RedactKeyError::Io {
+            path: shown.clone(),
+            reason: e.to_string(),
+        })?;
+        let text = text.trim();
+        if text.len() != 64 || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(RedactKeyError::Invalid { path: shown });
+        }
+        let mut bytes = [0u8; 32];
+        for (i, byte) in bytes.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&text[2 * i..2 * i + 2], 16).map_err(|_| {
+                RedactKeyError::Invalid {
+                    path: shown.clone(),
+                }
+            })?;
+        }
+        Ok(Self(bytes))
+    }
+
+    /// Read the key file. If the file does not exist, make a new random key and write it.
+    ///
+    /// On Unix the new file has the mode 0600.
+    pub fn load_or_create(path: &Path) -> Result<Self, RedactKeyError> {
+        match std::fs::symlink_metadata(path) {
+            Ok(_) => return Self::load(path),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(RedactKeyError::Io {
+                    path: path.display().to_string(),
+                    reason: e.to_string(),
+                })
+            }
+        }
+        let io = |e: std::io::Error| RedactKeyError::Io {
+            path: path.display().to_string(),
+            reason: e.to_string(),
+        };
+        let mut bytes = [0u8; 32];
+        getrandom::fill(&mut bytes).map_err(|e| RedactKeyError::Random(e.to_string()))?;
+        let mut text = String::with_capacity(65);
+        for byte in bytes {
+            write!(text, "{byte:02x}").expect("writing to a String cannot fail");
+        }
+        text.push('\n');
+        if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent).map_err(io)?;
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let mut file = options.open(path).map_err(io)?;
+        std::io::Write::write_all(&mut file, text.as_bytes()).map_err(io)?;
+        Ok(Self(bytes))
+    }
+
+    /// The keyed hash (HMAC-SHA256) of a value in one domain.
+    fn mac(&self, domain: &str, value: &str) -> [u8; 32] {
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.0).expect("HMAC takes any key size");
+        mac.update(domain.as_bytes());
+        mac.update(&[0]);
+        mac.update(value.as_bytes());
+        mac.finalize().into_bytes().into()
+    }
+}
+
 /// Merge results files into one file.
 ///
 /// Findings and inventory items with the same fingerprint become one item.
-/// The output keeps the order of first appearance.
-pub fn merge(inputs: Vec<ResultsFile>) -> Result<ResultsFile, MergeError> {
-    let mut iter = inputs.into_iter();
-    let mut out = iter.next().ok_or(MergeError::NoInputs)?;
-    let rest: Vec<ResultsFile> = iter.collect();
-    for file in &rest {
-        if file.header.engagement != out.header.engagement {
-            return Err(MergeError::EngagementMismatch {
-                first: out.header.engagement.clone(),
-                other: file.header.engagement.clone(),
-            });
+/// The output does not depend on the order of the inputs.
+/// Give a key only to merge redacted files with plain files.
+pub fn merge(
+    mut inputs: Vec<ResultsFile>,
+    key: Option<&RedactKey>,
+) -> Result<ResultsFile, MergeError> {
+    if inputs.is_empty() {
+        return Err(MergeError::NoInputs);
+    }
+    inputs.sort_by_key(|f| {
+        (
+            f.header.started,
+            f.header.runs.first().map_or(Uuid::nil(), |r| r.run_id),
+        )
+    });
+    let engagement = check_engagement(&inputs, key)?;
+
+    let mut header = inputs[0].header.clone();
+    header.engagement = engagement;
+    header.runs = Vec::new();
+    header.redacted = inputs.iter().all(|f| f.header.redacted);
+    header.scope_hash = common(inputs.iter().map(|f| &f.header.scope_hash));
+    header.audit_log_hash = common(inputs.iter().map(|f| &f.header.audit_log_hash));
+    header.started = inputs
+        .iter()
+        .map(|f| f.header.started)
+        .min()
+        .unwrap_or(header.started);
+    header.finished = inputs
+        .iter()
+        .map(|f| f.header.finished)
+        .max()
+        .unwrap_or(header.finished);
+    if inputs.iter().any(|f| f.header.host != header.host) {
+        header.host = "merged".into();
+    }
+    if inputs.iter().any(|f| f.header.operator != header.operator) {
+        header.operator = "merged".into();
+    }
+    let packs: Vec<PackRef> = inputs.iter().map(|f| f.header.rules_pack.clone()).collect();
+
+    let mut findings: Vec<Finding> = Vec::new();
+    let mut finding_index: HashMap<Fingerprint, usize> = HashMap::new();
+    let mut items: Vec<InventoryItem> = Vec::new();
+    let mut item_index: HashMap<Fingerprint, usize> = HashMap::new();
+    let mut errors: Vec<ScanError> = Vec::new();
+    let mut seen_errors: HashSet<(String, String)> = HashSet::new();
+    let mut seen_runs: HashSet<Uuid> = HashSet::new();
+    for file in inputs {
+        for run in file.header.runs {
+            if seen_runs.insert(run.run_id) {
+                header.runs.push(run);
+            }
+        }
+        for finding in file.findings {
+            add_finding(&mut findings, &mut finding_index, finding);
+        }
+        for item in file.inventory {
+            add_item(&mut items, &mut item_index, item);
+        }
+        for error in file.errors {
+            add_error(&mut errors, &mut seen_errors, error);
         }
     }
 
-    let mut packs = vec![out.header.rules_pack.clone()];
-    let mut all_redacted = out.header.redacted;
-    for file in rest {
-        let h = file.header;
-        packs.push(h.rules_pack);
-        all_redacted &= h.redacted;
-        out.header.started = out.header.started.min(h.started);
-        out.header.finished = out.header.finished.max(h.finished);
-        if out.header.host != h.host {
-            out.header.host = "merged".into();
-        }
-        if out.header.operator != h.operator {
-            out.header.operator = "merged".into();
-        }
-        if out.header.scope_hash != h.scope_hash {
-            out.header.scope_hash = None;
-        }
-        if out.header.audit_log_hash != h.audit_log_hash {
-            out.header.audit_log_hash = None;
-        }
-        for run in h.runs {
-            out.header.runs.push(run);
-        }
-        for finding in file.findings {
-            add_finding(&mut out.findings, finding);
-        }
-        for item in file.inventory {
-            add_item(&mut out.inventory, item);
-        }
-        for error in file.errors {
-            add_error(&mut out.errors, error);
-        }
+    for finding in &mut findings {
+        normalize_occurrences(&mut finding.occurrences);
+        finding.also.sort();
+        finding.also.dedup();
     }
-    dedupe_runs(&mut out.header.runs);
-    for finding in &mut out.findings {
-        dedupe_occurrences(&mut finding.occurrences);
+    for item in &mut items {
+        normalize_occurrences(&mut item.occurrences);
     }
-    for item in &mut out.inventory {
-        dedupe_occurrences(&mut item.occurrences);
+    findings.sort_by(|a, b| a.fingerprint.cmp(&b.fingerprint));
+    items.sort_by(|a, b| a.fingerprint.cmp(&b.fingerprint));
+    for finding in &mut findings {
+        finding.id = finding_id(&finding.fingerprint);
     }
 
     let (best, warning) = choose_pack(&packs);
-    out.header.rules_pack = best;
+    header.rules_pack = best;
     if let Some(reason) = warning {
         add_error(
-            &mut out.errors,
+            &mut errors,
+            &mut seen_errors,
             ScanError {
                 location: MERGE_WARNING_LOCATION.into(),
                 reason,
             },
         );
     }
-    out.header.scanner = ScannerKind::Merged;
-    out.header.redacted = all_redacted;
-    for (index, finding) in out.findings.iter_mut().enumerate() {
-        finding.id = format!("F-{:04}", index + 1);
-    }
-    Ok(out)
+    header.scanner = ScannerKind::Merged;
+    Ok(ResultsFile {
+        header,
+        findings,
+        inventory: items,
+        errors,
+    })
 }
 
-fn dedupe_runs(runs: &mut Vec<RunInfo>) {
-    let mut seen = HashSet::new();
-    runs.retain(|run| seen.insert(run.run_id));
-}
-
-fn dedupe_occurrences(occurrences: &mut Vec<Occurrence>) {
-    let mut seen: Vec<(Location, uuid::Uuid)> = Vec::new();
-    occurrences.retain(|o| {
-        let key = (o.location.clone(), o.run_id);
-        if seen.contains(&key) {
-            false
-        } else {
-            seen.push(key);
-            true
+/// Check that all files have one engagement. Return the engagement name for the output.
+///
+/// A redacted file and a plain file match if the redacted form of the plain name is equal.
+fn check_engagement(inputs: &[ResultsFile], key: Option<&RedactKey>) -> Result<String, MergeError> {
+    let first = &inputs[0].header;
+    let mixed = inputs.iter().any(|f| f.header.redacted != first.redacted);
+    let canon = |h: &ResultsHeader| match (h.redacted, key) {
+        (false, Some(key)) if mixed => redacted(&h.engagement, key),
+        _ => h.engagement.clone(),
+    };
+    let wanted = canon(first);
+    for file in &inputs[1..] {
+        if canon(&file.header) != wanted {
+            return Err(MergeError::EngagementMismatch {
+                first: first.engagement.clone(),
+                other: file.header.engagement.clone(),
+            });
         }
-    });
+    }
+    let plain = inputs
+        .iter()
+        .find(|f| !f.header.redacted)
+        .unwrap_or(&inputs[0]);
+    Ok(plain.header.engagement.clone())
 }
 
-fn add_error(errors: &mut Vec<ScanError>, error: ScanError) {
-    if !errors.contains(&error) {
+/// The one value that all inputs share. If the inputs have two values or none, return `None`.
+fn common<'a>(values: impl Iterator<Item = &'a Option<String>>) -> Option<String> {
+    let set: BTreeSet<&String> = values.flatten().collect();
+    if set.len() == 1 {
+        set.into_iter().next().cloned()
+    } else {
+        None
+    }
+}
+
+/// The ID of a finding: `F-` and 8 hex digits of the SHA-256 hash of its fingerprint.
+fn finding_id(fingerprint: &Fingerprint) -> String {
+    let digest = Sha256::digest(fingerprint.0.as_bytes());
+    let mut id = String::from("F-");
+    for byte in &digest[..4] {
+        write!(id, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    id
+}
+
+/// Sort the occurrences and remove the duplicates by (run, location).
+fn normalize_occurrences(occurrences: &mut Vec<Occurrence>) {
+    let mut keyed: Vec<(String, Occurrence)> = occurrences
+        .drain(..)
+        .map(|o| {
+            let location = serde_json::to_string(&o.location).unwrap_or_default();
+            (format!("{}|{location}", o.run_id), o)
+        })
+        .collect();
+    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+    keyed.dedup_by(|a, b| a.0 == b.0);
+    occurrences.extend(keyed.into_iter().map(|(_, o)| o));
+}
+
+fn add_error(errors: &mut Vec<ScanError>, seen: &mut HashSet<(String, String)>, error: ScanError) {
+    if seen.insert((error.location.clone(), error.reason.clone())) {
         errors.push(error);
     }
 }
 
-fn add_finding(findings: &mut Vec<Finding>, new: Finding) {
-    let Some(old) = findings
-        .iter_mut()
-        .find(|f| f.fingerprint == new.fingerprint)
-    else {
+fn add_finding(findings: &mut Vec<Finding>, index: &mut HashMap<Fingerprint, usize>, new: Finding) {
+    let Some(&at) = index.get(&new.fingerprint) else {
+        index.insert(new.fingerprint.clone(), findings.len());
         findings.push(new);
         return;
     };
+    let old = &mut findings[at];
     let mut also = new.also;
     if new.rule_id != old.rule_id {
-        also.insert(0, new.rule_id);
+        also.push(new.rule_id);
     }
     for rule in also {
         if rule != old.rule_id && !old.also.contains(&rule) {
@@ -170,11 +363,17 @@ fn add_finding(findings: &mut Vec<Finding>, new: Finding) {
     old.endpoint = old.endpoint.take().or(new.endpoint);
 }
 
-fn add_item(items: &mut Vec<InventoryItem>, new: InventoryItem) {
-    let Some(old) = items.iter_mut().find(|i| i.fingerprint == new.fingerprint) else {
+fn add_item(
+    items: &mut Vec<InventoryItem>,
+    index: &mut HashMap<Fingerprint, usize>,
+    new: InventoryItem,
+) {
+    let Some(&at) = index.get(&new.fingerprint) else {
+        index.insert(new.fingerprint.clone(), items.len());
         items.push(new);
         return;
     };
+    let old = &mut items[at];
     old.pq_ready &= new.pq_ready;
     old.occurrences.extend(new.occurrences);
     old.algorithm = old.algorithm.take().or(new.algorithm);
@@ -185,13 +384,17 @@ fn add_item(items: &mut Vec<InventoryItem>, new: InventoryItem) {
 
 /// Choose the pack with the highest version. Return a warning text if the packs differ.
 fn choose_pack(packs: &[PackRef]) -> (PackRef, Option<String>) {
-    let version = |p: &PackRef| semver::Version::parse(&p.version).ok();
-    let mut best = &packs[0];
-    for pack in &packs[1..] {
-        if version(pack) > version(best) {
-            best = pack;
-        }
-    }
+    let rank = |p: &PackRef| {
+        (
+            semver::Version::parse(&p.version).ok(),
+            p.content_hash.clone(),
+            p.id.clone(),
+        )
+    };
+    let best = packs
+        .iter()
+        .max_by_key(|p| rank(p))
+        .expect("a merge has at least one pack");
     let mut names: Vec<String> = packs
         .iter()
         .map(|p| format!("{} {}", p.id, p.version))
@@ -206,26 +409,59 @@ fn choose_pack(packs: &[PackRef]) -> (PackRef, Option<String>) {
     (best.clone(), warning)
 }
 
-/// Make the redacted form of a value: `redacted:` and 12 hex digits of its SHA-256 hash.
-fn redacted(value: &str) -> String {
-    if value.starts_with(REDACTED_PREFIX) {
+/// True if the text is `redacted:` and 12 lowercase hex digits.
+fn is_redacted_shape(value: &str) -> bool {
+    value.strip_prefix(REDACTED_PREFIX).is_some_and(|digits| {
+        digits.len() == REDACTED_DIGITS
+            && digits
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    })
+}
+
+/// Make the redacted form of a value: `redacted:` and 12 hex digits of its keyed hash.
+///
+/// A value that already has this exact form stays as it is.
+fn redacted(value: &str, key: &RedactKey) -> String {
+    if is_redacted_shape(value) {
         return value.to_string();
     }
-    let digest = Sha256::digest(value.as_bytes());
+    let mac = key.mac("text", value);
     let mut text = String::from(REDACTED_PREFIX);
-    for byte in &digest[..6] {
+    for byte in &mac[..REDACTED_DIGITS / 2] {
         write!(text, "{byte:02x}").expect("writing to a String cannot fail");
     }
     text
 }
 
-fn hide(value: &mut String) {
-    *value = redacted(value);
+fn hide(value: &mut String, key: &RedactKey) {
+    *value = redacted(value, key);
 }
 
-fn hide_opt(value: &mut Option<String>) {
+/// Redact a host name. Host names are not case sensitive, so the hash uses lower case.
+fn hide_host(value: &mut String, key: &RedactKey) {
+    *value = redacted(&value.to_lowercase(), key);
+}
+
+fn hide_opt(value: &mut Option<String>, key: &RedactKey) {
     if let Some(v) = value {
-        hide(v);
+        hide(v, key);
+    }
+}
+
+/// Map an address to a stable address in a range for documents and tests.
+///
+/// IPv4 goes to 198.18.0.0/15. IPv6 goes to 2001:db8::/32.
+fn map_ip(ip: IpAddr, key: &RedactKey) -> IpAddr {
+    let mac = key.mac("ip", &ip.to_string());
+    match ip {
+        IpAddr::V4(_) => IpAddr::V4(Ipv4Addr::new(198, 18 | (mac[0] & 1), mac[1], mac[2])),
+        IpAddr::V6(_) => {
+            let mut octets = [0u8; 16];
+            octets[..4].copy_from_slice(&[0x20, 0x01, 0x0d, 0xb8]);
+            octets[4..].copy_from_slice(&mac[..12]);
+            IpAddr::V6(Ipv6Addr::from(octets))
+        }
     }
 }
 
@@ -233,17 +469,21 @@ fn hide_opt(value: &mut Option<String>) {
 ///
 /// The functions below name every field of every type. A new field makes the build fail
 /// until the author decides if it is sensitive. The fingerprints and hashes stay.
-/// An IP address cannot hold text. It becomes the unspecified address of its family.
-pub fn redact(file: &mut ResultsFile) {
+/// An IP address cannot hold text. It becomes a keyed address in a reserved range.
+/// If the file is already redacted, this function does nothing.
+pub fn redact(file: &mut ResultsFile, key: &RedactKey) {
+    if file.header.redacted {
+        return;
+    }
     let ResultsFile {
         header,
         findings,
         inventory,
         errors,
     } = file;
-    let crate::results::ResultsHeader {
+    let ResultsHeader {
         schema_version: _,
-        engagement: _,
+        engagement,
         tool_version: _,
         rules_pack,
         scanner: _,
@@ -269,18 +509,21 @@ pub fn redact(file: &mut ResultsFile) {
             signed_by: _,
             rotation_chain: _,
         }
-        | PackOriginRef::Unsigned { path } => hide(path),
+        | PackOriginRef::Unsigned { path } => hide(path, key),
     }
-    hide(host);
-    hide(operator);
+    hide(engagement, key);
+    hide_host(host, key);
+    hide(operator, key);
     for run in runs {
         let RunInfo {
             run_id: _,
             scanner: _,
             host,
             started: _,
+            scope_hash: _,
+            audit_log_hash: _,
         } = run;
-        hide(host);
+        hide_host(host, key);
     }
     *is_redacted = true;
 
@@ -298,11 +541,11 @@ pub fn redact(file: &mut ResultsFile) {
             also: _,
             occurrences,
             cert,
-            key,
+            key: key_info,
             endpoint,
         } = finding;
-        redact_occurrences(occurrences);
-        redact_facts(cert, key, endpoint);
+        redact_occurrences(occurrences, key);
+        redact_facts(cert, key_info, endpoint, key);
     }
     for item in inventory {
         let InventoryItem {
@@ -311,41 +554,38 @@ pub fn redact(file: &mut ResultsFile) {
             pq_ready: _,
             algorithm: _,
             cert,
-            key,
+            key: key_info,
             endpoint,
             occurrences,
         } = item;
-        redact_occurrences(occurrences);
-        redact_facts(cert, key, endpoint);
+        redact_occurrences(occurrences, key);
+        redact_facts(cert, key_info, endpoint, key);
     }
     for error in errors {
         let ScanError { location, reason } = error;
-        hide(location);
-        hide(reason);
+        hide(location, key);
+        hide(reason, key);
     }
 }
 
-fn redact_occurrences(occurrences: &mut [Occurrence]) {
+fn redact_occurrences(occurrences: &mut [Occurrence], key: &RedactKey) {
     for occurrence in occurrences {
         let Occurrence {
             location,
             evidence,
             run_id: _,
         } = occurrence;
-        hide(evidence);
+        hide(evidence, key);
         match location {
-            Location::File { path, line: _ } => hide(path),
+            Location::File { path, line: _ } => hide(path, key),
             Location::Endpoint {
                 host,
                 ip,
                 port: _,
                 protocol: _,
             } => {
-                hide(host);
-                *ip = match ip {
-                    IpAddr::V4(_) => IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
-                    IpAddr::V6(_) => IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED),
-                };
+                hide_host(host, key);
+                *ip = map_ip(*ip, key);
             }
         }
     }
@@ -353,8 +593,9 @@ fn redact_occurrences(occurrences: &mut [Occurrence]) {
 
 fn redact_facts(
     cert: &mut Option<CertInfo>,
-    key: &mut Option<KeyInfo>,
+    key_info: &mut Option<KeyInfo>,
     endpoint: &mut Option<EndpointInfo>,
+    key: &RedactKey,
 ) {
     if let Some(CertInfo {
         sha256: _,
@@ -370,17 +611,17 @@ fn redact_facts(
         chain_position: _,
     }) = cert
     {
-        hide(subject);
-        hide(issuer);
+        hide(subject, key);
+        hide(issuer, key);
     }
     if let Some(KeyInfo {
         fingerprint_sha256: _,
         kind: _,
         algorithm: _,
         comment,
-    }) = key
+    }) = key_info
     {
-        hide_opt(comment);
+        hide_opt(comment, key);
     }
     if let Some(EndpointInfo {
         protocol: _,
@@ -397,7 +638,7 @@ fn redact_facts(
             errors,
         }) = tls
         {
-            errors.iter_mut().for_each(hide);
+            errors.iter_mut().for_each(|e| hide(e, key));
         }
         if let Some(SshObservation {
             banner,
@@ -407,7 +648,7 @@ fn redact_facts(
             macs: _,
         }) = ssh
         {
-            hide(banner);
+            hide(banner, key);
         }
     }
 }

@@ -55,8 +55,21 @@ pub const MERGE_ENGAGEMENT_MISMATCH: &str =
 pub const MERGE_PACK_MISMATCH: &str =
     "The input files used different rules packs: {versions}. The merged file names the pack with the highest version.";
 
+/// The error when the tool cannot use the redaction key file. The tool fills in {path} and {reason}.
+pub const REDACT_KEY_IO: &str = "The tool cannot use the redaction key file {path}. {reason}";
+
+/// The error when the redaction key file is not valid. The tool fills in {path}.
+pub const REDACT_KEY_INVALID: &str =
+    "The redaction key file {path} is not valid. It must hold 64 hex digits.";
+
+/// The error when the system cannot make a random key. The tool fills in {reason}.
+pub const REDACT_KEY_RANDOM: &str = "The tool cannot make a random redaction key. {reason}";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
+    ("REDACT_KEY_IO", REDACT_KEY_IO),
+    ("REDACT_KEY_INVALID", REDACT_KEY_INVALID),
+    ("REDACT_KEY_RANDOM", REDACT_KEY_RANDOM),
     ("MERGE_NO_INPUTS", MERGE_NO_INPUTS),
     ("MERGE_ENGAGEMENT_MISMATCH", MERGE_ENGAGEMENT_MISMATCH),
     ("MERGE_PACK_MISMATCH", MERGE_PACK_MISMATCH),

@@ -85,7 +85,16 @@ fn dispatch(cli: &Cli) -> ExitCode {
             inputs,
             output,
             redact,
-        } => commands::merge::run(cli, inputs, output.as_deref(), *redact),
+            redact_key_file,
+        } => commands::merge::run(
+            cli,
+            commands::merge::MergeArgs {
+                inputs,
+                output: output.as_deref(),
+                redact: *redact,
+                key_file: redact_key_file.as_deref(),
+            },
+        ),
         Command::Report | Command::Cbom | Command::Explain => not_implemented(),
     }
 }

@@ -66,12 +66,15 @@ pub enum Command {
         /// The results files to combine.
         #[arg(required = true, value_name = "INPUTS")]
         inputs: Vec<PathBuf>,
-        /// Write the merged results to this file. The default is `results/merged.pqr` in the engagement directory.
+        /// Write the merged results to this file. The default is `results/merged.pqr`, or `results/merged.redacted.pqr` with --redact, in the engagement directory.
         #[arg(long, value_name = "FILE")]
         output: Option<PathBuf>,
         /// Replace host names, addresses, paths, names, banners, and key comments with hashes.
         #[arg(long)]
         redact: bool,
+        /// Use this key file for redaction. The default is `redact.key` in the engagement directory.
+        #[arg(long, value_name = "PATH")]
+        redact_key_file: Option<PathBuf>,
     },
     /// Make a report from a results file.
     Report,

@@ -1,10 +1,14 @@
 //! Tests for merge and redaction of results files.
 
 use chrono::{TimeZone, Utc};
-use pqaudit_core::merge::{merge, redact, MergeError};
+use pqaudit_core::merge::{merge, redact, MergeError, RedactKey};
 use pqaudit_core::*;
 use std::net::IpAddr;
 use uuid::Uuid;
+
+fn key() -> RedactKey {
+    RedactKey::from_bytes([7; 32])
+}
 
 fn time() -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 10, 20, 8, 0, 0).unwrap()
@@ -100,6 +104,8 @@ fn header(scanner: ScannerKind, run: u128, version: &str) -> ResultsHeader {
             scanner,
             host: "scanner-host".into(),
             started: time(),
+            scope_hash: None,
+            audit_log_hash: None,
         }],
         redacted: false,
     }
@@ -153,7 +159,7 @@ fn net_result() -> ResultsFile {
 
 #[test]
 fn same_cert_from_files_and_net_merges() {
-    let merged = merge(vec![files_result(), net_result()]).unwrap();
+    let merged = merge(vec![files_result(), net_result()], None).unwrap();
     assert_eq!(merged.header.scanner, ScannerKind::Merged);
     assert_eq!(merged.header.runs.len(), 2);
     let cert_findings: Vec<_> = merged
@@ -173,15 +179,18 @@ fn same_cert_from_files_and_net_merges() {
 
 #[test]
 fn distinct_findings_kept() {
-    let merged = merge(vec![files_result(), net_result()]).unwrap();
+    let merged = merge(vec![files_result(), net_result()], None).unwrap();
     assert_eq!(merged.findings.len(), 2);
     let ids: Vec<_> = merged.findings.iter().map(|f| f.id.clone()).collect();
-    assert_eq!(ids, vec!["F-0001", "F-0002"]);
+    assert!(ids.iter().all(|id| id.len() == 10
+        && id.starts_with("F-")
+        && id[2..].bytes().all(|b| b.is_ascii_hexdigit())));
+    assert_ne!(ids[0], ids[1]);
     let place = Fingerprint::place("host", "/etc/k");
     let mut a = files_result();
     a.findings
         .push(finding("x", place.clone(), "key.x", vec![]));
-    let merged = merge(vec![a, net_result()]).unwrap();
+    let merged = merge(vec![a, net_result()], None).unwrap();
     assert!(merged.findings.iter().any(|f| f.fingerprint == place));
 }
 
@@ -191,7 +200,7 @@ fn different_rules_for_one_subject_go_to_also() {
     let mut b = net_result();
     b.findings[0].rule_id = "cert.expired".into();
     b.findings[0].also = vec!["cert.other".into()];
-    let merged = merge(vec![a, b]).unwrap();
+    let merged = merge(vec![a, b], None).unwrap();
     let f = &merged.findings[0];
     assert_eq!(f.rule_id, "cert.rsa-2048");
     assert_eq!(f.also, vec!["cert.expired", "cert.other"]);
@@ -199,8 +208,8 @@ fn different_rules_for_one_subject_go_to_also() {
 
 #[test]
 fn occurrences_not_duplicated_on_remerge() {
-    let ab = merge(vec![files_result(), net_result()]).unwrap();
-    let again = merge(vec![ab.clone(), net_result()]).unwrap();
+    let ab = merge(vec![files_result(), net_result()], None).unwrap();
+    let again = merge(vec![ab.clone(), net_result()], None).unwrap();
     assert_eq!(again.findings, ab.findings);
     assert_eq!(again.header.runs, ab.header.runs);
     assert_eq!(again.errors, ab.errors);
@@ -222,7 +231,7 @@ fn inventory_is_merged_by_fingerprint() {
     a.inventory = vec![item("/a", 1)];
     let mut b = net_result();
     b.inventory = vec![item("/a", 1), item("/b", 2)];
-    let merged = merge(vec![a, b]).unwrap();
+    let merged = merge(vec![a, b], None).unwrap();
     assert_eq!(merged.inventory.len(), 1);
     assert_eq!(merged.inventory[0].occurrences.len(), 2);
 }
@@ -231,16 +240,16 @@ fn inventory_is_merged_by_fingerprint() {
 fn engagement_mismatch_errors() {
     let mut b = net_result();
     b.header.engagement = "other".into();
-    let err = merge(vec![files_result(), b]).unwrap_err();
+    let err = merge(vec![files_result(), b], None).unwrap_err();
     assert!(matches!(err, MergeError::EngagementMismatch { .. }));
-    assert!(matches!(merge(vec![]), Err(MergeError::NoInputs)));
+    assert!(matches!(merge(vec![], None), Err(MergeError::NoInputs)));
 }
 
 #[test]
 fn pack_version_mismatch_warns() {
     let mut b = net_result();
     b.header.rules_pack.version = "1.10.0".into();
-    let merged = merge(vec![files_result(), b]).unwrap();
+    let merged = merge(vec![files_result(), b], None).unwrap();
     assert_eq!(merged.header.rules_pack.version, "1.10.0");
     let warning = merged
         .errors
@@ -344,7 +353,7 @@ fn redact_keeps_fingerprints_and_removes_hosts() {
     let (mut file, originals) = populated();
     let before = file.clone();
     let hashes = before.header.scope_hash.clone();
-    redact(&mut file);
+    redact(&mut file, &key());
     assert!(file.header.redacted);
     assert_eq!(file.header.scope_hash, hashes);
     for (a, b) in before.findings.iter().zip(&file.findings) {
@@ -367,12 +376,12 @@ fn redact_keeps_fingerprints_and_removes_hosts() {
 #[test]
 fn redact_is_stable_and_idempotent() {
     let (mut a, _) = populated();
-    redact(&mut a);
+    redact(&mut a, &key());
     let once = a.clone();
-    redact(&mut a);
+    redact(&mut a, &key());
     assert_eq!(a, once);
     let (mut b, _) = populated();
-    redact(&mut b);
+    redact(&mut b, &key());
     assert_eq!(b, once);
 }
 
@@ -381,7 +390,7 @@ fn only_known_safe_strings_survive_redaction() {
     let (mut file, _) = populated();
     let mut before = Vec::new();
     strings(&serde_json::to_value(&file).unwrap(), &mut before);
-    redact(&mut file);
+    redact(&mut file, &key());
     let mut after = Vec::new();
     strings(&serde_json::to_value(&file).unwrap(), &mut after);
     let safe = |s: &str| {
@@ -413,5 +422,188 @@ fn only_known_safe_strings_survive_redaction() {
     };
     for s in after.iter().filter(|s| before.contains(s)) {
         assert!(safe(s), "string survives redaction: {s}");
+    }
+}
+
+fn redacted_copy(file: &ResultsFile) -> ResultsFile {
+    let mut copy = file.clone();
+    redact(&mut copy, &key());
+    copy
+}
+
+#[test]
+fn two_ips_of_one_host_stay_two_occurrences() {
+    let mut file = net_result();
+    let mut second = net_occurrence("pay.example.org", 2);
+    if let Location::Endpoint { ip, .. } = &mut second.location {
+        *ip = "192.0.2.78".parse().unwrap();
+    }
+    file.findings[0].occurrences.push(second);
+    let red = redacted_copy(&file);
+    assert_eq!(red.findings[0].occurrences.len(), 2);
+    let ips: Vec<IpAddr> = red.findings[0]
+        .occurrences
+        .iter()
+        .map(|o| match &o.location {
+            Location::Endpoint { ip, .. } => *ip,
+            Location::File { .. } => unreachable!(),
+        })
+        .collect();
+    assert_ne!(ips[0], ips[1]);
+    for ip in &ips {
+        match ip {
+            IpAddr::V4(v4) => assert!(v4.octets()[0] == 198 && (v4.octets()[1] & 0xFE) == 18),
+            IpAddr::V6(v6) => assert_eq!(&v6.segments()[..2], &[0x2001, 0x0db8]),
+        }
+    }
+    let again = merge(vec![red.clone(), red.clone()], None).unwrap();
+    assert_eq!(again.findings[0].occurrences.len(), 2);
+}
+
+#[test]
+fn ipv6_maps_into_documentation_range() {
+    let mut file = net_result();
+    if let Location::Endpoint { ip, .. } = &mut file.findings[0].occurrences[0].location {
+        *ip = "2606:4700::1".parse().unwrap();
+    }
+    let red = redacted_copy(&file);
+    match &red.findings[0].occurrences[0].location {
+        Location::Endpoint {
+            ip: IpAddr::V6(v6), ..
+        } => {
+            assert_eq!(&v6.segments()[..2], &[0x2001, 0x0db8])
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn redaction_depends_on_key_and_lowercases_hosts() {
+    let a = redacted_copy(&net_result());
+    let mut other = net_result();
+    redact(&mut other, &RedactKey::from_bytes([8; 32]));
+    assert_ne!(a.header.host, other.header.host);
+    let mut upper = net_result();
+    if let Location::Endpoint { host, .. } = &mut upper.findings[0].occurrences[0].location {
+        *host = "PAY.Example.ORG".into();
+    }
+    let up = redacted_copy(&upper);
+    assert_eq!(
+        a.findings[0].occurrences[0].location,
+        up.findings[0].occurrences[0].location
+    );
+}
+
+#[test]
+fn only_exact_redacted_shape_passes_through() {
+    let mut file = files_result();
+    file.errors = vec![
+        ScanError {
+            location: "redacted:secret".into(),
+            reason: "redacted:0123456789AB".into(),
+        },
+        ScanError {
+            location: "redacted:0123456789ab".into(),
+            reason: "redacted:0123456789abc".into(),
+        },
+    ];
+    let red = redacted_copy(&file);
+    assert!(!red.errors.iter().any(|e| e.location.contains("secret")));
+    assert_eq!(red.errors[1].location, "redacted:0123456789ab");
+    assert_ne!(red.errors[1].reason, "redacted:0123456789abc");
+    assert_ne!(red.errors[0].reason, "redacted:0123456789AB");
+}
+
+#[test]
+fn plain_and_redacted_files_of_one_engagement_merge() {
+    let red = redacted_copy(&net_result());
+    assert_ne!(red.header.engagement, "acme");
+    let merged = merge(vec![files_result(), red.clone()], Some(&key())).unwrap();
+    assert_eq!(merged.header.engagement, "acme");
+    assert!(!merged.header.redacted);
+    assert!(matches!(
+        merge(vec![files_result(), red], None),
+        Err(MergeError::EngagementMismatch { .. })
+    ));
+}
+
+#[test]
+fn separately_redacted_files_merge() {
+    let a = redacted_copy(&files_result());
+    let b = redacted_copy(&net_result());
+    let merged = merge(vec![a, b], None).unwrap();
+    assert!(merged.header.redacted);
+    assert_eq!(merged.findings.len(), 2);
+    let mut other = net_result();
+    redact(&mut other, &RedactKey::from_bytes([9; 32]));
+    assert!(merge(vec![redacted_copy(&files_result()), other], None).is_err());
+}
+
+#[test]
+fn run_hashes_are_kept() {
+    let mut net = net_result();
+    net.header.scope_hash = Some("55".into());
+    net.header.audit_log_hash = Some("66".into());
+    net.header.runs[0].scope_hash = Some("55".into());
+    net.header.runs[0].audit_log_hash = Some("66".into());
+    let merged = merge(vec![files_result(), net.clone()], None).unwrap();
+    assert_eq!(merged.header.scope_hash.as_deref(), Some("55"));
+    assert_eq!(merged.header.audit_log_hash.as_deref(), Some("66"));
+    let run = merged
+        .header
+        .runs
+        .iter()
+        .find(|r| r.scanner == ScannerKind::Net)
+        .unwrap();
+    assert_eq!(run.scope_hash.as_deref(), Some("55"));
+    // Two different hashes give None in the header. Each run keeps its own.
+    let mut other = net_result();
+    other.header.scope_hash = Some("77".into());
+    other.header.runs[0].run_id = Uuid::from_u128(5);
+    other.header.runs[0].scope_hash = Some("77".into());
+    let merged = merge(vec![net, other, files_result()], None).unwrap();
+    assert_eq!(merged.header.scope_hash, None);
+    let hashes: Vec<_> = merged
+        .header
+        .runs
+        .iter()
+        .map(|r| r.scope_hash.clone())
+        .collect();
+    assert!(hashes.contains(&Some("55".into())) && hashes.contains(&Some("77".into())));
+}
+
+#[test]
+fn merge_is_order_independent() {
+    let a = files_result();
+    let mut b = net_result();
+    b.header.started = time() + chrono::Duration::hours(1);
+    b.findings[0].rule_id = "cert.expired".into();
+    b.findings[0].source = Source::Net;
+    b.findings[0].purpose = Purpose::KeyExchange;
+    let ab = merge(vec![a.clone(), b.clone()], None).unwrap();
+    let ba = merge(vec![b, a], None).unwrap();
+    assert_eq!(ab, ba);
+    assert_eq!(ab.findings[0].source, Source::File);
+}
+
+#[test]
+fn key_file_is_created_once_with_private_mode() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sub/redact.key");
+    let first = RedactKey::load_or_create(&path).unwrap();
+    let second = RedactKey::load_or_create(&path).unwrap();
+    assert_eq!(first, second);
+    assert!(RedactKey::load(&dir.path().join("none")).is_err());
+    std::fs::write(&path, "not hex").unwrap();
+    assert!(RedactKey::load(&path).is_err());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let p2 = dir.path().join("k2");
+        RedactKey::load_or_create(&p2).unwrap();
+        assert_eq!(
+            std::fs::metadata(&p2).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
     }
 }

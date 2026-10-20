@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use pqaudit_core::merge::{merge, redact};
+use pqaudit_core::merge::{merge, redact, RedactKey};
 use pqaudit_core::ResultsFile;
 
 use crate::cli::Cli;
@@ -10,8 +10,26 @@ use crate::commands::scan_files::write_results;
 use crate::exit::ExitCode;
 use crate::messages;
 
+/// The arguments of `merge`.
+pub struct MergeArgs<'a> {
+    /// The results files to combine.
+    pub inputs: &'a [PathBuf],
+    /// The output file. `None` means the default in the results directory.
+    pub output: Option<&'a Path>,
+    /// True if the command must redact the output.
+    pub redact: bool,
+    /// The key file. `None` means `redact.key` in the engagement directory.
+    pub key_file: Option<&'a Path>,
+}
+
 /// Run `merge`.
-pub fn run(cli: &Cli, inputs: &[PathBuf], output: Option<&Path>, redact_output: bool) -> ExitCode {
+pub fn run(cli: &Cli, args: MergeArgs<'_>) -> ExitCode {
+    let MergeArgs {
+        inputs,
+        output,
+        redact: redact_output,
+        key_file,
+    } = args;
     let mut files = Vec::with_capacity(inputs.len());
     for path in inputs {
         match ResultsFile::read(path) {
@@ -27,7 +45,30 @@ pub fn run(cli: &Cli, inputs: &[PathBuf], output: Option<&Path>, redact_output: 
             }
         }
     }
-    let mut merged = match merge(files) {
+    let key_path = key_file
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| cli.engagement.join("redact.key"));
+    // The tool makes a new key only for the default key file. A key file that the user names must exist.
+    let key = if redact_output && key_file.is_none() {
+        RedactKey::load_or_create(&key_path).map(Some)
+    } else if redact_output || key_file.is_some() || key_path.exists() {
+        RedactKey::load(&key_path).map(Some)
+    } else {
+        Ok(None)
+    };
+    let key = match key {
+        Ok(key) => key,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::Error;
+        }
+    };
+    if let Some(key) = key.as_ref().filter(|_| redact_output) {
+        for file in &mut files {
+            redact(file, key);
+        }
+    }
+    let merged = match merge(files, key.as_ref()) {
         Ok(merged) => merged,
         Err(error) => {
             eprintln!(
@@ -37,12 +78,14 @@ pub fn run(cli: &Cli, inputs: &[PathBuf], output: Option<&Path>, redact_output: 
             return ExitCode::Error;
         }
     };
-    if redact_output {
-        redact(&mut merged);
-    }
+    let default_name = if redact_output {
+        "merged.redacted.pqr"
+    } else {
+        "merged.pqr"
+    };
     let path = output
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| cli.engagement.join("results").join("merged.pqr"));
+        .unwrap_or_else(|| cli.engagement.join("results").join(default_name));
     if let Err(error) = write_results(&merged, &path) {
         eprintln!(
             "{}",

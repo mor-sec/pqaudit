@@ -13,8 +13,8 @@ pub const MERGE_READ: &str = "The tool cannot read the results file {path}. {rea
 pub const MERGE_SUMMARY: &str =
     "Merged {inputs} files. The result has {findings} findings, {inventory} inventory items, and {errors} errors.";
 
-/// The note that the output has no sensitive names.
-pub const MERGE_REDACTED: &str = "The output file has no host names, addresses, paths, or banners.";
+/// The note about the content of a redacted output file.
+pub const MERGE_REDACTED: &str = "The output file has hashes in place of host names, addresses, paths, names, banners, and key comments. Certificate and key fingerprints stay in the file. They can identify a public certificate or key.";
 
 /// The text when a profile ID is not in the rules pack.
 pub const UNKNOWN_PROFILE: &str = "This profile does not exist:";

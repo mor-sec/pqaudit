@@ -9,6 +9,8 @@ repository.workspace = true
 
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["serde"] }
+getrandom = "0.4.3"
+hmac = "0.13.0"
 ipnet = { version = "2.12.2", features = ["serde"] }
 pqaudit-rules = { version = "0.1.0", path = "../pqaudit-rules" }
 schemars = { version = "1.2.3", features = ["chrono04", "uuid1"] }
