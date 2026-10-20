@@ -41,9 +41,11 @@ This section is for the security team of a client. It tells what the tool does a
 
 - The file `scope.toml` is the only source of network targets.
 - The command `scan net` connects only to the `host:port` pairs in that file.
-- The tool refuses all other targets. It does not warn about them.
+- The tool refuses all other targets. The tool cannot connect to a host that the scope file does not list.
 - The tool resolves each host name one time, at the start.
-- An address outside `allowed_cidrs` makes the tool refuse the full scan. It exits with code 2.
+- If `require_ip_in_cidr` is `true`, an address outside `allowed_cidrs` makes the tool refuse the full scan. It exits with code 2.
+- The default of `require_ip_in_cidr` is `true` only if `allowed_cidrs` or a CIDR target exists.
+- A scope with only host names checks no resolved address. Set `allowed_cidrs` to pin names to known ranges.
 - An `exclude` entry has priority over a target.
 - The tool does not follow redirects, SRV records, or MX records.
 - The file `scope.toml` that `init` makes has no targets. The command `scan net` does nothing until you add a target.
@@ -52,10 +54,10 @@ The command `scan net --dry-run` shows each target, port, protocol, and number o
 
 ### The gentle defaults
 
-The network limits are maximum values. You can lower them. You can raise them only if `scope.toml` has `override_limits = true`.
+Most network limits are maximum values. You can lower them. You can raise them only if `scope.toml` has `override_limits = true`. The minimum interval is the reverse.
 
 - 4 connections at the same time in total, and 1 for each host.
-- At least 1000 ms between two connections to the same host.
+- At least 1000 ms between two connections to the same host. A lower value needs `override_limits`.
 - At most 3 TLS handshakes for each IP address and port, for all host names together.
 - 1 connection for each SSH port.
 - A connect timeout of 5000 ms and a read timeout of 10000 ms.
@@ -75,9 +77,13 @@ The command `scan files` does not use the network. It does not do DNS or HTTP. T
 
 The commands `merge`, `report`, `cbom`, `explain`, `profiles`, and `rules` also make no network connection. The command `rules update` reads a local file. The tool never gets a rules pack from the network.
 
-### Private keys that the tool never copies
+### Private keys
 
-The file scan reads the type of a key, its size or curve, and its public parts. It never writes private key bytes to results, logs, reports, or error messages. The private key bytes stay in memory buffers, and the tool wipes these buffers after use. If a key store has encryption and you give no password, the tool records "encrypted - not inspected". The tool does not read a password from the command line.
+The file scan reads the type of a key, its size or curve, and its public parts. It never writes private key bytes to results, logs, reports, or error messages. The tool reads key files into buffers that it wipes after use.
+
+There are two limits. The PKCS#12 library decrypts key bags into memory that the tool cannot wipe, and the tool drops them early. A call to a library can leave a short copy on the stack.
+
+If a key store has encryption and you give no password, the tool records "encrypted - not inspected". The tool does not read a password from the command line. A password in an environment variable stays in the process environment. Libraries get copies of passwords.
 
 ### Signed releases, the SBOM, and the CBOM
 
@@ -89,7 +95,7 @@ Each release has these items:
 - a hybrid post-quantum signature (Ed25519 and ML-DSA-65) on the file `SHA256SUMS`,
 - the native signature for Windows and macOS, when the maintainers have the certificates for it.
 
-The file [docs/verifying.md](docs/verifying.md) gives the commands to check each item. You can do the checks without a network connection.
+The file [docs/verifying.md](docs/verifying.md) gives the commands to check each item. Most checks work without a network connection. The command `gh attestation verify` needs a network.
 
 ## Summary of the safety model
 
@@ -99,8 +105,8 @@ The file [docs/verifying.md](docs/verifying.md) gives the commands to check each
 4. The option `--dry-run` shows the plan and then stops.
 5. The audit log has a record of each connection attempt.
 6. The offline modes never open sockets.
-7. No private key material leaves the file that holds it.
-8. The tool does not change the systems that it scans. It writes only its own output files.
+7. The tool never writes private key bytes to its output. Refer to the section "Private keys" for the limits.
+8. The tool does not change the systems that it scans. Scans write in the engagement folder. `--output`, `rules update`, and `init --dir` can write elsewhere.
 
 ## Limits of Stage 1
 

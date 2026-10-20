@@ -61,7 +61,7 @@ All engagement files use TOML. The command `init` writes each file with comments
 | `[passwords] env` | The name of an environment variable that holds the passwords of key stores |
 | `[passwords] file` | The path of a file that holds the passwords of key stores. A relative path starts in the engagement folder. Put one password on each line |
 
-Use only one of the keys `env` and `file` in the table `[passwords]`. The tool never reads a password from the command line. The tool wipes the passwords from memory after use.
+Use only one of the keys `env` and `file` in the table `[passwords]`. An empty `[passwords]` table is an error. The tool never reads a password from the command line. The tool wipes the password text that it reads. A password in an environment variable stays in the process environment, and libraries get copies.
 
 If you select more than one profile, each finding shows the earliest date of all the profiles.
 
@@ -94,14 +94,16 @@ The keys of `[limits]`. All keys are optional. The values here are the defaults.
 | Key | Default | Rule |
 | --- | --- | --- |
 | `concurrency` | 4 | The most connections at the same time in total |
-| `per_host` | 1 | The most connections at the same time to one host |
+| `per_host` | 1 | The most connections at the same time to one IP address |
 | `min_interval_ms` | 1000 | The least time between two connections to one host |
 | `tls_handshakes` | 3 | The most TLS handshakes for each IP address and port |
 | `connect_timeout_ms` | 5000 | The connect timeout |
 | `read_timeout_ms` | 10000 | The read timeout |
 | `retries` | 0 | The number of retries |
 
-You can make a limit gentler without a flag. You can make a limit lower than its default. For `min_interval_ms`, gentler means higher, so you can set a higher value. A setting that is less gentle than the default needs `override_limits = true`. Without it, the tool refuses to start and exits with code 2. A limit of 0 is not valid, except for `retries`.
+You can make a limit gentler without a flag. You can make a limit lower than its default. For `min_interval_ms`, gentler means higher, so you can set a higher value.
+
+A setting that is less gentle than the default needs `override_limits = true`. Without it, the tool refuses to start and exits with code 2. A limit of 0 is not valid, except for `retries`. With `override_limits = true`, `min_interval_ms = 0` is valid.
 
 ### assets.toml
 
@@ -288,7 +290,7 @@ The scan reads these formats:
 - PEM and DER private keys and public keys,
 - exported GPG keys (not `.kbx` files).
 
-For a key, the tool records the type, the size or curve, and the public parts. It never writes private key bytes to the results, the logs, the reports, or the error messages. Private key bytes stay in memory buffers that the tool wipes after use.
+For a key, the tool records the type, the size or curve, and the public parts. It never writes private key bytes to the results, the logs, the reports, or the error messages. The tool reads key files into buffers that it wipes after use. The PKCS#12 library decrypts key bags into memory that the tool cannot wipe, and the tool drops them early. A call to a library can leave a short copy on the stack.
 
 If a key store has encryption and the tool has no correct password, it records "encrypted - not inspected". To give passwords, use the table `[passwords]` in `engagement.toml`.
 
@@ -296,9 +298,9 @@ A bad file is a scan error with a reason. The scan continues and the exit code i
 
 Limits of the file scan:
 
-- The tool does not read private-key entries in a JCEKS key store.
+- The scan stops at the first private-key entry of a JCEKS key store. It loses the later entries.
+- The tool does not read `.kbx` GPG key stores.
 - The tool does not read an RSA public exponent that is longer than 4 bytes.
-- An exclusion does not match the NAT64 form or the 6to4 form of an IPv4 address.
 - The tool skips a file that is larger than `--max-file-size`.
 
 ## The network scan
@@ -310,10 +312,14 @@ Before the first connection, the tool does these steps:
 1. It loads `scope.toml` and checks the limits.
 2. It resolves each host name one time. It uses the addresses from this lookup for the full scan.
 3. It applies the exclusions.
-4. It checks each resolved address against `allowed_cidrs`.
+4. It checks each resolved address against `allowed_cidrs`, if `require_ip_in_cidr` is `true`.
 5. It checks `allowed_hours`.
 
-If any address is outside `allowed_cidrs`, the tool refuses the full scan and exits with code 2. It does not scan the other targets. The same is true for a host name that does not resolve and for a CIDR range that is too large. The same is true for a limit past its default. The option `--dry-run` shows each refusal with its reason.
+If `require_ip_in_cidr` is `true` and any address is outside `allowed_cidrs`, the tool refuses the full scan and exits with code 2. It does not scan the other targets. The same is true for a host name that does not resolve and for a CIDR range that is too large. The same is true for a limit past its default. The option `--dry-run` shows each refusal with its reason.
+
+The default of `require_ip_in_cidr` is `true` only if `allowed_cidrs` or a CIDR target exists. A scope with only host names checks no resolved address. Set `allowed_cidrs` to pin names to known ranges.
+
+An exclusion does not match the NAT64 form or the 6to4 form of an IPv4 address. This is a known limit.
 
 The tool does not follow redirects. It does not follow SRV or MX records. It does not use SNI to move to other hosts.
 
@@ -458,6 +464,7 @@ The conditions of `applies_to`:
 
 - `tier`: the tier `high` applies to assets with `priority_tier = "high"` and to assets with no tier.
 - `tier`: the value `all` applies to every asset.
+- A milestone with no `tier` condition applies to every tier.
 - `threat_types`: the milestone applies only to findings of these threat types.
 - `sector`: the milestone applies only if the sector of the engagement is the same.
 
@@ -506,6 +513,7 @@ Use the same pack for the scan and for the report. If you install a newer pack b
 
 - Stage 1 has no code scan, no board report, and no PDF output.
 - Stage 1 has no `export` command. Use `report --format json` for the data.
-- The file scan has the limits in the section "The file scan".
+- The file scan has the limits in the section "The file scan". It does not read `.kbx` files.
+- The network scan has the limits in the section "The network scan".
 - The tool finds only what its rules pack knows. A finding is evidence, not proof.
 - Context that you do not give is `unassessed`. The score then uses cautious values and can be too high.

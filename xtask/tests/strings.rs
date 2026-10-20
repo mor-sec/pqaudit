@@ -172,6 +172,33 @@ fn strings_extracts_template_comments() {
     assert_eq!(text.matches("\n## ").count(), 3, "{text}");
 }
 
+/// Return the text of the guide section whose heading is `heading`. The section ends at the next heading.
+fn guide_section<'a>(guide: &'a str, heading: &str) -> Option<&'a str> {
+    let start = guide.lines().position(|line| line == heading)?;
+    let mut offset = 0;
+    let mut begin = None;
+    for (number, line) in guide.split_inclusive('\n').enumerate() {
+        if number == start + 1 {
+            begin = Some(offset);
+        }
+        if number > start && line.starts_with('#') {
+            return begin.map(|b| &guide[b..offset]);
+        }
+        offset += line.len();
+    }
+    begin.map(|b| &guide[b..])
+}
+
+/// True if the text holds the whole flag. A longer flag with the same start does not count.
+fn has_flag(text: &str, flag: &str) -> bool {
+    text.match_indices(flag).any(|(at, _)| {
+        !text[at + flag.len()..]
+            .chars()
+            .next()
+            .is_some_and(|next| next.is_ascii_alphanumeric() || next == '-')
+    })
+}
+
 #[test]
 fn docs_mention_every_flag() {
     let out = scratch("docs-flags");
@@ -179,18 +206,59 @@ fn docs_mention_every_flag() {
     run_strings(&root, &out, &["--commits", "HEAD..HEAD"]);
     let help = fs::read_to_string(out.join("cli-help.md")).unwrap();
     let guide = fs::read_to_string(root.join("docs/user-guide.md")).unwrap();
-    // The help file has one heading for each flag, for example "### `pqaudit scan files --follow-symlinks`".
-    let flags: std::collections::BTreeSet<&str> = help
-        .lines()
-        .filter(|line| line.starts_with("### `"))
-        .flat_map(str::split_whitespace)
-        .filter(|word| word.starts_with("--"))
-        .map(|word| word.trim_end_matches('`'))
-        .collect();
-    assert!(flags.len() >= 15, "the test found too few flags: {flags:?}");
-    let missing: Vec<&&str> = flags
-        .iter()
-        .filter(|flag| !guide.contains(**flag))
-        .collect();
-    assert!(missing.is_empty(), "docs/user-guide.md lacks: {missing:?}");
+    let global = guide_section(&guide, "### Global flags").expect("a section Global flags");
+    let mut flags_seen = 0;
+    for line in help.lines() {
+        // A command has a heading like "## `pqaudit scan files`".
+        if let Some(path) = line
+            .strip_prefix("## `pqaudit")
+            .and_then(|rest| rest.strip_suffix('`'))
+        {
+            let path = path.trim();
+            if !path.is_empty() {
+                assert!(
+                    guide.contains(path),
+                    "docs/user-guide.md lacks the command {path}"
+                );
+            }
+        }
+        // A flag has a heading like "### `pqaudit scan files --follow-symlinks`".
+        let Some(rest) = line
+            .strip_prefix("### `pqaudit")
+            .and_then(|rest| rest.strip_suffix('`'))
+        else {
+            continue;
+        };
+        let words: Vec<&str> = rest.split_whitespace().collect();
+        let Some(flag) = words.last().filter(|word| word.starts_with("--")) else {
+            continue;
+        };
+        flags_seen += 1;
+        let path = &words[..words.len() - 1];
+        if path.is_empty() {
+            assert!(
+                has_flag(global, flag),
+                "the section Global flags lacks {flag}"
+            );
+            continue;
+        }
+        // The flag can be a global flag. Then the section Global flags names it.
+        if has_flag(global, flag) {
+            continue;
+        }
+        // Use the section of the longest part of the command path that has a section.
+        let section = (1..=path.len()).rev().find_map(|length| {
+            guide_section(&guide, &format!("### pqaudit {}", path[..length].join(" ")))
+        });
+        let section = section.unwrap_or_else(|| panic!("no section for {path:?}"));
+        assert!(
+            has_flag(section, flag),
+            "the section of {} lacks {flag}",
+            path.join(" ")
+        );
+    }
+    assert!(
+        flags_seen >= 40,
+        "the test found too few flags: {flags_seen}"
+    );
 }

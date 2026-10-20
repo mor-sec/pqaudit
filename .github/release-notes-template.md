@@ -28,5 +28,6 @@ The public keys for the hybrid signature are below.
 
 - This release has no code scan, no board report, and no PDF output.
 - The deadline profiles are `us`, `uk`, and `au` only.
-- The file scan does not read private-key entries in JCEKS key stores.
+- The file scan stops at the first private-key entry in a JCEKS key store.
+- The file scan does not read `.kbx` GPG key stores.
 - Add the known limits of this release here.

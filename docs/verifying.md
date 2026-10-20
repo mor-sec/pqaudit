@@ -1,6 +1,8 @@
 # Verifying this release
 
-This document tells how to check a pqaudit release before you use it. Each check is separate. Do all of them if you can. The checks do not need pqaudit itself.
+> Status: the project has no first release yet. Until then, these items are not confirmed: the file names of the release, the text that `cosign` prints, the TUF cache path, and the macOS checks. The release process checks each command again.
+
+This document tells how to check a pqaudit release before you use it. Each check is separate. Do all of them if you can. Most checks do not need pqaudit. Only section 8 uses it.
 
 In the commands below, `<org>` is the owner of the GitHub repository, and `<file>` is the release file that you check. Use the name of the file as it appears in the release. Replace `<org>` with the real owner before you run a command.
 
@@ -10,6 +12,7 @@ In the commands below, `<org>` is the owner of the GitHub repository, and `<file
 - A Sigstore bundle for each file, with the name `<file>.sigstore.json`.
 - `SHA256SUMS` and `SHA3-256SUMS`.
 - The hybrid post-quantum signatures of the checksum files: `SHA256SUMS.ed25519.sig` and `SHA256SUMS.mldsa65.sig`, and the same two for `SHA3-256SUMS`.
+- The files `SHA256SUMS.sig.json` and `SHA3-256SUMS.sig.json`.
 - The SBOM in CycloneDX format.
 - The CBOM of the tool.
 - The rules pack archive and its signature file.
@@ -80,10 +83,10 @@ Each command must print `Signature Verified Successfully`. If one command fails,
 Last, check the files against the checksums:
 
 ```text
-sha256sum -c SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
 ```
 
-On macOS, use `shasum -a 256 -c SHA256SUMS`. The file `SHA3-256SUMS` works the same way with a SHA3-256 tool and its own signature files.
+On macOS, use `shasum -a 256 -c SHA256SUMS`. For `SHA3-256SUMS`, use `openssl dgst -sha3-256 <file>` and compare the hash by eye. Use the signature files of that checksum file.
 
 ## 5. Check the operating system signature
 
@@ -101,10 +104,9 @@ On macOS:
 
 ```text
 codesign --verify --deep --strict --verbose=2 ./pqaudit
-spctl --assess --type execute --verbose ./pqaudit
 ```
 
-Both commands must pass. A notarized binary shows `source=Notarized Developer ID`.
+The command `codesign` must pass. Check the notarization with `xcrun stapler validate ./pqaudit` or with the `xcrun notarytool` history of the maintainers. The command `spctl --assess --type execute` is not confirmed for a bare command-line binary. It can report that the file does not seem to be an app.
 
 ## 6. Find the SBOM and compare it with the binary
 
