@@ -93,9 +93,16 @@ fn planning_never_attached() {
 }
 
 #[test]
-fn migration_milestone_without_tier_does_not_apply() {
+fn migration_milestone_without_tier_applies_to_every_tier() {
     let p = custom("n", 2029, "migration", "{}");
-    assert!(resolve(ThreatType::Hndl, Ctx::Unassessed, None, &[&p]).is_none());
+    for tier in [
+        Ctx::Assessed(Tier::High),
+        Ctx::Assessed(Tier::Standard),
+        Ctx::Unassessed,
+    ] {
+        let got = resolve(ThreatType::Hndl, tier, None, &[&p]).unwrap();
+        assert_eq!(got.date, date(2029, 12, 31));
+    }
 }
 
 #[test]

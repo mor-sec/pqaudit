@@ -66,9 +66,9 @@ fn results(findings: Vec<Finding>) -> ResultsFile {
             engagement: "acme".into(),
             tool_version: "0.1.0".into(),
             rules_pack: PackRef {
-                id: "default".into(),
-                version: "1.0.0".into(),
-                content_hash: "ab".repeat(32),
+                id: default_pack().id.clone(),
+                version: default_pack().version.to_string(),
+                content_hash: default_pack().content_hash.clone(),
                 origin: PackOriginRef::Embedded,
             },
             scanner: ScannerKind::Net,
@@ -146,7 +146,7 @@ date = 2026-10-01
     assert_eq!(out.errors.len(), 1);
     assert_eq!(out.planning_milestones.len(), 1);
     assert_eq!(out.assumptions.crqc_year, 2035);
-    assert_eq!(out.pack.id, "default");
+    assert_eq!(out.pack.id, default_pack().id);
 }
 
 #[test]
@@ -232,4 +232,61 @@ fn unknown_rule_and_bad_glob_error() {
     let eng = engagement(&["uk"], bad, "");
     let err = assess(&results(vec![]), &eng, default_pack(), today()).unwrap_err();
     assert!(matches!(err, AssessError::InvalidGlob { .. }));
+}
+
+fn two_site_finding(first: &str, second: &str) -> Finding {
+    let mut f = finding("key:aa", first);
+    let mut other = f.occurrences[0].clone();
+    other.location = Location::Endpoint {
+        host: second.into(),
+        ip: "192.0.2.2".parse().unwrap(),
+        port: 443,
+        protocol: Protocol::Tls,
+    };
+    f.occurrences.push(other);
+    f
+}
+
+#[test]
+fn earliest_asset_in_file_wins_in_both_occurrence_orders() {
+    let eng = engagement(&["uk"], FULL_ASSET, "");
+    for (a, b) in [
+        ("pay.example", "part.example"),
+        ("part.example", "pay.example"),
+    ] {
+        let out = assess(
+            &results(vec![two_site_finding(a, b)]),
+            &eng,
+            default_pack(),
+            today(),
+        )
+        .unwrap();
+        assert_eq!(out.findings[0].asset.as_deref(), Some("Pay"));
+    }
+}
+
+#[test]
+fn pack_mismatch_errors() {
+    let eng = engagement(&["uk"], "", "");
+    let mut res = results(vec![]);
+    res.header.rules_pack.content_hash = "cd".repeat(32);
+    let err = assess(&res, &eng, default_pack(), today()).unwrap_err();
+    assert!(matches!(err, AssessError::PackMismatch { .. }));
+    let text = err.to_string();
+    assert!(text.contains(&"cd".repeat(32)) && text.contains(&default_pack().content_hash));
+    let mut res = results(vec![]);
+    res.header.rules_pack.version = "9.9.9".into();
+    assert!(matches!(
+        assess(&res, &eng, default_pack(), today()),
+        Err(AssessError::PackMismatch { .. })
+    ));
+}
+
+#[test]
+fn duplicate_override_errors() {
+    let one = "[[override]]\nfingerprint = \"key:aa\"\npriority = \"low\"\nreason = \"r\"\nby = \"Jo\"\ndate = 2026-10-01\n";
+    let eng = engagement(&["uk"], "", &format!("{one}{one}"));
+    let err = assess(&results(vec![]), &eng, default_pack(), today()).unwrap_err();
+    assert_eq!(err, AssessError::DuplicateOverride("key:aa".into()));
+    assert!(err.to_string().contains("key:aa"));
 }

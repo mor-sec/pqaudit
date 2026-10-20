@@ -81,11 +81,21 @@ pub const UNKNOWN_RULE: &str =
 pub const INVALID_GLOB: &str =
     "The asset {asset} has the path pattern {pattern}. This pattern is not valid.";
 
+/// The error for results from another rules pack. The tool fills in {results} and {pack}.
+pub const PACK_MISMATCH: &str =
+    "The results come from the rules pack {results}. The tool got the rules pack {pack}. Use the pack that made the results, or scan again.";
+
+/// The error for two overrides with the same fingerprint. The tool fills in {fingerprint}.
+pub const DUPLICATE_OVERRIDE: &str =
+    "Two overrides have the fingerprint {fingerprint}. Keep one override for each fingerprint.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("UNKNOWN_PROFILE", UNKNOWN_PROFILE),
     ("UNKNOWN_RULE", UNKNOWN_RULE),
     ("INVALID_GLOB", INVALID_GLOB),
+    ("PACK_MISMATCH", PACK_MISMATCH),
+    ("DUPLICATE_OVERRIDE", DUPLICATE_OVERRIDE),
     ("REDACT_KEY_IO", REDACT_KEY_IO),
     ("REDACT_KEY_INVALID", REDACT_KEY_INVALID),
     ("REDACT_KEY_RANDOM", REDACT_KEY_RANDOM),

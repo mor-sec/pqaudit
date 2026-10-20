@@ -23,7 +23,7 @@ pub struct DeadlineRef {
 
 /// Return true if the milestone applies to the finding.
 ///
-/// A milestone with no tier does not apply. A tier `high` applies to the tier `high`
+/// A milestone with no tier has no tier limit. It applies to every tier. A tier `high` applies to the tier `high`
 /// and to an unassessed tier. This is the cautious choice.
 fn applies(
     milestone: &Milestone,
@@ -35,7 +35,7 @@ fn applies(
     let tier_ok = match rule.tier {
         Some(TierScope::All) => true,
         Some(TierScope::High) => matches!(tier, Ctx::Assessed(Tier::High) | Ctx::Unassessed),
-        None => false,
+        None => true,
     };
     let threat_ok = rule.threat_types.is_empty() || rule.threat_types.contains(&threat);
     let sector_ok = rule

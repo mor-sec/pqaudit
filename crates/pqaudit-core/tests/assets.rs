@@ -92,3 +92,10 @@ fn missing_asset_field_stays_unassessed() {
     assert_eq!(context.classification, Ctx::Unassessed);
     assert!(context.has_unassessed());
 }
+
+#[test]
+fn ipv4_mapped_ipv6_matches_ipv4_cidr() {
+    let assets = vec![asset("Net", &[], &["10.1.0.0/16"], &[])];
+    assert!(match_asset(&assets, &endpoint("x", "::ffff:10.1.2.3")).is_some());
+    assert!(match_asset(&assets, &endpoint("x", "::ffff:10.2.2.3")).is_none());
+}

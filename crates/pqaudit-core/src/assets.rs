@@ -130,10 +130,14 @@ impl<'a> AssetIndex<'a> {
 
     /// Find the first asset, in file order, that matches the location.
     pub(crate) fn find(&self, loc: &Location) -> Option<&'a Asset> {
+        self.position(loc).map(|index| self.entries[index].0)
+    }
+
+    /// Find the place in the file order of the first asset that matches the location.
+    pub(crate) fn position(&self, loc: &Location) -> Option<usize> {
         self.entries
             .iter()
-            .find(|(asset, globs)| matches(asset, globs, loc))
-            .map(|(asset, _)| *asset)
+            .position(|(asset, globs)| matches(asset, globs, loc))
     }
 }
 
@@ -145,7 +149,11 @@ fn matches(asset: &Asset, globs: &GlobSet, loc: &Location) -> bool {
                 .hosts
                 .iter()
                 .any(|name| name.eq_ignore_ascii_case(host))
-                || asset.matcher.cidrs.iter().any(|net| net.contains(ip))
+                || asset
+                    .matcher
+                    .cidrs
+                    .iter()
+                    .any(|net| net.contains(&ip.to_canonical()))
         }
         Location::File { path, .. } => globs.is_match(path),
     }
@@ -154,6 +162,7 @@ fn matches(asset: &Asset, globs: &GlobSet, loc: &Location) -> bool {
 /// Find the asset for a location. The first match in the file order wins.
 ///
 /// A host matches without regard to case. An IP address matches a CIDR range.
+/// The tool first converts an IPv4-mapped IPv6 address to IPv4.
 /// A file path matches a glob.
 pub fn match_asset<'a>(assets: &'a [Asset], loc: &Location) -> Option<&'a Asset> {
     AssetIndex::new(assets).find(loc)

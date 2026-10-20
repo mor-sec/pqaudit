@@ -88,6 +88,15 @@ pub enum AssessError {
     UnknownProfile(String),
     /// A finding names a rule that the rules pack does not have.
     UnknownRule(String),
+    /// The rules pack is not the pack that made the results.
+    PackMismatch {
+        /// The pack of the results, as `id version hash`.
+        results: String,
+        /// The pack that the tool got, as `id version hash`.
+        pack: String,
+    },
+    /// Two overrides have the same fingerprint.
+    DuplicateOverride(String),
     /// An asset has a path glob that is not valid.
     InvalidGlob {
         /// The name of the asset.
@@ -102,6 +111,12 @@ impl fmt::Display for AssessError {
         let text = match self {
             Self::UnknownProfile(id) => messages::UNKNOWN_PROFILE.replace("{profile}", id),
             Self::UnknownRule(id) => messages::UNKNOWN_RULE.replace("{rule}", id),
+            Self::PackMismatch { results, pack } => messages::PACK_MISMATCH
+                .replace("{results}", results)
+                .replace("{pack}", pack),
+            Self::DuplicateOverride(fingerprint) => {
+                messages::DUPLICATE_OVERRIDE.replace("{fingerprint}", fingerprint)
+            }
             Self::InvalidGlob { asset, pattern } => messages::INVALID_GLOB
                 .replace("{asset}", asset)
                 .replace("{pattern}", pattern),
@@ -114,6 +129,7 @@ impl std::error::Error for AssessError {}
 
 /// Assess the findings of a results file.
 ///
+/// The asset of a finding is the first asset in the assets file that matches any occurrence.
 /// The date of the assessment is `assessment_date` from the engagement. If it is not set,
 /// the tool uses `today`. The caller gives the local date as `today`.
 pub fn assess(
@@ -125,6 +141,24 @@ pub fn assess(
     let today = eng.config.assessment_date.unwrap_or(today);
     let config = &eng.config;
     let sector = config.deadlines.sector.as_deref();
+
+    let used = &results.header.rules_pack;
+    if used.id != pack.id
+        || used.version != pack.version.to_string()
+        || used.content_hash != pack.content_hash
+    {
+        let name = |id: &str, version: &str, hash: &str| format!("{id} {version} {hash}");
+        return Err(AssessError::PackMismatch {
+            results: name(&used.id, &used.version, &used.content_hash),
+            pack: name(&pack.id, &pack.version.to_string(), &pack.content_hash),
+        });
+    }
+    let mut seen_overrides = HashSet::new();
+    for item in &eng.overrides.r#override {
+        if !seen_overrides.insert(item.fingerprint.as_str()) {
+            return Err(AssessError::DuplicateOverride(item.fingerprint.clone()));
+        }
+    }
 
     let profiles: Vec<&DeadlineProfile> = config
         .deadlines
@@ -148,10 +182,13 @@ pub fn assess(
         let rule = pack
             .rule(&finding.rule_id)
             .ok_or_else(|| AssessError::UnknownRule(finding.rule_id.clone()))?;
+        // The asset that comes first in the assets file wins. The order of occurrences is not stable.
         let asset = finding
             .occurrences
             .iter()
-            .find_map(|occurrence| index.find(&occurrence.location));
+            .filter_map(|occurrence| index.position(&occurrence.location))
+            .min()
+            .map(|place| &eng.assets.asset[place]);
         let context = asset.map_or_else(AssetContext::unassessed, AssetContext::from_asset);
         let deadline = deadlines::resolve(
             finding.threat_type,
@@ -170,12 +207,10 @@ pub fn assess(
             today,
         );
         let band = scoring::band(score.total, &eng.scoring.bands);
-        // If two overrides have the same fingerprint, the last one in the file wins.
         let override_ = eng
             .overrides
             .r#override
             .iter()
-            .rev()
             .find(|candidate| candidate.fingerprint == finding.fingerprint.0)
             .cloned();
         let effective_band = override_.as_ref().map_or(band, |o| o.priority);
