@@ -1,0 +1,8 @@
+[package]
+name = "pqaudit-rules"
+description = "Part of pqaudit, the post-quantum cryptography audit tool."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true

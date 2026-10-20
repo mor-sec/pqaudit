@@ -1,0 +1,24 @@
+[package]
+name = "pqaudit-cli"
+description = "The pqaudit command-line tool."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "pqaudit_cli"
+
+[[bin]]
+name = "pqaudit"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true

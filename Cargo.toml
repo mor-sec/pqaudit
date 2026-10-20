@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/pqaudit-cli",
+    "crates/pqaudit-core",
+    "crates/pqaudit-rules",
+    "crates/pqaudit-scan-files",
+    "crates/pqaudit-scan-net",
+    "crates/pqaudit-report",
+    "xtask",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/pqaudit/pqaudit"
+
+[workspace.dependencies]
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+assert_cmd = "2"
+predicates = "3"
