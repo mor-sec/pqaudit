@@ -199,7 +199,18 @@ fn rsa_numbers(sequence: &[u8], private: bool) -> Option<(Tlv<'_>, Tlv<'_>)> {
     }
     let (n, rest) = der::read_tag(rest, INTEGER)?;
     let (e, _) = der::read_tag(rest, INTEGER)?;
-    Some((n, e))
+    plausible_exponent(e.content).then_some((n, e))
+}
+
+/// Return true if the number can be an RSA public exponent: 1 to 4 bytes, odd, and 3 or more.
+///
+/// A signature has the same shape as an RSA public key. Its second number is big.
+fn plausible_exponent(exponent: &[u8]) -> bool {
+    let start = exponent.iter().take_while(|byte| **byte == 0).count();
+    let exponent = &exponent[start..];
+    (1..=4).contains(&exponent.len())
+        && exponent.last().is_some_and(|byte| byte & 1 == 1)
+        && exponent != [1]
 }
 
 /// Make the SPKI bytes of a public key.

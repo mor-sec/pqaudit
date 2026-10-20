@@ -895,6 +895,39 @@ fn small_rsa_keys_are_weak_findings_in_every_named_form() {
     assert!(out.findings.is_empty() && out.errors.is_empty());
 }
 
+/// A DER ECDSA signature with 2 numbers of `size` bytes each.
+fn signature_of(size: u8) -> Vec<u8> {
+    let mut body = Vec::new();
+    for seed in [21, 22] {
+        let mut number = pseudo_random(seed, usize::from(size));
+        number[0] &= 0x7f;
+        number[0] |= 0x40;
+        body.extend_from_slice(&tlv(0x02, &number));
+    }
+    tlv(0x30, &body)
+}
+
+#[test]
+fn named_signature_files_give_no_weak_key_finding() {
+    let dir = tempfile::tempdir().unwrap();
+    for (curve, size) in [("p256", 32), ("p384", 48)] {
+        for extension in ["der", "key"] {
+            let path = dir.path().join(format!("{curve}.{extension}"));
+            fs::write(&path, signature_of(size)).unwrap();
+            let out = scan_paths(&[path]);
+            assert!(
+                out.findings.is_empty() && out.inventory.is_empty(),
+                "{curve}"
+            );
+            assert_eq!(out.errors.len(), 1, "{curve} {extension}: {:?}", out.errors);
+            assert_eq!(
+                out.errors[0].reason,
+                "The file is not a valid DER certificate or key."
+            );
+        }
+    }
+}
+
 #[test]
 fn key_blocks_with_bad_content_show_no_bytes() {
     // A key block with bad content next to the bytes of a real key.
