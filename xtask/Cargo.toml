@@ -7,3 +7,12 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
+
+[dependencies]
+clap.workspace = true
+pqaudit-cli = { path = "../crates/pqaudit-cli" }
+pqaudit-core = { path = "../crates/pqaudit-core" }
+pqaudit-rules = { path = "../crates/pqaudit-rules" }
+pqaudit-scan-files = { path = "../crates/pqaudit-scan-files" }
+pqaudit-scan-net = { path = "../crates/pqaudit-scan-net" }
+pqaudit-report = { path = "../crates/pqaudit-report" }

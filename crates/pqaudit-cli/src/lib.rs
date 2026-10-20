@@ -21,7 +21,7 @@ where
         Ok(cli) => cli,
         Err(error) => {
             let is_info = !error.use_stderr();
-            // If the output stream is closed, there is nothing more to do.
+            // If the reader closes the output stream, there is nothing more to do.
             let _ = error.print();
             return if is_info {
                 ExitCode::Success

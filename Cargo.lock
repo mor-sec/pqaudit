@@ -580,6 +580,15 @@ dependencies = [
 [[package]]
 name = "xtask"
 version = "0.1.0"
+dependencies = [
+ "clap",
+ "pqaudit-cli",
+ "pqaudit-core",
+ "pqaudit-report",
+ "pqaudit-rules",
+ "pqaudit-scan-files",
+ "pqaudit-scan-net",
+]
 
 [[package]]
 name = "zmij"

@@ -28,3 +28,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: cargo test --workspace --locked
+
+  ste:
+    runs-on: ubuntu-latest
+    env:
+      VALE_VERSION: 3.23.0
+      VALE_SHA256: cc35445a45186b8f0b01e11c01359694cf941e72cf6ab0fc44774f0e54c9d5fc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Vale
+        run: |
+          curl -sSL -o vale.tar.gz "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
+          echo "${VALE_SHA256}  vale.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf vale.tar.gz -C "$HOME/.local/bin" vale
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Check the Vale rules with the fixtures
+        run: |
+          vale .github/vale/fixtures/good.md
+          test "$(vale --output=line .github/vale/fixtures/bad.md | wc -l)" -eq 5
+      - name: Extract the project text
+        run: cargo xtask strings --out target/ste --commits "${{ github.event.pull_request.base.sha || 'HEAD~1' }}..HEAD"
+      - name: Check the project text
+        run: .github/scripts/ste-lint.sh

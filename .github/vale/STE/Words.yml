@@ -1,0 +1,30 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+level: error
+ignorecase: true
+swap:
+  utilize: use
+  utilise: use
+  ensure: make sure
+  perform: do
+  in order to: to
+  prior to: before
+  subsequent to: after
+  commence: start
+  terminate: stop
+  require: need
+  indicate: show
+  display: show
+  initiate: start
+  modify: change
+  obtain: get
+  provide: give
+  approximately: about
+  additional: more
+  however: but
+  therefore: so
+  numerous: many
+  sufficient: enough
+  verify: check
+  facilitate: help
+  leverage: use
