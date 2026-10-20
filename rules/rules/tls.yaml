@@ -1,0 +1,29 @@
+- id: tls.no-pq-kex
+  family: tls
+  title: The TLS server does not offer a post-quantum key exchange.
+  description: >-
+    The server does not offer a hybrid key exchange such as X25519MLKEM768.
+    An attacker can record the traffic now and decrypt it later with a quantum computer.
+  remediation: >-
+    Upgrade the TLS library to a version that supports a hybrid key exchange.
+    Then enable the hybrid group in the server configuration.
+  threat_type: hndl
+  cwe: [CWE-327]
+  attack: [T1040, T1557]
+  change_type: library_upgrade
+  size_impact: [mtu]
+  testing: [integration, interop, performance]
+- id: tls.legacy-version
+  family: tls
+  title: The TLS server accepts an old protocol version.
+  description: >-
+    The server accepts SSL 3.0, TLS 1.0, or TLS 1.1.
+    These versions have known weaknesses.
+  remediation: >-
+    Set the minimum protocol version to TLS 1.2.
+    Use TLS 1.3 where you can.
+  threat_type: classical_weak_now
+  cwe: [CWE-327]
+  attack: [T1040, T1557]
+  change_type: config
+  testing: [integration, interop]

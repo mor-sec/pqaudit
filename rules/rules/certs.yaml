@@ -1,0 +1,43 @@
+- id: cert.classical-key
+  family: cert
+  title: The certificate uses a public key that a quantum computer can break.
+  description: >-
+    The certificate has an RSA, ECDSA, or other classical public key.
+    A quantum computer can break this key type.
+    An attacker can then forge signatures from this certificate.
+  remediation: >-
+    Plan a move to a post-quantum signature algorithm.
+    Replace the certificate when your certificate authority offers one.
+  cwe: [CWE-327]
+  attack: []
+  change_type: config
+  size_impact: [cert_chain, mtu, storage_field]
+  testing: [integration, interop, performance]
+- id: cert.weak-key
+  family: cert
+  title: The certificate key is too small.
+  description: >-
+    The certificate public key is smaller than the minimum size.
+    An attacker can break a small key with classical computers.
+  remediation: >-
+    Make a new key pair with a safe size.
+    Ask for a new certificate and replace the old one.
+  threat_type: classical_weak_now
+  cwe: [CWE-326]
+  attack: []
+  change_type: config
+  testing: [integration]
+- id: cert.weak-sig-hash
+  family: cert
+  title: The certificate signature uses a weak hash.
+  description: >-
+    The certificate signature uses MD5 or SHA-1.
+    An attacker can make two different certificates with the same hash.
+  remediation: >-
+    Ask your certificate authority for a certificate that uses SHA-256 or a stronger hash.
+    Replace the old certificate.
+  threat_type: classical_weak_now
+  cwe: [CWE-328]
+  attack: []
+  change_type: config
+  testing: [integration]

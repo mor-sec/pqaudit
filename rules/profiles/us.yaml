@@ -1,0 +1,21 @@
+id: us
+name: United States (NIST IR 8547)
+milestones:
+  - date: 2030-12-31
+    kind: migration
+    applies_to: {tier: all}
+    description: >-
+      NIST proposes to deprecate quantum-vulnerable algorithms with 112 bits of security after 2030.
+      NIST IR 8547 is a draft. The final version is not published yet.
+    source_title: "NIST IR 8547 (Initial Public Draft): Transition to Post-Quantum Cryptography Standards"
+    source_url: https://csrc.nist.gov/pubs/ir/8547/ipd
+    as_of: 2026-10-20
+  - date: 2035-12-31
+    kind: migration
+    applies_to: {tier: all}
+    description: >-
+      NIST proposes to disallow quantum-vulnerable algorithms after 2035.
+      NIST IR 8547 is a draft. The final version is not published yet.
+    source_title: "NIST IR 8547 (Initial Public Draft): Transition to Post-Quantum Cryptography Standards"
+    source_url: https://csrc.nist.gov/pubs/ir/8547/ipd
+    as_of: 2026-10-20

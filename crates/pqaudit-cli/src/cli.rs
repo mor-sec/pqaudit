@@ -66,7 +66,22 @@ pub enum Command {
     /// Show or check the rules pack.
     Rules,
     /// Show the deadline profiles.
-    Profiles,
+    Profiles {
+        #[command(subcommand)]
+        command: ProfilesCommand,
+    },
+}
+
+/// The profiles commands.
+#[derive(Debug, Subcommand)]
+pub enum ProfilesCommand {
+    /// List the deadline profiles.
+    List,
+    /// Show the milestones of one deadline profile.
+    Show {
+        /// The ID of the profile, for example `uk`.
+        id: String,
+    },
 }
 
 /// The scan commands.

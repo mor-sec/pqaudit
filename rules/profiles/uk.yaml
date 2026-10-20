@@ -1,0 +1,27 @@
+id: uk
+name: United Kingdom (NCSC)
+milestones:
+  - date: 2028-12-31
+    kind: planning
+    description: >-
+      Finish the discovery and assessment phase by 2028.
+      Make an initial migration plan.
+    source_title: Timelines for migration to post-quantum cryptography
+    source_url: https://www.ncsc.gov.uk/guidance/pqc-migration-timelines
+    as_of: 2026-10-20
+  - date: 2031-12-31
+    kind: migration
+    applies_to: {tier: high}
+    description: >-
+      Finish the highest priority migration activities by 2031.
+      These activities protect the most critical assets.
+    source_title: Timelines for migration to post-quantum cryptography
+    source_url: https://www.ncsc.gov.uk/guidance/pqc-migration-timelines
+    as_of: 2026-10-20
+  - date: 2035-12-31
+    kind: migration
+    applies_to: {tier: all}
+    description: Finish the migration to post-quantum cryptography by 2035.
+    source_title: Timelines for migration to post-quantum cryptography
+    source_url: https://www.ncsc.gov.uk/guidance/pqc-migration-timelines
+    as_of: 2026-10-20

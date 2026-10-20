@@ -1,0 +1,42 @@
+- id: ssh.no-pq-kex
+  family: ssh
+  title: The SSH server does not offer a post-quantum key exchange.
+  description: >-
+    The server does not offer a hybrid key exchange such as mlkem768x25519-sha256.
+    An attacker can record the traffic now and decrypt it later with a quantum computer.
+  remediation: >-
+    Upgrade the SSH software to a version that supports a hybrid key exchange.
+    Then enable the hybrid algorithm in the server configuration.
+  threat_type: hndl
+  cwe: [CWE-327]
+  attack: [T1040, T1557]
+  change_type: library_upgrade
+  testing: [integration, interop]
+- id: ssh.weak-kex
+  family: ssh
+  title: The SSH server offers a weak key exchange.
+  description: >-
+    The server offers a key exchange with a small group or a weak hash.
+    An attacker can break this key exchange with classical computers.
+  remediation: >-
+    Remove the weak key exchange algorithms from the server configuration.
+    Keep only strong algorithms.
+  threat_type: classical_weak_now
+  cwe: [CWE-327]
+  attack: [T1040, T1557]
+  change_type: config
+  testing: [integration, interop]
+- id: ssh.classical-hostkey
+  family: ssh
+  title: The SSH server uses a host key that a quantum computer can break.
+  description: >-
+    The host key uses RSA, ECDSA, or Ed25519.
+    A quantum computer can forge the host signature.
+    An attacker can then pretend to be the server.
+  remediation: >-
+    Upgrade the SSH software to a version that supports a post-quantum host key.
+    Then add the new host key and tell your users.
+  cwe: [CWE-327]
+  attack: []
+  change_type: library_upgrade
+  testing: [integration, interop]

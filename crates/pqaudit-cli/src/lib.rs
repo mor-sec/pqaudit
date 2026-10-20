@@ -3,6 +3,7 @@
 //! The binary calls [`run`]. Tests can call it too.
 
 pub mod cli;
+pub mod commands;
 pub mod exit;
 pub mod messages;
 
@@ -57,13 +58,13 @@ fn init_logging(cli: &Cli) {
 /// Run one command. Each command is a stub until its task replaces it.
 fn dispatch(command: &Command) -> ExitCode {
     match command {
+        Command::Profiles { command } => commands::profiles::run(command),
         Command::Init
         | Command::Merge
         | Command::Report
         | Command::Cbom
         | Command::Explain
         | Command::Rules
-        | Command::Profiles
         | Command::Scan {
             command: ScanCommand::Files | ScanCommand::Net,
         } => not_implemented(),

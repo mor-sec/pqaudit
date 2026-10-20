@@ -1,0 +1,28 @@
+- id: key.classical
+  family: key
+  title: The key file holds a key that a quantum computer can break.
+  description: >-
+    A key file holds an RSA, ECDSA, or other classical key.
+    A quantum computer can break this key type.
+  remediation: >-
+    Plan a move to a post-quantum algorithm.
+    Find each system that uses this key and test a replacement.
+  cwe: [CWE-327]
+  attack: [T1552.004]
+  change_type: config
+  size_impact: [storage_field]
+  testing: [unit, integration]
+- id: key.weak
+  family: key
+  title: The key file holds a key that is too small.
+  description: >-
+    A key file holds a key that is smaller than the minimum size.
+    An attacker can break a small key with classical computers.
+  remediation: >-
+    Make a new key with a safe size.
+    Replace the old key and remove it from each system.
+  threat_type: classical_weak_now
+  cwe: [CWE-326]
+  attack: [T1552.004]
+  change_type: config
+  testing: [integration]
