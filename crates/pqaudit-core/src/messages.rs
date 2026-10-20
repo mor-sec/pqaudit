@@ -30,6 +30,13 @@ pub const ENGAGEMENT_PARSE: &str = "The file {file} is not valid at line {line}.
 pub const DATE_EXPECTED: &str =
     "This value must be a date in the format YEAR-MONTH-DAY, for example 2026-10-20.";
 
+/// The error for a passwords table with both keys.
+pub const PASSWORDS_BOTH: &str =
+    "The table passwords has the keys env and file. Use only one of these keys.";
+
+/// The error for a passwords table with no key.
+pub const PASSWORDS_NONE: &str = "The table passwords needs one of the keys env and file.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("UNSUPPORTED_SCHEMA", UNSUPPORTED_SCHEMA),
@@ -41,4 +48,6 @@ pub const ALL: &[(&str, &str)] = &[
     ("ENGAGEMENT_IO", ENGAGEMENT_IO),
     ("ENGAGEMENT_PARSE", ENGAGEMENT_PARSE),
     ("DATE_EXPECTED", DATE_EXPECTED),
+    ("PASSWORDS_BOTH", PASSWORDS_BOTH),
+    ("PASSWORDS_NONE", PASSWORDS_NONE),
 ];

@@ -78,8 +78,10 @@ pub struct Assumptions {
 }
 
 /// The place of the passwords of key stores. The file never holds a password itself.
+///
+/// The file `engagement.toml` must set exactly one of the keys `env` and `file`.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(untagged)]
+#[serde(try_from = "RawPasswordSource")]
 pub enum PasswordSource {
     /// Read the passwords from this environment variable.
     Env {
@@ -91,6 +93,27 @@ pub enum PasswordSource {
         /// The path of the password file.
         file: PathBuf,
     },
+}
+
+/// The table `[passwords]` as written, before the tool checks it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPasswordSource {
+    env: Option<String>,
+    file: Option<PathBuf>,
+}
+
+impl TryFrom<RawPasswordSource> for PasswordSource {
+    type Error = &'static str;
+
+    fn try_from(raw: RawPasswordSource) -> Result<Self, Self::Error> {
+        match (raw.env, raw.file) {
+            (Some(env), None) => Ok(Self::Env { env }),
+            (None, Some(file)) => Ok(Self::File { file }),
+            (Some(_), Some(_)) => Err(messages::PASSWORDS_BOTH),
+            (None, None) => Err(messages::PASSWORDS_NONE),
+        }
+    }
 }
 
 /// The content of `assets.toml`.

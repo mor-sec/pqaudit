@@ -4,7 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use pqaudit_core::engagement::{
-    AssetsFile, Band, Engagement, EngagementError, Exposure, OverridesFile, ScoringConfig, Size,
+    AssetsFile, Band, Engagement, EngagementError, Exposure, OverridesFile, PasswordSource,
+    ScoringConfig, Size,
 };
 use pqaudit_core::Tier;
 
@@ -182,16 +183,65 @@ fn overrides_parse() {
     assert_eq!(e.overrides.r#override[0].date.to_string(), "2026-10-20");
 }
 
-#[test]
-fn password_source_parses() {
+fn passwords_engagement(table: &str) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     write(
         dir.path(),
         "engagement.toml",
-        "client = \"A\"\nassessor = \"B\"\n\n[assumptions]\ncrqc_year = 2035\n\n[passwords]\nenv = \"PQAUDIT_PASSWORDS\"\n",
+        &format!("client = \"A\"\nassessor = \"B\"\n\n[assumptions]\ncrqc_year = 2035\n\n[passwords]\n{table}"),
     );
+    dir
+}
+
+#[test]
+fn password_source_env_form() {
+    let dir = passwords_engagement("env = \"PQAUDIT_PASSWORDS\"\n");
     let e = Engagement::load(dir.path()).unwrap();
-    assert!(e.config.passwords.is_some());
+    assert_eq!(
+        e.config.passwords,
+        Some(PasswordSource::Env {
+            env: "PQAUDIT_PASSWORDS".into()
+        })
+    );
+}
+
+#[test]
+fn password_source_file_form() {
+    let dir = passwords_engagement("file = \"pw.txt\"\n");
+    let e = Engagement::load(dir.path()).unwrap();
+    assert_eq!(
+        e.config.passwords,
+        Some(PasswordSource::File {
+            file: "pw.txt".into()
+        })
+    );
+}
+
+#[test]
+fn password_source_with_both_keys_is_an_error() {
+    let dir = passwords_engagement("env = \"X\"\nfile = \"pw.txt\"\n");
+    let text = Engagement::load(dir.path()).unwrap_err().to_string();
+    assert!(text.contains("engagement.toml"), "{text}");
+    assert!(text.contains("env") && text.contains("file"), "{text}");
+    assert!(text.contains("only one"), "{text}");
+}
+
+#[test]
+fn password_source_with_no_key_is_an_error() {
+    let dir = passwords_engagement("");
+    let text = Engagement::load(dir.path()).unwrap_err().to_string();
+    assert!(text.contains("engagement.toml"), "{text}");
+    assert!(text.contains("env") && text.contains("file"), "{text}");
+    assert!(text.contains("needs"), "{text}");
+}
+
+#[test]
+fn password_source_stray_key_is_an_error_with_line() {
+    let dir = passwords_engagement("env = \"X\"\npassword = \"secret\"\n");
+    let text = Engagement::load(dir.path()).unwrap_err().to_string();
+    assert!(text.contains("engagement.toml"), "{text}");
+    assert!(text.contains("line 9"), "{text}");
+    assert!(!text.contains("secret"), "{text}");
 }
 
 #[test]
