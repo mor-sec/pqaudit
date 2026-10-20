@@ -344,13 +344,11 @@ fn with_factor(item: &AssessedFinding, name: &str, text: String) -> String {
 }
 
 fn override_text(over: &Override) -> String {
-    format!(
-        "{} by {} on {}. Reason: {}",
-        band_name(over.priority),
-        over.by,
-        over.date,
-        over.reason
-    )
+    messages::OVERRIDE_TEXT
+        .replace("{band}", band_name(over.priority))
+        .replace("{by}", &over.by)
+        .replace("{date}", &over.date.to_string())
+        .replace("{reason}", &over.reason)
 }
 
 fn finding_view(item: &AssessedFinding) -> FindingView {
@@ -454,9 +452,9 @@ fn brief_view(item: &AssessedFinding) -> BriefView {
 fn ready_view(item: &InventoryItem) -> ReadyView {
     ReadyView {
         kind: match item.kind {
-            pqaudit_core::InventoryKind::Certificate => "certificate",
-            pqaudit_core::InventoryKind::Key => "key",
-            pqaudit_core::InventoryKind::Endpoint => "endpoint",
+            pqaudit_core::InventoryKind::Certificate => messages::KIND_CERTIFICATE,
+            pqaudit_core::InventoryKind::Key => messages::KIND_KEY,
+            pqaudit_core::InventoryKind::Endpoint => messages::KIND_ENDPOINT,
         },
         fingerprint: item.fingerprint.0.clone(),
         algorithm: item
@@ -484,17 +482,23 @@ fn register_row(item: &AssessedFinding) -> RegisterRow {
             threat_name(item.finding.threat_type).to_string(),
         ),
         classical_weakness: if item.finding.threat_type == ThreatType::ClassicalWeakNow {
-            "Yes"
+            messages::YES
         } else {
-            "No"
+            messages::NO
         },
         classification: with_factor(item, "sensitivity", show(&ctx.classification, Clone::clone)),
         lifespan: with_factor(
             item,
             "mosca",
-            show(&ctx.data_lifespan_years, |years| format!("{years} years")),
+            show(&ctx.data_lifespan_years, |years| {
+                messages::YEARS.replace("{years}", &years.to_string())
+            }),
         ),
-        scale: with_factor(item, "scale", format!("{occurrences} places")),
+        scale: with_factor(
+            item,
+            "scale",
+            messages::PLACES.replace("{places}", &occurrences.to_string()),
+        ),
         suggested: band_name(item.band),
         effective: band_name(item.effective_band),
     }
@@ -510,7 +514,7 @@ impl View {
                 .then_with(|| x.finding.id.cmp(&y.finding.id))
         });
         let header = &a.header;
-        let dash = || "none".to_string();
+        let dash = || messages::NONE.to_string();
         let summary = [Band::Critical, Band::High, Band::Medium, Band::Low]
             .into_iter()
             .map(|band| SummaryRow {
