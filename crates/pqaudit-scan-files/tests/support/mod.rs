@@ -15,9 +15,13 @@
 //! Tag 2 is a trusted certificate. Its data is one certificate.
 //! A certificate is a type text "X.509", a 4-byte length, and DER bytes.
 //!
-//! Tag 1 is a private key. Its data starts with a 4-byte length and the encrypted key.
+//! Tag 1 is a private key in a JKS file. Its data starts with a 4-byte length and the encrypted key.
 //! Then it has a 4-byte certificate count.
 //! Then it has each certificate, written as for tag 2.
+//!
+//! Tag 1 in a JCEKS file is different. Its data is a Java serialized object.
+//! The object starts with `AC ED 00 05` and has no length in front of it.
+//! The writer puts the "encrypted key" bytes after these 4 bytes.
 
 #![allow(dead_code)]
 
@@ -83,6 +87,11 @@ pub fn write_store(magic: [u8; 4], entries: &[Entry]) -> Vec<u8> {
                 put_u32(&mut out, 1);
                 put_text(&mut out, alias);
                 out.extend_from_slice(&1_700_000_000_000u64.to_be_bytes());
+                if magic == JCEKS_MAGIC {
+                    out.extend_from_slice(&[0xAC, 0xED, 0x00, 0x05]);
+                    out.extend_from_slice(encrypted_key);
+                    continue;
+                }
                 put_u32(&mut out, encrypted_key.len());
                 out.extend_from_slice(encrypted_key);
                 put_u32(&mut out, chain.len());

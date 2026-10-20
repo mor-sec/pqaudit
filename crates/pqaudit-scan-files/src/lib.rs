@@ -342,11 +342,20 @@ fn scan_file(
     let mut found = Vec::new();
     if let Some(kind) = store_kind {
         let result = match kind {
-            StoreKind::Pkcs12 => pkcs12::scan_p12(&data, &opts.passwords).map(into_found),
-            StoreKind::Java => jks::scan_jks(&data).map(jks_certs),
+            StoreKind::Pkcs12 => pkcs12::scan_p12(&data, &opts.passwords)
+                .map(|scan| (into_found(scan.found), scan.errors)),
+            StoreKind::Java => {
+                jks::scan_jks(&data).map(|scan| (jks_certs(scan.found), scan.errors))
+            }
         };
         match result {
-            Ok(certs) => found = certs,
+            Ok((certs, reasons)) => {
+                found = certs;
+                errors.extend(reasons.into_iter().map(|reason| ScanError {
+                    location: location.clone(),
+                    reason,
+                }));
+            }
             Err(pkcs12::StoreError::Encrypted) => {
                 errors.push(ScanError {
                     location: location.clone(),

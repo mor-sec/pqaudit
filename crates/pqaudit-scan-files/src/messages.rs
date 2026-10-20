@@ -50,9 +50,12 @@ pub const KEYSTORE_INVALID: &str = "The file is not a valid key store.";
 /// The error for a key store that ends too soon.
 pub const KEYSTORE_TRUNCATED: &str = "The key store ends too soon. The file can be cut short.";
 
-/// The error for a key store entry that the tool does not read.
+/// The error for a key store that uses a feature that the tool does not read.
 pub const KEYSTORE_UNSUPPORTED: &str =
-    "The key store has a secret key entry. The tool does not read this entry type.";
+    "The key store uses a version or an encryption method that the tool does not read.";
+
+/// The error for a JCEKS key entry. The tool fills in {alias}.
+pub const JCEKS_ENTRY_UNSUPPORTED: &str = "The tool cannot read the JCEKS key entry with the alias {alias}. It reads the entries before it and stops.";
 
 /// The note for a key store that no password opens.
 pub const ENCRYPTED_NOT_INSPECTED: &str =
@@ -76,5 +79,6 @@ pub const ALL: &[(&str, &str)] = &[
     ("KEYSTORE_INVALID", KEYSTORE_INVALID),
     ("KEYSTORE_TRUNCATED", KEYSTORE_TRUNCATED),
     ("KEYSTORE_UNSUPPORTED", KEYSTORE_UNSUPPORTED),
+    ("JCEKS_ENTRY_UNSUPPORTED", JCEKS_ENTRY_UNSUPPORTED),
     ("ENCRYPTED_NOT_INSPECTED", ENCRYPTED_NOT_INSPECTED),
 ];

@@ -8,12 +8,16 @@
 //! Each entry has a tag (4 bytes), an alias, a time stamp (8 bytes), and data.
 //! An alias is a 2-byte length and text.
 //! Tag 2 is a trusted certificate. Its data is one certificate.
-//! Tag 1 is a private key entry.
-//!
-//! The data of a private key entry has 3 parts.
-//! The first part is the encrypted key: a 4-byte length and bytes.
-//! The second part is a certificate count (4 bytes). Then come the certificates.
 //! A certificate is a type text (version 2 only), a 4-byte length, and DER bytes.
+//!
+//! Tag 1 is a private key entry in a JKS file.
+//! Its data is the encrypted key (a 4-byte length and bytes), a certificate count (4 bytes),
+//! and the certificates.
+//!
+//! A JCEKS file uses another layout for tag 1 and tag 3.
+//! Those entries hold a Java serialized object. It starts with the bytes `AC ED 00 05`.
+//! It has no length in front of it, so the code cannot skip it.
+//! At such an entry the code stops, keeps the entries before it, and reports an error.
 //!
 //! The code needs no password. It skips the encrypted key bytes and does not copy them.
 //! It does not check the hash at the end.
@@ -21,7 +25,8 @@
 use pqaudit_core::CertInfo;
 
 use crate::cert::parse_certificate;
-use crate::pkcs12::StoreError;
+use crate::messages;
+use crate::pkcs12::{StoreError, StoreScan};
 
 /// The magic number of a JKS file.
 const JKS_MAGIC: [u8; 4] = [0xFE, 0xED, 0xFE, 0xED];
@@ -33,6 +38,8 @@ const HASH_LENGTH: usize = 20;
 const TAG_PRIVATE_KEY: u32 = 1;
 /// The tag of a trusted certificate entry.
 const TAG_TRUSTED_CERT: u32 = 2;
+/// The longest alias that the tool shows in a message, in characters.
+const MAX_ALIAS_CHARS: usize = 128;
 
 /// One entry of a Java key store.
 #[derive(Debug)]
@@ -89,20 +96,36 @@ impl<'a> Reader<'a> {
         self.take(length)
     }
 
-    fn certificate(&mut self, version: u32, position: usize) -> Result<CertInfo, StoreError> {
+    /// Read one certificate. The inner error is for a certificate that is not valid.
+    fn certificate(
+        &mut self,
+        version: u32,
+        position: usize,
+    ) -> Result<Result<CertInfo, String>, StoreError> {
         if version == 2 {
             self.skip_text()?;
         }
         let der = self.block()?;
-        parse_certificate(der, position).map_err(|error| StoreError::Cert(error.reason()))
+        Ok(parse_certificate(der, position).map_err(|error| error.reason()))
+    }
+
+    /// Read an alias for a message. Cut a long alias.
+    fn alias(&mut self) -> Result<String, StoreError> {
+        let length = usize::from(self.u16()?);
+        let text = String::from_utf8_lossy(self.take(length)?);
+        Ok(text.chars().take(MAX_ALIAS_CHARS).collect())
     }
 }
 
 /// Read the certificates of a JKS or JCEKS file.
-pub fn scan_jks(bytes: &[u8]) -> Result<Vec<JksEntry>, StoreError> {
+///
+/// A certificate that is not valid gives an error text. The other entries stay.
+/// In a JCEKS file, the code stops at the first key entry and reports an error.
+pub fn scan_jks(bytes: &[u8]) -> Result<StoreScan<Vec<JksEntry>>, StoreError> {
     if !has_jks_magic(bytes) {
         return Err(StoreError::Invalid);
     }
+    let is_jceks = bytes.starts_with(&JCEKS_MAGIC);
     let mut reader = Reader {
         data: bytes,
         position: JKS_MAGIC.len(),
@@ -112,33 +135,44 @@ pub fn scan_jks(bytes: &[u8]) -> Result<Vec<JksEntry>, StoreError> {
         return Err(StoreError::Invalid);
     }
     let count = reader.u32()?;
-    let mut entries = Vec::new();
+    let mut scan = StoreScan {
+        found: Vec::new(),
+        errors: Vec::new(),
+    };
     for _ in 0..count {
         let tag = reader.u32()?;
-        reader.skip_text()?;
+        let alias = reader.alias()?;
         reader.take(8)?;
         match tag {
-            TAG_TRUSTED_CERT => {
-                entries.push(JksEntry::TrustedCert(reader.certificate(version, 0)?));
-            }
-            TAG_PRIVATE_KEY => {
+            TAG_TRUSTED_CERT => match reader.certificate(version, 0)? {
+                Ok(info) => scan.found.push(JksEntry::TrustedCert(info)),
+                Err(reason) => scan.errors.push(reason),
+            },
+            TAG_PRIVATE_KEY if !is_jceks => {
                 // Skip the encrypted key. Do not copy it.
                 reader.block()?;
                 let chain_length = reader.u32()?;
                 let mut chain = Vec::new();
                 for position in 0..chain_length {
                     let position = usize::try_from(position).unwrap_or(usize::MAX);
-                    chain.push(reader.certificate(version, position)?);
+                    match reader.certificate(version, position)? {
+                        Ok(info) => chain.push(info),
+                        Err(reason) => scan.errors.push(reason),
+                    }
                 }
-                entries.push(JksEntry::PrivateKeyChain(chain));
+                scan.found.push(JksEntry::PrivateKeyChain(chain));
             }
-            // A JCEKS secret key entry holds a Java object. The tool does not read it.
-            3 => return Err(StoreError::Unsupported),
+            // A JCEKS key entry holds a Java object with no length. The code cannot skip it.
+            TAG_PRIVATE_KEY | 3 if is_jceks => {
+                scan.errors
+                    .push(messages::JCEKS_ENTRY_UNSUPPORTED.replace("{alias}", &alias));
+                return Ok(scan);
+            }
             _ => return Err(StoreError::Invalid),
         }
     }
     if bytes.len() - reader.position < HASH_LENGTH {
         return Err(StoreError::Truncated);
     }
-    Ok(entries)
+    Ok(scan)
 }

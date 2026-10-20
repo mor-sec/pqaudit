@@ -34,7 +34,7 @@ fn scan_with(paths: &[std::path::PathBuf], list: &[&str]) -> ScanOutput {
 #[test]
 fn p12_with_empty_password_reads_certs() {
     let bytes = fs::read(fixture("store-empty.p12")).unwrap();
-    let certs = scan_p12(&bytes, &[]).unwrap();
+    let certs = scan_p12(&bytes, &[]).unwrap().found;
     assert_eq!(certs.len(), 1);
     assert_eq!(certs[0].subject, "CN=p12-empty.test");
 
@@ -49,7 +49,9 @@ fn p12_with_empty_password_reads_certs() {
 fn p12_with_supplied_password_reads_certs() {
     let bytes = fs::read(fixture("store-pw.p12")).unwrap();
     // The first password is wrong. The tool tries the next one.
-    let certs = scan_p12(&bytes, &passwords(&["wrong", PASSWORD])).unwrap();
+    let certs = scan_p12(&bytes, &passwords(&["wrong", PASSWORD]))
+        .unwrap()
+        .found;
     assert_eq!(certs.len(), 1);
     assert_eq!(certs[0].subject, "CN=p12-pw.test");
 
@@ -99,7 +101,7 @@ fn two_entry_store(magic: [u8; 4], key: &[u8]) -> Vec<u8> {
 #[test]
 fn jks_trusted_and_chain_certs_read() {
     let bytes = two_entry_store(JKS_MAGIC, &pseudo_random(1, 300));
-    let entries = scan_jks(&bytes).unwrap();
+    let entries = scan_jks(&bytes).unwrap().found;
     assert_eq!(entries.len(), 2);
     match &entries[0] {
         JksEntry::TrustedCert(cert) => assert_eq!(cert.subject, "CN=ecdsa-ca.test"),
@@ -125,17 +127,25 @@ fn jks_trusted_and_chain_certs_read() {
 }
 
 #[test]
-fn jceks_magic_detected() {
+fn jceks_key_entry_stops_the_read_and_names_the_alias() {
     let bytes = two_entry_store(JCEKS_MAGIC, &pseudo_random(2, 64));
-    assert_eq!(scan_jks(&bytes).unwrap().len(), 2);
+    let scan = scan_jks(&bytes).unwrap();
+    // The trusted certificate before the key entry stays.
+    assert_eq!(scan.found.len(), 1);
+    assert!(matches!(scan.found[0], JksEntry::TrustedCert(_)));
+    assert_eq!(scan.errors.len(), 1);
+    assert!(scan.errors[0].contains("alias server"), "{:?}", scan.errors);
+    assert!(!scan.errors[0].contains("ends too soon"));
 
     // The tool detects a file with an unknown extension by the magic number.
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.dat");
     fs::write(&path, &bytes).unwrap();
     let out = scan_with(&[path], &[]);
-    assert!(out.errors.is_empty(), "errors: {:?}", out.errors);
-    assert_eq!(out.findings.len() + out.inventory.len(), 4);
+    assert_eq!(out.errors.len(), 1);
+    assert!(out.errors[0].reason.contains("JCEKS"));
+    assert_eq!(out.findings.len() + out.inventory.len(), 1);
+    assert_eq!(out.files_read, 1);
 
     // The tool detects a PKCS#12 file with an unknown extension by its first bytes.
     let dir = tempfile::tempdir().unwrap();
@@ -143,6 +153,66 @@ fn jceks_magic_detected() {
     fs::copy(fixture("store-empty.p12"), &path).unwrap();
     let out = scan_with(&[path], &[]);
     assert_eq!(out.findings.len(), 1);
+}
+
+#[test]
+fn corrupt_p12_is_an_error_not_an_encrypted_note() {
+    let mut bytes = fs::read(fixture("store-pw.p12")).unwrap();
+    // The outer length stays correct. Damage the tag of the content info.
+    let header = if bytes[1] & 0x80 == 0 {
+        2
+    } else {
+        2 + usize::from(bytes[1] & 0x7f)
+    };
+    assert_eq!(bytes[header + 3], 0x30);
+    bytes[header + 3] = 0x31;
+    assert_eq!(
+        scan_p12(&bytes, &passwords(&[PASSWORD])).unwrap_err(),
+        StoreError::Invalid
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("bad.p12");
+    fs::write(&path, &bytes).unwrap();
+    let out = scan_with(&[path], &[PASSWORD]);
+    assert_eq!(out.errors.len(), 1);
+    assert!(!out.errors[0].reason.contains("ncrypted"));
+    assert!(out.inventory.is_empty());
+    assert!(out.findings.is_empty());
+}
+
+#[test]
+fn bad_certificate_does_not_drop_the_store() {
+    let good = pem_to_der("rsa2048-leaf.pem").remove(0);
+    // Change the last byte of the RSA key OID to make an unknown key type.
+    let oid = [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01];
+    let mut bad = good.clone();
+    let at = bad.windows(oid.len()).position(|w| w == oid).unwrap();
+    bad[at + oid.len() - 1] = 0x7F;
+    let bytes = write_store(
+        JKS_MAGIC,
+        &[
+            Entry::Trusted {
+                alias: "bad",
+                cert: bad,
+            },
+            Entry::Trusted {
+                alias: "good",
+                cert: good,
+            },
+        ],
+    );
+    let scan = scan_jks(&bytes).unwrap();
+    assert_eq!(scan.found.len(), 1);
+    assert_eq!(scan.errors.len(), 1);
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("mixed.jks");
+    fs::write(&path, &bytes).unwrap();
+    let out = scan_with(&[path], &[]);
+    assert_eq!(out.findings.len(), 1);
+    assert_eq!(out.errors.len(), 1);
+    assert!(out.errors[0].reason.contains("public key type"));
 }
 
 #[test]
