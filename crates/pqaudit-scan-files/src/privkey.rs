@@ -12,7 +12,10 @@
 //! An error never holds bytes from the file.
 //! The code does not decrypt a key.
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use pqaudit_core::KeyKind;
+use zeroize::Zeroizing;
 
 use crate::algorithm::{self, Parts};
 use crate::der::{self, Tlv, BIT_STRING, INTEGER, NULL, OCTET_STRING, OID, SEQUENCE};
@@ -72,6 +75,42 @@ pub fn parse_block(block: &Block<'_>, place: &str) -> Result<FoundKey, KeyProble
         }
     };
     Ok(found.at_line(block.line))
+}
+
+/// Read one key from DER bytes. The `place` names the file. It is for hashes only.
+///
+/// The code tries these forms in order: SPKI, PKCS#8, encrypted PKCS#8, PKCS#1 private,
+/// SEC1, and PKCS#1 public. A form with a known structure and a bad content gives its own error.
+/// If no form fits, the error is `Invalid`.
+pub fn parse_der(data: &[u8], place: &str) -> Result<FoundKey, KeyProblem> {
+    let results = [
+        spki(data),
+        pkcs8(data, place),
+        encrypted_der(data),
+        pkcs1_private(data),
+        sec1(data),
+        pkcs1_public(data),
+    ];
+    results
+        .into_iter()
+        .find(|result| !matches!(result, Err(KeyProblem::Invalid)))
+        .unwrap_or(Err(KeyProblem::Invalid))
+}
+
+/// Read an encrypted PKCS#8 key in DER form. The code does not read the encrypted bytes.
+///
+/// The ID is the hash of the base64 text, the same as for the PEM form of the key.
+fn encrypted_der(data: &[u8]) -> Result<FoundKey, KeyProblem> {
+    let invalid = || KeyProblem::Invalid;
+    let (outer, after_outer) = der::read_tag(data, SEQUENCE).ok_or_else(invalid)?;
+    let (id, rest) = der::read_tag(outer.content, SEQUENCE).ok_or_else(invalid)?;
+    algorithm_id(id).ok_or_else(invalid)?;
+    let (_, after_key) = der::read_tag(rest, OCTET_STRING).ok_or_else(invalid)?;
+    if !after_key.is_empty() || !after_outer.is_empty() {
+        return Err(invalid());
+    }
+    let text = Zeroizing::new(STANDARD.encode(data).into_bytes());
+    Ok(FoundKey::encrypted(&text))
 }
 
 /// Make the item for an encrypted key. The code does not decode the text.

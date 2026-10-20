@@ -104,9 +104,6 @@ fn decode_block(body: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// Read one DER certificate.
-pub fn parse_der(data: &[u8]) -> Result<CertInfo, String> {
-    parse_certificate(data, 0).map_err(|error| match error {
-        CertError::Invalid => messages::DER_INVALID.to_string(),
-        other => other.reason(),
-    })
+pub fn parse_der(data: &[u8]) -> Result<CertInfo, CertError> {
+    parse_certificate(data, 0)
 }

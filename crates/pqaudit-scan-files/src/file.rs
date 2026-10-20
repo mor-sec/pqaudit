@@ -12,6 +12,7 @@ use pqaudit_core::{
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+use crate::cert::CertError;
 use crate::keys::{FoundKey, KeyProblem};
 use crate::pem::{self, BlockKind};
 use crate::sniff::{self, Format, StoreKind};
@@ -301,6 +302,7 @@ pub(crate) fn scan_file(
     match format {
         Format::Store(kind) => scan_store(kind, &data, opts, &ctx, collector, errors),
         Format::CertFile | Format::Pem => scan_pem(&data, &ctx, collector, errors),
+        Format::DerKey => scan_der_key(&data, &ctx, collector, errors),
         Format::SshKeys => scan_ssh(&data, &ctx, collector, errors),
         Format::Pgp => scan_pgp(&data, &ctx, collector, errors),
         Format::Kbx => Outcome::Failed,
@@ -396,10 +398,18 @@ fn scan_pem(
         if ctx.extension == "pem" {
             errors.push(ctx.error(messages::NO_CERTIFICATE.to_string()));
         } else {
-            match cert::parse_der(data) {
-                Ok(info) => collector.add_certs(vec![cert::Found { info, line: None }], ctx),
-                Err(reason) => errors.push(ctx.error(reason)),
-            }
+            return match cert::parse_der(data) {
+                Ok(info) => {
+                    collector.add_certs(vec![cert::Found { info, line: None }], ctx);
+                    Outcome::Read
+                }
+                // Only a file that is not a certificate can be a key.
+                Err(CertError::Invalid) => scan_der_key(data, ctx, collector, errors),
+                Err(other) => {
+                    errors.push(ctx.error(other.reason()));
+                    Outcome::Read
+                }
+            };
         }
         return Outcome::Read;
     }
@@ -426,6 +436,32 @@ fn scan_pem(
     collector.add_certs(certs.certs, ctx);
     collector.add_keys(keys.found, ctx);
     Outcome::Read
+}
+
+/// Scan a file with one key in DER form.
+///
+/// The error never holds bytes of the file.
+fn scan_der_key(
+    data: &[u8],
+    ctx: &FileContext<'_>,
+    collector: &mut Collector,
+    errors: &mut Vec<ScanError>,
+) -> Outcome {
+    let place = format!("{}#0", ctx.location);
+    match privkey::parse_der(data, &place) {
+        Ok(key) => {
+            collector.add_keys(vec![key], ctx);
+            Outcome::Read
+        }
+        Err(KeyProblem::Invalid) => {
+            errors.push(ctx.error(messages::DER_INVALID.to_string()));
+            Outcome::Read
+        }
+        Err(problem) => {
+            errors.push(ctx.error(problem.reason()));
+            Outcome::Read
+        }
+    }
 }
 
 /// Scan a file with SSH public keys.

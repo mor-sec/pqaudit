@@ -563,10 +563,201 @@ fn private_key_material_never_in_results() {
         key_fixture("pkcs8-rsa.pem"),
         key_fixture("id_rsa"),
         key_fixture("gpg-rsa3072.sec.gpg"),
+        fixture("store-pw.key.der"),
+        fixture("store-empty.key.der"),
     ]);
     let json = serde_json::to_string(&out).unwrap();
     for (name, secret) in &parts {
         assert_no_window(&json, secret, name);
+    }
+    for name in ["store-pw.key.der", "store-empty.key.der"] {
+        let secret = fs::read(fixture(name)).unwrap();
+        assert_no_window(&json, &secret, name);
+    }
+}
+
+/// Write the DER bytes of a PEM key fixture into a new file and return its path.
+fn der_copy(dir: &tempfile::TempDir, pem_name: &str, file_name: &str) -> PathBuf {
+    let path = dir.path().join(file_name);
+    fs::write(&path, decode_block(&key_fixture(pem_name))).unwrap();
+    path
+}
+
+#[test]
+fn der_pkcs8_rsa_key_is_read() {
+    for name in ["store-pw.key.der", "store-empty.key.der"] {
+        let out = scan_paths(&[fixture(name)]);
+        let finding = only_finding(&out);
+        assert_eq!(finding.rule_id, "key.classical", "{name}");
+        let algorithm = finding.algorithm.as_ref().unwrap();
+        assert_eq!(
+            (algorithm.name.as_str(), algorithm.key_bits),
+            ("RSA", Some(2048))
+        );
+        assert_eq!(finding.key.as_ref().unwrap().kind, KeyKind::Pkcs8Private);
+        assert_eq!(out.files_read, 1);
+        assert_eq!(out.files_not_read, 0);
+    }
+}
+
+#[test]
+fn der_key_and_pem_key_dedupe() {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine;
+    let dir = tempfile::tempdir().unwrap();
+    let der = fs::read(fixture("store-pw.key.der")).unwrap();
+    let pem = dir.path().join("twin.pem");
+    fs::write(
+        &pem,
+        format!(
+            "-----BEGIN PRIVATE KEY-----\n{}\n-----END PRIVATE KEY-----\n",
+            STANDARD.encode(&der)
+        ),
+    )
+    .unwrap();
+    let out = scan_paths(&[fixture("store-pw.key.der"), pem]);
+    assert_eq!(only_finding(&out).occurrences.len(), 2);
+}
+
+#[test]
+fn der_other_key_forms_match_the_pem_forms() {
+    let dir = tempfile::tempdir().unwrap();
+    let cases = [
+        ("spki-rsa.pem", "spki.der", KeyKind::X509Spki),
+        ("spki-ed25519.pem", "spki-ed.der", KeyKind::X509Spki),
+        ("pkcs1-rsa.pem", "pkcs1.key", KeyKind::Pkcs8Private),
+        ("sec1-ec.pem", "sec1.der", KeyKind::Pkcs8Private),
+        ("pkcs8-ec.pem", "plain-ec", KeyKind::Pkcs8Private),
+        ("pkcs8-ed25519.pem", "ed.der", KeyKind::Pkcs8Private),
+    ];
+    for (pem_name, file_name, kind) in cases {
+        let der = der_copy(&dir, pem_name, file_name);
+        let from_der = scan_paths(&[der]);
+        let from_pem = scan_key(pem_name);
+        let (der_key, der_algorithm) = all_keys(&from_der)[0];
+        let (pem_key, pem_algorithm) = all_keys(&from_pem)[0];
+        assert!(
+            from_der.errors.is_empty(),
+            "{file_name}: {:?}",
+            from_der.errors
+        );
+        assert_eq!(der_key.kind, kind, "{file_name}");
+        assert_eq!(der_key.fingerprint_sha256, pem_key.fingerprint_sha256);
+        assert_eq!(der_algorithm, pem_algorithm, "{file_name}");
+    }
+}
+
+#[test]
+fn der_spki_public_key_is_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = der_copy(&dir, "spki-rsa.pem", "public.der");
+    let out = scan_paths(&[path]);
+    let finding = only_finding(&out);
+    let key = finding.key.as_ref().unwrap();
+    assert_eq!(key.kind, KeyKind::X509Spki);
+    assert_eq!(
+        key.fingerprint_sha256,
+        sha256_hex(&decode_block(&key_fixture("spki-rsa.pem")))
+    );
+}
+
+#[test]
+fn encrypted_der_pkcs8_not_inspected() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = der_copy(&dir, "pkcs8-rsa-enc.pem", "enc.der");
+    let out = scan_paths(&[path]);
+    let item = only_inventory(&out);
+    let key = item.key.as_ref().unwrap();
+    assert_eq!(key.kind, KeyKind::EncryptedPrivate);
+    assert!(item.algorithm.is_none());
+    assert!(item.occurrences[0].evidence.contains("ncrypted"));
+    // The PEM form of the same key gives the same fingerprint.
+    let from_pem = scan_key("pkcs8-rsa-enc.pem");
+    assert_eq!(
+        key.fingerprint_sha256,
+        only_inventory(&from_pem)
+            .key
+            .as_ref()
+            .unwrap()
+            .fingerprint_sha256
+    );
+}
+
+#[test]
+fn random_der_is_an_error_with_the_new_message() {
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["random.der", "random.key"] {
+        let path = dir.path().join(name);
+        fs::write(&path, pseudo_random(7, 600)).unwrap();
+        let out = scan_paths(&[path]);
+        assert_eq!(out.errors.len(), 1, "{name}: {:?}", out.errors);
+        assert_eq!(
+            out.errors[0].reason,
+            "The file is not a valid DER certificate or key."
+        );
+        assert!(out.findings.is_empty() && out.inventory.is_empty());
+    }
+    // A file with no key name and random content is not an error.
+    let path = dir.path().join("random.bin");
+    fs::write(&path, pseudo_random(7, 600)).unwrap();
+    let out = scan_paths(&[path]);
+    assert!(out.errors.is_empty(), "{:?}", out.errors);
+}
+
+#[test]
+fn der_key_without_a_name_is_found_by_content() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = der_copy(&dir, "pkcs8-rsa.pem", "id_unnamed");
+    let out = scan_paths(&[path]);
+    assert_eq!(only_finding(&out).rule_id, "key.classical");
+}
+
+#[test]
+fn der_key_material_never_in_results() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut files = vec![
+        (
+            "store-pw.key.der",
+            fs::read(fixture("store-pw.key.der")).unwrap(),
+        ),
+        (
+            "store-empty.key.der",
+            fs::read(fixture("store-empty.key.der")).unwrap(),
+        ),
+    ];
+    for (pem_name, file_name) in [
+        ("pkcs8-ec.pem", "ec.der"),
+        ("pkcs8-ed25519.pem", "ed.der"),
+        ("pkcs8-mldsa65.pem", "mldsa.der"),
+        ("pkcs1-rsa.pem", "pkcs1.der"),
+        ("sec1-ec.pem", "sec1.der"),
+        ("pkcs8-rsa-enc.pem", "enc.der"),
+    ] {
+        files.push((file_name, decode_block(&key_fixture(pem_name))));
+    }
+    for (name, secret) in &files {
+        let path = dir.path().join(name);
+        fs::write(&path, secret).unwrap();
+        let out = scan_paths(&[path]);
+        assert!(out.errors.is_empty(), "{name}: {:?}", out.errors);
+        assert!(!all_keys(&out).is_empty(), "{name}");
+        assert_no_window(&serde_json::to_string(&out).unwrap(), secret, name);
+        assert_no_window(&format!("{out:?}"), secret, name);
+        for (variant, bytes) in [
+            ("cut", secret[..secret.len() * 2 / 3].to_vec()),
+            ("flip", secret.iter().map(|b| b ^ 0x01).collect::<Vec<u8>>()),
+            ("tail", secret[secret.len() / 2..].to_vec()),
+        ] {
+            let path = dir.path().join(format!("{variant}-{name}"));
+            fs::write(&path, bytes).unwrap();
+            let out = scan_paths(&[path]);
+            assert_no_window(
+                &serde_json::to_string(&out).unwrap(),
+                secret,
+                &format!("{name} {variant}"),
+            );
+            assert_no_window(&format!("{out:?}"), secret, &format!("{name} {variant}"));
+        }
     }
 }
 

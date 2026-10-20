@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use crate::pem::{self, BlockKind};
+use crate::{der, privkey};
 use crate::{gpg, jks, pkcs12, ssh};
 
 /// The kind of key store file.
@@ -25,6 +26,8 @@ pub(crate) enum Format {
     Pem,
     /// Text with SSH public keys, one for each line.
     SshKeys,
+    /// One key in DER form, for a file with no name that shows it.
+    DerKey,
     /// OpenPGP keys, in binary form or as armor.
     Pgp,
     /// A GnuPG key box.
@@ -58,7 +61,7 @@ pub(crate) fn by_name(path: &Path) -> Option<Format> {
     match extension.as_str() {
         "p12" | "pfx" => Some(Format::Store(StoreKind::Pkcs12)),
         "jks" | "jceks" | "keystore" => Some(Format::Store(StoreKind::Java)),
-        "pem" | "crt" | "cer" | "der" => Some(Format::CertFile),
+        "pem" | "crt" | "cer" | "der" | "key" => Some(Format::CertFile),
         "kbx" => Some(Format::Kbx),
         _ => None,
     }
@@ -78,7 +81,12 @@ pub(crate) fn by_content(head: &[u8], key_extension: bool) -> Option<Format> {
     if head.get(8..12) == Some(b"KBXf") {
         return Some(Format::Kbx);
     }
-    ssh::looks_like_keys(head).then_some(Format::SshKeys)
+    if ssh::looks_like_keys(head) {
+        return Some(Format::SshKeys);
+    }
+    // A short DER key can sit inside the start of the file. A bigger file never matches.
+    (head.first() == Some(&der::SEQUENCE) && privkey::parse_der(head, "").is_ok())
+        .then_some(Format::DerKey)
 }
 
 /// Return true if the file name suggests a key file but does not prove it.

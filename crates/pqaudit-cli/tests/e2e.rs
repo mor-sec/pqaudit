@@ -142,9 +142,9 @@ fn full_stage1_engagement() {
         assert_eq!(of_connection[1]["outcome"], outcome, "{lines:?}");
     }
 
-    // Exit 3 is right here. The fixtures hold files that the scanner cannot read, on purpose:
-    // the GnuPG key box `pubring.kbx`, the `.key.der` files that are not certificates,
-    // and the key store `store-pw.p12`, which needs a password that the engagement does not give.
+    // Exit 3 is right here. The fixtures hold two files that the scanner cannot read, on purpose.
+    // One is the GnuPG key box `pubring.kbx`.
+    // The other is the key store `store-pw.p12`. It needs a password that the engagement lacks.
     // The scanner reports each one as an error and keeps the other results.
     engagement
         .pqaudit()
@@ -165,21 +165,10 @@ fn full_stage1_engagement() {
         .collect();
     errors.sort();
     let names: Vec<&str> = errors.iter().map(|(name, _)| name.as_str()).collect();
-    assert_eq!(
-        names,
-        [
-            "pubring.kbx",
-            "store-empty.key.der",
-            "store-pw.key.der",
-            "store-pw.p12"
-        ],
-        "{errors:?}"
-    );
+    assert_eq!(names, ["pubring.kbx", "store-pw.p12"], "{errors:?}");
     assert!(errors[0].1.contains("Unsupported format"), "{errors:?}");
-    assert!(errors[3].1.contains("Encrypted"), "{errors:?}");
-    // The two `.key.der` files are raw PKCS#8 RSA keys, not certificates. The scanner reads a DER file as a
-    // certificate only, so it reports them with a wrong message. This is a scanner gap that the report lists.
-    // The test does not pin the message of these two errors.
+    assert!(errors[1].1.contains("Encrypted"), "{errors:?}");
+    // The two `.key.der` files are raw PKCS#8 RSA keys. The scanner reads them as keys.
     assert_eq!(results_with_prefix(&engagement, "net-").len(), 1);
     assert_eq!(results_with_prefix(&engagement, "files-").len(), 1);
 

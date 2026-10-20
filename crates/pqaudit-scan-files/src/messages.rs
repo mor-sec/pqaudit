@@ -20,8 +20,8 @@ pub const NAME_NOT_UTF8: &str =
 /// The error for a file that has no certificate data.
 pub const NO_CERTIFICATE: &str = "The file has no certificate data in a known format.";
 
-/// The error for a DER file that is not a valid certificate.
-pub const DER_INVALID: &str = "The file is not a valid DER certificate.";
+/// The error for a DER file that is not a valid certificate or key.
+pub const DER_INVALID: &str = "The file is not a valid DER certificate or key.";
 
 /// The error for a PEM file with bad blocks. The tool fills in {bad}, {total}, and {reason}.
 pub const PEM_BLOCKS_INVALID: &str =
