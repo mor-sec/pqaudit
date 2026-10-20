@@ -33,13 +33,6 @@ pub const PEM_NOT_CLOSED: &str = "A certificate block has no end line.";
 /// The reason for a PEM block with bad base64 text.
 pub const PEM_BAD_BASE64: &str = "A certificate block has bad base64 text.";
 
-/// The reason for certificate data that the parser rejects.
-pub const CERT_INVALID: &str = "The certificate data is not valid.";
-
-/// The reason for a public key type that the tool does not know. The tool fills in {oid}.
-pub const UNKNOWN_KEY: &str =
-    "The certificate has a public key type that the tool does not know. The OID is {oid}.";
-
 /// The note for symbolic links that the tool skipped. The tool fills in {count}.
 pub const SYMLINKS_SKIPPED: &str =
     "The tool skipped {count} symbolic links. Use the flag --follow-symlinks to scan them.";
@@ -125,8 +118,6 @@ pub const ALL: &[(&str, &str)] = &[
     ("PEM_BLOCKS_INVALID", PEM_BLOCKS_INVALID),
     ("PEM_NOT_CLOSED", PEM_NOT_CLOSED),
     ("PEM_BAD_BASE64", PEM_BAD_BASE64),
-    ("CERT_INVALID", CERT_INVALID),
-    ("UNKNOWN_KEY", UNKNOWN_KEY),
     ("SYMLINKS_SKIPPED", SYMLINKS_SKIPPED),
     ("EVIDENCE", EVIDENCE),
     ("KEYSTORE_INVALID", KEYSTORE_INVALID),

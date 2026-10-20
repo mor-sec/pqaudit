@@ -1,15 +1,33 @@
-//! The `scan net` command. This version has the dry-run only.
+//! The `scan net` command: show the plan, or probe the targets of the scope file.
+//!
+//! The command checks the plan and the allowed hours before it opens a socket.
 
-use pqaudit_core::Protocol;
-use pqaudit_scan_net::scope::{build_plan, ScopeFile, SystemResolver, TargetPlan};
+use std::path::Path;
 
+use chrono::{Local, Utc};
+use pqaudit_core::engagement::Engagement;
+use pqaudit_core::SCHEMA_VERSION;
+use pqaudit_core::{PackRef, Protocol, ResultsFile, ResultsHeader, RunInfo, ScannerKind};
+use pqaudit_rules::install::active_pack;
+use pqaudit_scan_net::audit::{hash_file, AuditLog};
+use pqaudit_scan_net::runtime::{check_hours, run as run_probes};
+use pqaudit_scan_net::scope::{build_plan, scope_hash, ScopeFile, SystemResolver, TargetPlan};
+use pqaudit_scan_net::tls::RealProbes;
+use uuid::Uuid;
+
+use super::scan_files::{engagement_name, host_name, write_results};
 use crate::cli::Cli;
 use crate::exit::ExitCode;
 use crate::messages;
 
+/// The name of the audit log in the engagement directory.
+const AUDIT_LOG_FILE: &str = "audit.log";
+/// The most scan errors that the command shows on the screen.
+const MAX_SHOWN_ERRORS: usize = 50;
+
 /// Run `scan net`.
-pub fn run(cli: &Cli, dry_run: bool) -> ExitCode {
-    let (scope, _bytes) = match ScopeFile::load(&cli.engagement) {
+pub fn run(cli: &Cli, dry_run: bool, output: Option<&Path>) -> ExitCode {
+    let (scope, bytes) = match ScopeFile::load(&cli.engagement) {
         Ok(loaded) => loaded,
         Err(error) => return fail(&error),
     };
@@ -17,17 +35,177 @@ pub fn run(cli: &Cli, dry_run: bool) -> ExitCode {
         Ok(plan) => plan,
         Err(error) => return fail(&error),
     };
-    if !dry_run {
-        eprintln!("{}", messages::NOT_IMPLEMENTED);
-        return ExitCode::Error;
+    if dry_run || plan.is_refused() {
+        show_plan(&plan);
     }
-    show_plan(&plan);
     if plan.is_refused() {
         eprintln!("{}", messages::NET_REFUSED_STOP);
-        ExitCode::Refused
-    } else {
-        ExitCode::Success
+        return ExitCode::Refused;
     }
+    if dry_run {
+        return ExitCode::Success;
+    }
+    // The time window comes before any connection and before any file write.
+    if let Err(error) = check_hours(scope.allowed_hours.as_ref(), Local::now().time()) {
+        return fail(&error);
+    }
+    if plan.targets.is_empty() {
+        eprintln!("{}", messages::NET_NOTHING_TO_SCAN);
+        return ExitCode::Error;
+    }
+    scan(cli, &scope, &plan, &bytes, output)
+}
+
+/// Probe the targets of a plan that passed the safety checks.
+fn scan(
+    cli: &Cli,
+    scope: &ScopeFile,
+    plan: &TargetPlan,
+    scope_bytes: &[u8],
+    output_path: Option<&Path>,
+) -> ExitCode {
+    let started = Utc::now();
+    let engagement = match Engagement::load(&cli.engagement) {
+        Ok(engagement) => engagement,
+        Err(error) => return fail_text(messages::ENGAGEMENT_LOAD, &error.to_string()),
+    };
+    let active = match active_pack(cli.allow_unsigned_rules) {
+        Ok(active) => active,
+        Err(error) => return fail_text(messages::PACK_LOAD, &error.to_string()),
+    };
+    let audit_path = engagement.dir.join(AUDIT_LOG_FILE);
+    let audit = match AuditLog::open(&audit_path) {
+        Ok(audit) => audit,
+        Err(error) => {
+            return fail_text(
+                &messages::AUDIT_OPEN.replace("{path}", &audit_path.display().to_string()),
+                &error.to_string(),
+            )
+        }
+    };
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => return fail_text(messages::NET_RUNTIME, &error.to_string()),
+    };
+
+    let run_id = Uuid::new_v4();
+    let probes = RealProbes::new(scope.legacy_tls_check);
+    let output = runtime.block_on(run_probes(plan, &probes, &audit, run_id, &active.pack));
+    let finished = Utc::now();
+
+    let audit_hash = match audit.sync().and_then(|()| hash_file(&audit_path)) {
+        Ok(hash) => hash,
+        Err(error) => {
+            return fail_text(
+                &messages::AUDIT_HASH.replace("{path}", &audit_path.display().to_string()),
+                &error.to_string(),
+            )
+        }
+    };
+    let host = host_name();
+    let results = ResultsFile {
+        header: ResultsHeader {
+            schema_version: SCHEMA_VERSION,
+            engagement: engagement_name(&engagement),
+            tool_version: env!("CARGO_PKG_VERSION").to_string(),
+            rules_pack: PackRef {
+                id: active.pack.id.clone(),
+                version: active.pack.version.to_string(),
+                content_hash: active.pack.content_hash.clone(),
+                origin: (&active.origin).into(),
+            },
+            scanner: ScannerKind::Net,
+            host: host.clone(),
+            operator: engagement.config.assessor.clone(),
+            started,
+            finished,
+            scope_hash: Some(scope_hash(scope_bytes)),
+            audit_log_hash: Some(audit_hash),
+            runs: vec![RunInfo {
+                run_id,
+                scanner: ScannerKind::Net,
+                host,
+                started,
+            }],
+            redacted: false,
+        },
+        findings: output.findings.clone(),
+        inventory: output.inventory.clone(),
+        errors: output.errors.clone(),
+    };
+    let path = match output_path {
+        Some(path) => path.to_path_buf(),
+        None => engagement
+            .dir
+            .join("results")
+            .join(format!("net-{}.pqr", started.format("%Y%m%dT%H%M%S"))),
+    };
+    if let Err(error) = write_results(&results, &path) {
+        return fail_text(
+            &messages::RESULTS_WRITE.replace("{path}", &path.display().to_string()),
+            &error.to_string(),
+        );
+    }
+    report(
+        &output,
+        &path,
+        &audit_path,
+        plan.targets.len(),
+        audit.is_broken(),
+    )
+}
+
+/// Show the summary and choose the exit code.
+fn report(
+    output: &pqaudit_scan_net::runtime::NetOutput,
+    results_path: &Path,
+    audit_path: &Path,
+    targets: usize,
+    audit_broken: bool,
+) -> ExitCode {
+    for error in output.errors.iter().take(MAX_SHOWN_ERRORS) {
+        eprintln!(
+            "{}",
+            messages::SCAN_ERROR_LINE
+                .replace("{location}", &error.location)
+                .replace("{reason}", &error.reason)
+        );
+    }
+    if output.errors.len() > MAX_SHOWN_ERRORS {
+        eprintln!(
+            "{}",
+            messages::SCAN_ERRORS_HIDDEN.replace(
+                "{count}",
+                &(output.errors.len() - MAX_SHOWN_ERRORS).to_string()
+            )
+        );
+    }
+    println!(
+        "{}",
+        messages::NET_SCAN_SUMMARY
+            .replace("{targets}", &targets.to_string())
+            .replace("{findings}", &output.findings.len().to_string())
+            .replace("{inventory}", &output.inventory.len().to_string())
+            .replace("{errors}", &output.errors.len().to_string())
+    );
+    println!("{} {}", messages::SCAN_RESULTS, results_path.display());
+    println!("{} {}", messages::NET_AUDIT_LOG, audit_path.display());
+    if audit_broken {
+        eprintln!("{}", messages::AUDIT_FAILED);
+        ExitCode::Error
+    } else if output.errors.is_empty() {
+        ExitCode::Success
+    } else {
+        ExitCode::Partial
+    }
+}
+
+fn fail_text(text: &str, reason: &str) -> ExitCode {
+    eprintln!("{}", text.replace("{reason}", reason));
+    ExitCode::Error
 }
 
 /// Show the error. A limit error is a refusal. Other errors are failures.

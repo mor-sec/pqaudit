@@ -140,5 +140,8 @@ pub enum ScanCommand {
         /// Show the planned targets and the refusals. Then stop. The tool makes no connection.
         #[arg(long)]
         dry_run: bool,
+        /// Write the results to this file. The default is a new file in the results directory.
+        #[arg(long, value_name = "FILE")]
+        output: Option<PathBuf>,
     },
 }

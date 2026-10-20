@@ -163,7 +163,7 @@ fn fail(text: &str, reason: &str) -> ExitCode {
     ExitCode::Error
 }
 
-fn write_results(results: &ResultsFile, path: &Path) -> std::io::Result<()> {
+pub(crate) fn write_results(results: &ResultsFile, path: &Path) -> std::io::Result<()> {
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -174,7 +174,7 @@ fn write_results(results: &ResultsFile, path: &Path) -> std::io::Result<()> {
 }
 
 /// The name of the engagement is the name of its directory.
-fn engagement_name(engagement: &Engagement) -> String {
+pub(crate) fn engagement_name(engagement: &Engagement) -> String {
     std::fs::canonicalize(&engagement.dir)
         .ok()
         .and_then(|dir| {
@@ -184,7 +184,7 @@ fn engagement_name(engagement: &Engagement) -> String {
         .unwrap_or_else(|| engagement.config.client.clone())
 }
 
-fn host_name() -> String {
+pub(crate) fn host_name() -> String {
     ["HOSTNAME", "COMPUTERNAME"]
         .iter()
         .find_map(|name| std::env::var(name).ok().filter(|value| !value.is_empty()))

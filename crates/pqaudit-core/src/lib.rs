@@ -6,6 +6,7 @@ pub mod finding;
 pub mod fingerprint;
 pub mod messages;
 pub mod results;
+pub mod x509;
 
 pub use finding::*;
 pub use fingerprint::Fingerprint;

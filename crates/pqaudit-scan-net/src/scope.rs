@@ -78,6 +78,8 @@ pub enum ScopeError {
         /// The name of the limit.
         name: &'static str,
     },
+    /// The current time is outside the window `allowed_hours`.
+    OutsideHours,
 }
 
 impl ScopeError {
@@ -85,7 +87,7 @@ impl ScopeError {
     pub fn is_refusal(&self) -> bool {
         matches!(
             self,
-            Self::LimitAboveDefault { .. } | Self::LimitBelowDefault { .. }
+            Self::LimitAboveDefault { .. } | Self::LimitBelowDefault { .. } | Self::OutsideHours
         )
     }
 }
@@ -118,6 +120,7 @@ impl fmt::Display for ScopeError {
                 .replace("{requested}", &requested.to_string())
                 .replace("{default}", &default.to_string()),
             Self::LimitZero { name } => messages::LIMIT_ZERO.replace("{name}", name),
+            Self::OutsideHours => messages::OUTSIDE_HOURS.to_string(),
         };
         f.write_str(&text)
     }

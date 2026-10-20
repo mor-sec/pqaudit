@@ -61,6 +61,70 @@ pub const REFUSE_CIDR_LARGE: &str =
 pub const REFUSE_CIDR_HUGE: &str =
     "The CIDR range has more than {max} addresses. The tool never scans a range this large.";
 
+/// The error when the current time is outside `allowed_hours`.
+pub const OUTSIDE_HOURS: &str =
+    "The current time is outside the window allowed_hours. The tool makes no connection.";
+
+/// The error when the tool cannot connect. The tool fills in {reason}.
+pub const CONNECT_FAILED: &str = "The tool could not connect. {reason}";
+
+/// The error when the connect does not finish in the connect timeout.
+pub const CONNECT_TIMEOUT: &str = "The connection did not finish in the connect timeout.";
+
+/// The error when the audit log does not work.
+pub const AUDIT_BROKEN: &str =
+    "The tool cannot write the audit log. The tool makes no more connections.";
+
+/// The error when the handshake does not finish in the read timeout. The tool fills in {probe}.
+pub const HANDSHAKE_TIMEOUT: &str = "The {probe} handshake did not finish in the read timeout.";
+
+/// The error when a handshake fails. The tool fills in {probe} and {reason}.
+pub const HANDSHAKE_FAILED: &str = "The {probe} handshake failed. {reason}";
+
+/// The note that the server did not accept the hybrid groups. The tool fills in {reason}.
+pub const HYBRID_REJECTED: &str = "The server did not accept the hybrid key exchange. {reason}";
+
+/// The error for a certificate in the chain that the tool cannot read.
+/// The tool fills in {position} and {reason}.
+pub const CHAIN_CERT_BAD: &str = "Certificate {position} in the chain is not readable. {reason}";
+
+/// The note that the chain has more certificates than the tool reads. The tool fills in {max}.
+pub const CHAIN_TOO_LONG: &str =
+    "The chain has more than {max} certificates. The tool read the first {max}.";
+
+/// The error when the check for old protocol versions fails. The tool fills in {reason}.
+pub const LEGACY_FAILED: &str = "The check for old protocol versions failed. {reason}";
+
+/// The error when the server sends a reply that is not a TLS handshake record.
+pub const LEGACY_BAD_REPLY: &str = "The server sent a reply that is not a TLS handshake.";
+
+/// The error when the SSH probe does not exist yet.
+pub const SSH_NOT_AVAILABLE: &str = "The SSH probe is not available yet.";
+
+/// The error when the system cannot give random bytes.
+pub const RANDOM_FAILED: &str = "The system cannot give random bytes.";
+
+/// The error when no handshake finished and the tool has no other reason.
+pub const NO_HANDSHAKE: &str = "No TLS handshake finished.";
+
+/// The evidence for an endpoint that accepts a hybrid group.
+pub const EVIDENCE_PQ_READY: &str = "The server accepted a hybrid post-quantum key exchange.";
+
+/// The evidence for an endpoint that does not accept a hybrid group.
+/// The tool fills in {group}.
+pub const EVIDENCE_NO_PQ: &str =
+    "The server did not accept a hybrid post-quantum key exchange. It selected the group {group}.";
+
+/// The evidence for an endpoint that accepts old protocol versions. The tool fills in {versions}.
+pub const EVIDENCE_LEGACY: &str = "The server accepted these old protocol versions: {versions}.";
+
+/// The evidence for a certificate in the chain of an endpoint.
+/// The tool fills in {position} and {subject}.
+pub const EVIDENCE_CHAIN_CERT: &str = "Certificate {position} in the chain. Subject: {subject}.";
+
+/// The text for an unknown group or version.
+pub const UNKNOWN_VALUE: &str = "unknown";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("SCOPE_PARSE", SCOPE_PARSE),
@@ -81,4 +145,23 @@ pub const ALL: &[(&str, &str)] = &[
     ("REFUSE_OUTSIDE", REFUSE_OUTSIDE),
     ("REFUSE_CIDR_LARGE", REFUSE_CIDR_LARGE),
     ("REFUSE_CIDR_HUGE", REFUSE_CIDR_HUGE),
+    ("OUTSIDE_HOURS", OUTSIDE_HOURS),
+    ("CONNECT_FAILED", CONNECT_FAILED),
+    ("CONNECT_TIMEOUT", CONNECT_TIMEOUT),
+    ("AUDIT_BROKEN", AUDIT_BROKEN),
+    ("HANDSHAKE_TIMEOUT", HANDSHAKE_TIMEOUT),
+    ("HANDSHAKE_FAILED", HANDSHAKE_FAILED),
+    ("HYBRID_REJECTED", HYBRID_REJECTED),
+    ("CHAIN_CERT_BAD", CHAIN_CERT_BAD),
+    ("CHAIN_TOO_LONG", CHAIN_TOO_LONG),
+    ("LEGACY_FAILED", LEGACY_FAILED),
+    ("LEGACY_BAD_REPLY", LEGACY_BAD_REPLY),
+    ("SSH_NOT_AVAILABLE", SSH_NOT_AVAILABLE),
+    ("RANDOM_FAILED", RANDOM_FAILED),
+    ("NO_HANDSHAKE", NO_HANDSHAKE),
+    ("EVIDENCE_PQ_READY", EVIDENCE_PQ_READY),
+    ("EVIDENCE_NO_PQ", EVIDENCE_NO_PQ),
+    ("EVIDENCE_LEGACY", EVIDENCE_LEGACY),
+    ("EVIDENCE_CHAIN_CERT", EVIDENCE_CHAIN_CERT),
+    ("UNKNOWN_VALUE", UNKNOWN_VALUE),
 ];

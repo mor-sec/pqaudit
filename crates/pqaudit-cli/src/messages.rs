@@ -93,9 +93,40 @@ pub const NET_NO_TARGETS: &str = "The plan has no targets. Add a target to the f
 /// The text when the plan has a refusal.
 pub const NET_REFUSED_STOP: &str = "The tool refuses the full scan.";
 
+/// The error when the tool cannot open the audit log. The tool fills in {path} and {reason}.
+pub const AUDIT_OPEN: &str = "The tool cannot open the audit log {path}. {reason}";
+
+/// The error when the audit log does not work during the scan.
+pub const AUDIT_FAILED: &str =
+    "The tool could not write all connections to the audit log. Do not use these results.";
+
+/// The error when the tool cannot hash the audit log. The tool fills in {path} and {reason}.
+pub const AUDIT_HASH: &str = "The tool cannot read the audit log {path}. {reason}";
+
+/// The text before the path of the audit log.
+pub const NET_AUDIT_LOG: &str = "Wrote the audit log to:";
+
+/// The error when the tool cannot start the network runtime. The tool fills in {reason}.
+pub const NET_RUNTIME: &str = "The tool cannot start the network runtime. {reason}";
+
+/// The summary of a network scan. The tool fills in {targets}, {findings}, {inventory}, and {errors}.
+pub const NET_SCAN_SUMMARY: &str =
+    "Probed {targets} targets. Found {findings} findings and {inventory} other items. {errors} targets gave errors.";
+
+/// The error when the plan has no targets and the tool makes no scan.
+pub const NET_NOTHING_TO_SCAN: &str =
+    "The plan has no targets. The tool made no connection. Add a target to the file scope.toml.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("SCOPE_LOAD", SCOPE_LOAD),
+    ("AUDIT_OPEN", AUDIT_OPEN),
+    ("AUDIT_FAILED", AUDIT_FAILED),
+    ("AUDIT_HASH", AUDIT_HASH),
+    ("NET_AUDIT_LOG", NET_AUDIT_LOG),
+    ("NET_RUNTIME", NET_RUNTIME),
+    ("NET_SCAN_SUMMARY", NET_SCAN_SUMMARY),
+    ("NET_NOTHING_TO_SCAN", NET_NOTHING_TO_SCAN),
     ("NET_TARGET_NAMED", NET_TARGET_NAMED),
     ("NET_TARGET_IP", NET_TARGET_IP),
     ("NET_REFUSED", NET_REFUSED),

@@ -37,6 +37,13 @@ pub const PASSWORDS_BOTH: &str =
 /// The error for a passwords table with no key.
 pub const PASSWORDS_NONE: &str = "The table passwords needs one of the keys env and file.";
 
+/// The reason for certificate data that the parser rejects.
+pub const CERT_INVALID: &str = "The certificate data is not valid.";
+
+/// The reason for a public key type that the tool does not know. The tool fills in {oid}.
+pub const UNKNOWN_KEY: &str =
+    "The certificate has a public key type that the tool does not know. The OID is {oid}.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("UNSUPPORTED_SCHEMA", UNSUPPORTED_SCHEMA),
@@ -50,4 +57,6 @@ pub const ALL: &[(&str, &str)] = &[
     ("DATE_EXPECTED", DATE_EXPECTED),
     ("PASSWORDS_BOTH", PASSWORDS_BOTH),
     ("PASSWORDS_NONE", PASSWORDS_NONE),
+    ("CERT_INVALID", CERT_INVALID),
+    ("UNKNOWN_KEY", UNKNOWN_KEY),
 ];
