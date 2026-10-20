@@ -161,7 +161,7 @@ pub fn parse_der(data: &[u8]) -> Result<CertInfo, String> {
 ///
 /// The data can have bytes after the certificate, for example OpenSSL trust data.
 /// The hash covers the certificate only.
-fn parse_certificate(der: &[u8], position: usize) -> Result<CertInfo, CertError> {
+pub(crate) fn parse_certificate(der: &[u8], position: usize) -> Result<CertInfo, CertError> {
     let (rest, cert) = X509Certificate::from_der(der).map_err(|_| CertError::Invalid)?;
     let der = &der[..der.len() - rest.len()];
     let spki = cert.public_key();
@@ -198,7 +198,7 @@ fn to_utc(seconds: i64) -> DateTime<Utc> {
     DateTime::from_timestamp(seconds, 0).unwrap_or_default()
 }
 
-fn sha256_hex(data: &[u8]) -> String {
+pub(crate) fn sha256_hex(data: &[u8]) -> String {
     use std::fmt::Write;
     let mut hex = String::with_capacity(64);
     for byte in Sha256::digest(data) {

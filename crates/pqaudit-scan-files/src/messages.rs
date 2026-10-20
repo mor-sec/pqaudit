@@ -44,6 +44,20 @@ pub const SYMLINKS_SKIPPED: &str =
 /// The text of the evidence for a certificate. The tool fills in {subject} and {position}.
 pub const EVIDENCE: &str = "Certificate {subject}, chain position {position}.";
 
+/// The error for a key store that is not valid.
+pub const KEYSTORE_INVALID: &str = "The file is not a valid key store.";
+
+/// The error for a key store that ends too soon.
+pub const KEYSTORE_TRUNCATED: &str = "The key store ends too soon. The file can be cut short.";
+
+/// The error for a key store entry that the tool does not read.
+pub const KEYSTORE_UNSUPPORTED: &str =
+    "The key store has a secret key entry. The tool does not read this entry type.";
+
+/// The note for a key store that no password opens.
+pub const ENCRYPTED_NOT_INSPECTED: &str =
+    "Encrypted — not inspected. No password that the tool has opens this file.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("CANNOT_READ", CANNOT_READ),
@@ -59,4 +73,8 @@ pub const ALL: &[(&str, &str)] = &[
     ("UNKNOWN_KEY", UNKNOWN_KEY),
     ("SYMLINKS_SKIPPED", SYMLINKS_SKIPPED),
     ("EVIDENCE", EVIDENCE),
+    ("KEYSTORE_INVALID", KEYSTORE_INVALID),
+    ("KEYSTORE_TRUNCATED", KEYSTORE_TRUNCATED),
+    ("KEYSTORE_UNSUPPORTED", KEYSTORE_UNSUPPORTED),
+    ("ENCRYPTED_NOT_INSPECTED", ENCRYPTED_NOT_INSPECTED),
 ];

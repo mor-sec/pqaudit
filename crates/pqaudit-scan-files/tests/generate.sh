@@ -2,6 +2,7 @@
 # Make the test certificates in the directory "fixtures".
 # This script needs OpenSSL 3.5 or later. It needs 3.5 for ML-DSA.
 # All keys are for tests only. The script deletes each key after it signs.
+# The PKCS#12 files are the exception: the tests keep their key DER files.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -57,5 +58,21 @@ printf -- '-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n' >"$out/
 
 # A DER certificate.
 openssl x509 -in "$out/rsa2048-leaf.pem" -outform DER -out "$out/rsa2048-leaf.der"
+
+# PKCS#12 files. Each file has a test key and a certificate.
+# The tests need the key DER bytes. They check that no key bytes reach the results.
+# One file has the empty password. The other has the password "pqaudit-test".
+for variant in empty pw; do
+  pass=""
+  [ "$variant" = pw ] && pass="pqaudit-test"
+  openssl req -x509 -newkey rsa:2048 -nodes -keyout "$work/p12-$variant.key" \
+    -out "$work/p12-$variant.pem" -subj "/CN=p12-$variant.test" -days 365 -sha256 \
+    -addext "basicConstraints=CA:FALSE" 2>/dev/null
+  openssl pkcs12 -export -inkey "$work/p12-$variant.key" -in "$work/p12-$variant.pem" \
+    -name "p12-$variant" -passout "pass:$pass" -out "$out/store-$variant.p12" 2>/dev/null
+  openssl pkcs8 -topk8 -nocrypt -in "$work/p12-$variant.key" -outform DER \
+    -out "$out/store-$variant.key.der"
+  chmod 644 "$out/store-$variant.p12" "$out/store-$variant.key.der"
+done
 
 echo "Made the fixtures in $out"

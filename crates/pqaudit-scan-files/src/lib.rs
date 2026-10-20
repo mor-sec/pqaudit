@@ -3,7 +3,9 @@
 //! This crate reads files only. It must not open sockets or use network crates.
 
 pub mod cert;
+pub mod jks;
 pub mod messages;
+pub mod pkcs12;
 pub mod walk;
 
 use std::collections::BTreeMap;
@@ -14,10 +16,11 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use pqaudit_core::classify::classify_cert;
 use pqaudit_core::{
-    Agility, CertInfo, Finding, Fingerprint, FixOwner, InventoryItem, InventoryKind, Location,
-    Occurrence, Purpose, ScanError, Source,
+    Agility, CertInfo, Finding, Fingerprint, FixOwner, InventoryItem, InventoryKind, KeyInfo,
+    KeyKind, Location, Occurrence, Purpose, ScanError, Source,
 };
 use pqaudit_rules::pack::RulesPack;
+use serde::Serialize;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -30,7 +33,8 @@ pub struct ScanOptions {
     pub max_file_size: u64,
     /// If true, the tool follows symbolic links.
     pub follow_symlinks: bool,
-    /// Passwords for key stores. A later scanner step uses them. The tool never logs them.
+    /// Passwords for PKCS#12 key stores. The tool tries each one, then the empty password.
+    /// The tool never logs them.
     pub passwords: Vec<Zeroizing<String>>,
 }
 
@@ -59,7 +63,7 @@ impl Default for ScanOptions {
 }
 
 /// The result of a file scan.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct ScanOutput {
     /// The weak items.
     pub findings: Vec<Finding>,
@@ -69,18 +73,47 @@ pub struct ScanOutput {
     pub errors: Vec<ScanError>,
     /// The number of files that the tool read.
     pub files_read: u64,
-    /// The number of files with PEM data but no certificate, for example key files.
-    /// The tool does not count them in `files_read`.
+    /// The number of files with no readable certificate, for example key files
+    /// and key stores that no password opens. The tool does not count them in `files_read`.
     pub files_not_read: u64,
     /// The number of symbolic links that the tool skipped.
     pub skipped_symlinks: u64,
+}
+
+/// The kind of key store file.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StoreKind {
+    /// A PKCS#12 file.
+    Pkcs12,
+    /// A JKS or JCEKS file.
+    Java,
+}
+
+/// Find the kind of key store from the first bytes of the file. Return `None` for other files.
+fn store_kind_by_content(head: &[u8]) -> Option<StoreKind> {
+    if jks::has_jks_magic(head) {
+        Some(StoreKind::Java)
+    } else if pkcs12::looks_like_p12(head) {
+        Some(StoreKind::Pkcs12)
+    } else {
+        None
+    }
+}
+
+/// Find the kind of key store from the file extension. Return `None` for other files.
+fn store_kind_by_extension(extension: &str) -> Option<StoreKind> {
+    match extension {
+        "p12" | "pfx" => Some(StoreKind::Pkcs12),
+        "jks" | "jceks" | "keystore" => Some(StoreKind::Java),
+        _ => None,
+    }
 }
 
 /// What happened to one file.
 enum Outcome {
     /// The tool read the file.
     Read,
-    /// The file has PEM data but no certificate.
+    /// The file has no certificate that the tool can read, for example a key file.
     NotRead,
     /// The tool could not read the file. An error explains why.
     Failed,
@@ -100,13 +133,14 @@ pub fn scan(paths: &[PathBuf], opts: &ScanOptions, pack: &RulesPack, run_id: Uui
     let mut files_read = 0u64;
 
     let mut files_not_read = 0u64;
+    let mut locked = Vec::new();
 
     let skipped_symlinks =
         walk::walk(
             paths,
             opts.follow_symlinks,
             &mut errors,
-            |path, errors| match scan_file(path, opts, run_id, &mut seen, errors) {
+            |path, errors| match scan_file(path, opts, run_id, &mut seen, &mut locked, errors) {
                 Outcome::Read => files_read += 1,
                 Outcome::NotRead => files_not_read += 1,
                 Outcome::Failed => {}
@@ -119,6 +153,7 @@ pub fn scan(paths: &[PathBuf], opts: &ScanOptions, pack: &RulesPack, run_id: Uui
         });
     }
 
+    output.inventory.extend(locked);
     let today = Utc::now().date_naive();
     for (index, (_, item)) in seen.into_iter().enumerate() {
         let fingerprint = Fingerprint::cert(&item.cert.sha256);
@@ -163,6 +198,54 @@ pub fn scan(paths: &[PathBuf], opts: &ScanOptions, pack: &RulesPack, run_id: Uui
     output
 }
 
+/// Wrap certificates from a key store. A key store has no line numbers.
+fn into_found(certs: Vec<CertInfo>) -> Vec<cert::Found> {
+    certs
+        .into_iter()
+        .map(|info| cert::Found { info, line: None })
+        .collect()
+}
+
+/// Collect the certificates of all Java key store entries.
+fn jks_certs(entries: Vec<jks::JksEntry>) -> Vec<cert::Found> {
+    let mut certs = Vec::new();
+    for entry in entries {
+        match entry {
+            jks::JksEntry::TrustedCert(info) => certs.push(info),
+            jks::JksEntry::PrivateKeyChain(chain) => certs.extend(chain),
+        }
+    }
+    into_found(certs)
+}
+
+/// Make the inventory item for a key store that no password opens.
+///
+/// The fingerprint is the hash of the whole file. The item has no key facts.
+fn locked_item(data: &[u8], location: &str, run_id: Uuid) -> InventoryItem {
+    InventoryItem {
+        kind: InventoryKind::Key,
+        fingerprint: Fingerprint::key(&cert::sha256_hex(data)),
+        pq_ready: false,
+        algorithm: None,
+        cert: None,
+        key: Some(KeyInfo {
+            fingerprint_sha256: cert::sha256_hex(data),
+            kind: KeyKind::EncryptedPrivate,
+            algorithm: None,
+            comment: None,
+        }),
+        endpoint: None,
+        occurrences: vec![Occurrence {
+            location: Location::File {
+                path: location.to_string(),
+                line: None,
+            },
+            evidence: messages::ENCRYPTED_NOT_INSPECTED.to_string(),
+            run_id,
+        }],
+    }
+}
+
 fn is_certificate_extension(extension: &str) -> bool {
     matches!(extension, "pem" | "crt" | "cer" | "der")
 }
@@ -185,6 +268,7 @@ fn scan_file(
     opts: &ScanOptions,
     run_id: Uuid,
     seen: &mut BTreeMap<String, Seen>,
+    locked: &mut Vec<InventoryItem>,
     errors: &mut Vec<ScanError>,
 ) -> Outcome {
     let location = path.to_string_lossy().into_owned();
@@ -202,7 +286,8 @@ fn scan_file(
         .extension()
         .map(|extension| extension.to_string_lossy().to_ascii_lowercase())
         .unwrap_or_default();
-    let by_extension = is_certificate_extension(&extension);
+    let store_by_extension = store_kind_by_extension(&extension);
+    let by_extension = is_certificate_extension(&extension) || store_by_extension.is_some();
 
     let mut file = match File::open(path) {
         Ok(file) => file,
@@ -234,7 +319,7 @@ fn scan_file(
         return Outcome::Failed;
     }
     if !by_extension {
-        if !cert::has_pem_certificate(&data) {
+        if !cert::has_pem_certificate(&data) && store_kind_by_content(&data).is_none() {
             return Outcome::Read;
         }
         if length > opts.max_file_size {
@@ -253,8 +338,32 @@ fn scan_file(
         return Outcome::Failed;
     }
 
+    let store_kind = store_kind_by_content(&data).or(store_by_extension);
     let mut found = Vec::new();
-    if cert::has_any_pem(&data) {
+    if let Some(kind) = store_kind {
+        let result = match kind {
+            StoreKind::Pkcs12 => pkcs12::scan_p12(&data, &opts.passwords).map(into_found),
+            StoreKind::Java => jks::scan_jks(&data).map(jks_certs),
+        };
+        match result {
+            Ok(certs) => found = certs,
+            Err(pkcs12::StoreError::Encrypted) => {
+                errors.push(ScanError {
+                    location: location.clone(),
+                    reason: messages::ENCRYPTED_NOT_INSPECTED.to_string(),
+                });
+                locked.push(locked_item(&data, &location, run_id));
+                return Outcome::NotRead;
+            }
+            Err(error) => {
+                errors.push(ScanError {
+                    location: location.clone(),
+                    reason: error.reason(),
+                });
+                return Outcome::Failed;
+            }
+        }
+    } else if cert::has_any_pem(&data) {
         let result = cert::parse_pem(&data);
         if result.certs.is_empty() && result.bad == 0 {
             // Only blocks of other types, for example keys.
