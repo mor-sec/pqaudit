@@ -141,10 +141,12 @@ fn redact_default_output_and_key_file() {
     pqaudit(other.path())
         .arg("merge")
         .arg(&red)
+        .arg("--redact")
         .arg("--redact-key-file")
         .arg(other.path().join("none.key"))
         .assert()
-        .code(1);
+        .code(1)
+        .stderr(predicate::str::contains("none.key"));
     // The same key from a file gives the same redacted values.
     let copy = other.path().join("copy.key");
     fs::copy(dir.path().join("eng/redact.key"), &copy).unwrap();
@@ -163,4 +165,19 @@ fn redact_default_output_and_key_file() {
     let second = ResultsFile::read(&out2).unwrap();
     assert_eq!(first.header.engagement, second.header.engagement);
     assert_eq!(first, second);
+}
+
+#[test]
+fn key_file_without_redact_flag_is_refused() {
+    let (dir, a, _) = setup();
+    let key = dir.path().join("k.key");
+    fs::write(&key, format!("{}\n", "ab".repeat(32))).unwrap();
+    pqaudit(dir.path())
+        .arg("merge")
+        .arg(&a)
+        .arg("--redact-key-file")
+        .arg(&key)
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("--redact"));
 }

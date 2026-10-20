@@ -116,6 +116,10 @@ impl RedactKey {
             path: shown.clone(),
             reason: e.to_string(),
         };
+        // Check the type before the open call. The open call of a FIFO can wait for ever.
+        if !std::fs::metadata(path).map_err(io)?.is_file() {
+            return Err(RedactKeyError::Invalid { path: shown });
+        }
         let file = std::fs::File::open(path).map_err(io)?;
         if !file.metadata().map_err(io)?.is_file() {
             return Err(RedactKeyError::Invalid { path: shown });

@@ -1,7 +1,7 @@
 //! Tests for merge and redaction of results files.
 
 use chrono::{TimeZone, Utc};
-use pqaudit_core::merge::{merge, redact, MergeError, RedactKey};
+use pqaudit_core::merge::{merge, redact, MergeError, RedactKey, RedactKeyError};
 use pqaudit_core::*;
 use std::net::IpAddr;
 use uuid::Uuid;
@@ -541,7 +541,10 @@ fn separately_redacted_files_merge() {
     assert_eq!(merged.findings.len(), 2);
     let mut other = net_result();
     redact(&mut other, &RedactKey::from_bytes([9; 32]));
-    assert!(merge(vec![redacted_copy(&files_result()), other]).is_err());
+    assert!(matches!(
+        merge(vec![redacted_copy(&files_result()), other]),
+        Err(MergeError::EngagementMismatch { .. })
+    ));
 }
 
 #[test]
@@ -613,20 +616,51 @@ fn key_file_is_created_once_with_private_mode() {
     }
 }
 
+fn assert_invalid(path: &std::path::Path) {
+    match RedactKey::load(path) {
+        Err(RedactKeyError::Invalid { .. }) => {}
+        other => panic!("{}: {other:?}", path.display()),
+    }
+}
+
 #[test]
 fn oversized_or_odd_key_files_are_rejected() {
     let dir = tempfile::tempdir().unwrap();
+    let hex = "ab".repeat(32);
     let big = dir.path().join("big.key");
-    std::fs::write(&big, "a".repeat(100_000)).unwrap();
-    assert!(RedactKey::load(&big).is_err());
+    // The file starts with a valid key. The tail is longer than the read cap.
+    std::fs::write(&big, format!("{hex}\n{}", "a".repeat(100_000))).unwrap();
+    assert_invalid(&big);
     let good = dir.path().join("good.key");
-    std::fs::write(&good, format!("{}\n", "ab".repeat(32))).unwrap();
+    std::fs::write(&good, format!("{hex}\n")).unwrap();
     assert!(RedactKey::load(&good).is_ok());
-    std::fs::write(&good, format!("{}\n\n", "ab".repeat(32))).unwrap();
-    assert!(RedactKey::load(&good).is_err());
-    std::fs::write(&good, "  ".to_string() + &"ab".repeat(32)).unwrap();
-    assert!(RedactKey::load(&good).is_err());
-    assert!(RedactKey::load(dir.path()).is_err());
+    std::fs::write(&good, format!("{hex}\n\n")).unwrap();
+    assert_invalid(&good);
+    std::fs::write(&good, format!("  {hex}")).unwrap();
+    assert_invalid(&good);
+    std::fs::write(&good, "zz".repeat(32)).unwrap();
+    assert_invalid(&good);
+    assert_invalid(dir.path());
+}
+
+#[cfg(unix)]
+#[test]
+fn fifo_key_path_does_not_hang() {
+    let dir = tempfile::tempdir().unwrap();
+    let fifo = dir.path().join("fifo.key");
+    let status = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(RedactKey::load(&fifo).map(|_| ()));
+    });
+    match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+        Ok(Err(RedactKeyError::Invalid { .. })) => {}
+        other => panic!("{other:?}"),
+    }
 }
 
 #[test]
