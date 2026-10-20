@@ -83,13 +83,39 @@ pub fn parse_block(block: &Block<'_>, place: &str) -> Result<FoundKey, KeyProble
 /// SEC1, and PKCS#1 public. A form with a known structure and a bad content gives its own error.
 /// If no form fits, the error is `Invalid`.
 pub fn parse_der(data: &[u8], place: &str) -> Result<FoundKey, KeyProblem> {
+    parse_der_forms(data, place, true)
+}
+
+/// Return true if the bytes are one whole key in DER form. The bytes come from a file with no key name.
+///
+/// This test is stricter than `parse_der`. It does not accept a PKCS#1 public key, because a
+/// signature has the same shape. The key must fill all the bytes, unless the bytes are a cut head.
+pub fn is_whole_der_key(head: &[u8], head_is_cut: bool) -> bool {
+    let Some((outer, rest)) = der::read_tag(head, SEQUENCE) else {
+        return false;
+    };
+    (head_is_cut || rest.is_empty())
+        && outer.whole.len() == head.len() - rest.len()
+        && parse_der_forms(outer.whole, "", false).is_ok()
+}
+
+/// Try the DER forms in order. The flag says if the tool tries a PKCS#1 public key.
+fn parse_der_forms(
+    data: &[u8],
+    place: &str,
+    pkcs1_public_allowed: bool,
+) -> Result<FoundKey, KeyProblem> {
     let results = [
         spki(data),
         pkcs8(data, place),
         encrypted_der(data),
         pkcs1_private(data),
         sec1(data),
-        pkcs1_public(data),
+        if pkcs1_public_allowed {
+            pkcs1_public(data)
+        } else {
+            Err(KeyProblem::Invalid)
+        },
     ];
     results
         .into_iter()
@@ -165,7 +191,24 @@ fn rsa_numbers(sequence: &[u8], private: bool) -> Option<(Tlv<'_>, Tlv<'_>)> {
     }
     let (n, rest) = der::read_tag(rest, INTEGER)?;
     let (e, _) = der::read_tag(rest, INTEGER)?;
-    Some((n, e))
+    plausible_rsa(n.content, e.content).then_some((n, e))
+}
+
+/// Return true if the numbers can be an RSA key: a big odd modulus and a small odd exponent.
+fn plausible_rsa(modulus: &[u8], exponent: &[u8]) -> bool {
+    let strip = |bytes: &[u8]| -> Vec<u8> {
+        bytes
+            .iter()
+            .copied()
+            .skip_while(|byte| *byte == 0)
+            .collect()
+    };
+    let (modulus, exponent) = (strip(modulus), strip(exponent));
+    modulus.len() >= 64
+        && modulus.last().is_some_and(|byte| byte & 1 == 1)
+        && (1..=4).contains(&exponent.len())
+        && exponent.last().is_some_and(|byte| byte & 1 == 1)
+        && exponent != [1]
 }
 
 /// Make the SPKI bytes of a public key.

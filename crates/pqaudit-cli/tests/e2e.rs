@@ -259,7 +259,7 @@ fn full_stage1_engagement() {
     for banned in ["<script src", "<link", "@import", "url(http"] {
         assert!(!html.contains(banned), "found {banned}");
     }
-    // A link to another site is allowed only as the href of an anchor. No source may start with `//`.
+    // Only an anchor can link to another site. Its href holds the link. No source may start with `//`.
     for banned in ["src=\"//", "href=\"//"] {
         assert!(!html.contains(banned), "found {banned}");
     }

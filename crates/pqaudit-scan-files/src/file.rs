@@ -18,9 +18,6 @@ use crate::pem::{self, BlockKind};
 use crate::sniff::{self, Format, StoreKind};
 use crate::{cert, gpg, jks, messages, pkcs12, privkey, ssh, ScanOptions};
 
-/// The number of bytes at the start of a file that the tool searches for a known format.
-const SNIFF_BYTES: u64 = 64 * 1024;
-
 /// What happened to one file.
 pub(crate) enum Outcome {
     /// The tool read the file.
@@ -241,7 +238,7 @@ pub(crate) fn scan_file(
         }
         length
     } else {
-        length.min(SNIFF_BYTES.min(opts.max_file_size))
+        length.min(sniff::SNIFF_BYTES.min(opts.max_file_size))
     };
     // One byte more than expected shows that the file grew after the size check.
     let mut data = wiped_buffer(head_size + 1);
@@ -402,6 +399,12 @@ fn scan_pem(
                 Ok(info) => {
                     collector.add_certs(vec![cert::Found { info, line: None }], ctx);
                     Outcome::Read
+                }
+                // A `.key` file can be a ZIP archive, for example a Keynote file. It has no key.
+                Err(CertError::Invalid)
+                    if ctx.extension == "key" && data.starts_with(b"PK\x03\x04") =>
+                {
+                    Outcome::NotRead
                 }
                 // Only a file that is not a certificate can be a key.
                 Err(CertError::Invalid) => scan_der_key(data, ctx, collector, errors),

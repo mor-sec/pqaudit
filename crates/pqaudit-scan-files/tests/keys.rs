@@ -761,6 +761,73 @@ fn der_key_material_never_in_results() {
     }
 }
 
+/// A DER ECDSA signature: a sequence of 2 big numbers, the same shape as a PKCS#1 public key.
+fn ecdsa_signature() -> Vec<u8> {
+    let mut der = vec![0x30, 0x44];
+    for seed in [3, 4] {
+        der.extend_from_slice(&[0x02, 0x20]);
+        let mut number = pseudo_random(seed, 32);
+        number[0] &= 0x7f;
+        number[31] |= 1;
+        der.extend_from_slice(&number);
+    }
+    der
+}
+
+#[test]
+fn signature_files_are_not_keys() {
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["x.sig", "signature"] {
+        let path = dir.path().join(name);
+        fs::write(&path, ecdsa_signature()).unwrap();
+        let out = scan_paths(&[path]);
+        assert!(out.errors.is_empty(), "{name}: {:?}", out.errors);
+        assert!(
+            out.findings.is_empty() && out.inventory.is_empty(),
+            "{name}"
+        );
+    }
+    // A key with bytes after it is not a whole key file.
+    let mut padded = decode_block(&key_fixture("pkcs8-rsa.pem"));
+    padded.extend_from_slice(&[0, 0, 0, 0]);
+    let path = dir.path().join("padded");
+    fs::write(&path, padded).unwrap();
+    let out = scan_paths(&[path]);
+    assert!(out.findings.is_empty() && out.errors.is_empty());
+}
+
+#[test]
+fn der_pkcs1_public_key_is_read_by_name_only() {
+    let spki = decode_block(&key_fixture("spki-rsa.pem"));
+    let marker = [0x03, 0x82, 0x01, 0x0f, 0x00];
+    let at = spki.windows(5).position(|w| w == marker).unwrap();
+    let pkcs1 = &spki[at + 5..];
+    let dir = tempfile::tempdir().unwrap();
+    let named = dir.path().join("public.der");
+    fs::write(&named, pkcs1).unwrap();
+    let out = scan_paths(&[named]);
+    let key = only_finding(&out).key.as_ref().unwrap().clone();
+    assert_eq!(key.kind, KeyKind::X509Spki);
+    assert_eq!(key.fingerprint_sha256, sha256_hex(&spki));
+    let unnamed = dir.path().join("public");
+    fs::write(&unnamed, pkcs1).unwrap();
+    let out = scan_paths(&[unnamed]);
+    assert!(out.findings.is_empty() && out.errors.is_empty());
+}
+
+#[test]
+fn key_file_with_zip_magic_is_not_read_and_not_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("Presentation.key");
+    let mut data = b"PK\x03\x04".to_vec();
+    data.extend_from_slice(&pseudo_random(5, 300));
+    fs::write(&path, data).unwrap();
+    let out = scan_paths(&[path]);
+    assert!(out.errors.is_empty(), "{:?}", out.errors);
+    assert!(out.findings.is_empty() && out.inventory.is_empty());
+    assert_eq!((out.files_read, out.files_not_read), (0, 1));
+}
+
 #[test]
 fn key_blocks_with_bad_content_show_no_bytes() {
     // A key block with bad content next to the bytes of a real key.

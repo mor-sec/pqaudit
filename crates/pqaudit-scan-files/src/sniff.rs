@@ -6,6 +6,9 @@ use crate::pem::{self, BlockKind};
 use crate::{der, privkey};
 use crate::{gpg, jks, pkcs12, ssh};
 
+/// The number of bytes at the start of a file that the tool searches for a known format.
+pub(crate) const SNIFF_BYTES: u64 = 64 * 1024;
+
 /// The kind of key store file.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum StoreKind {
@@ -84,8 +87,9 @@ pub(crate) fn by_content(head: &[u8], key_extension: bool) -> Option<Format> {
     if ssh::looks_like_keys(head) {
         return Some(Format::SshKeys);
     }
-    // A short DER key can sit inside the start of the file. A bigger file never matches.
-    (head.first() == Some(&der::SEQUENCE) && privkey::parse_der(head, "").is_ok())
+    // The key must fill the whole file. If the head is cut, the key must fit in the head.
+    let head_is_cut = head.len() as u64 >= SNIFF_BYTES;
+    (head.first() == Some(&der::SEQUENCE) && privkey::is_whole_der_key(head, head_is_cut))
         .then_some(Format::DerKey)
 }
 
