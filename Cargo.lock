@@ -1140,6 +1140,7 @@ dependencies = [
  "pqaudit-core",
  "pqaudit-rules",
  "pqaudit-scan-files",
+ "pqaudit-scan-net",
  "predicates",
  "tempfile",
  "tracing",
@@ -1223,6 +1224,13 @@ dependencies = [
 [[package]]
 name = "pqaudit-scan-net"
 version = "0.1.0"
+dependencies = [
+ "ipnet",
+ "pqaudit-core",
+ "serde",
+ "sha2",
+ "toml",
+]
 
 [[package]]
 name = "predicates"

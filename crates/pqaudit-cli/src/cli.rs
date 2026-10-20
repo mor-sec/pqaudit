@@ -136,5 +136,9 @@ pub enum ScanCommand {
         output: Option<PathBuf>,
     },
     /// Scan network endpoints that the scope file lists.
-    Net,
+    Net {
+        /// Show the planned targets and the refusals. Then stop. The tool makes no connection.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }

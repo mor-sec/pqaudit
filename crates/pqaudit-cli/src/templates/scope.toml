@@ -4,13 +4,15 @@
 # So the command scan net does nothing until you add a target.
 
 # If this value is true, each address of a host name must be in an allowed range.
-# The default is true when the scope has a CIDR range.
+# The default is true when the scope has a CIDR range. Otherwise the default is false.
 # require_ip_in_cidr = true
 
 # The address ranges that host names can resolve to. These ranges are not targets.
+# The CIDR ranges of the targets are also allowed.
 # allowed_cidrs = ["10.0.0.0/16"]
 
 # The hours in which the tool can start. Use the local time.
+# The window can cross midnight, for example "22:00-06:00".
 # The tool does not start outside these hours.
 # allowed_hours = "09:00-17:00"
 
@@ -18,12 +20,32 @@
 # To set a limit above its default, set this value to true.
 # override_limits = false
 
-# A target is a host name or a CIDR range, with ports and a protocol.
-# The protocol is tls or ssh.
+# If this value is true, the tool makes one more TLS connection for each port.
+# That connection checks for old protocol versions.
+# legacy_tls_check = false
+
+# The network limits. All keys are optional. The values here are the defaults.
+# The interval is the least time between two connections to one host.
+# [limits]
+# concurrency = 4
+# per_host = 1
+# min_interval_ms = 1000
+# tls_handshakes = 3
+# connect_timeout_ms = 5000
+# read_timeout_ms = 10000
+# retries = 0
+
+# A target is a host name, an IP address, or a CIDR range, with ports and a protocol.
+# The protocol is tls or ssh. A CIDR range can have 256 addresses at most.
 # [[target]]
 # host = "pay.acme.example"
 # ports = [443]
 # protocol = "tls"
+
+# [[target]]
+# cidr = "10.0.1.0/28"
+# ports = [22]
+# protocol = "ssh"
 
 # An exclusion has priority over a target. Use a host or a cidr key.
 # [[exclude]]

@@ -18,6 +18,7 @@ path = "src/main.rs"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 clap.workspace = true
 pqaudit-core = { version = "0.1.0", path = "../pqaudit-core" }
+pqaudit-scan-net = { version = "0.1.0", path = "../pqaudit-scan-net" }
 pqaudit-scan-files = { version = "0.1.0", path = "../pqaudit-scan-files" }
 pqaudit-rules = { version = "0.1.0", path = "../pqaudit-rules" }
 tracing.workspace = true

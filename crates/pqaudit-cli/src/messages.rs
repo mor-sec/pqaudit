@@ -71,8 +71,37 @@ pub const SCAN_SYMLINKS_SKIPPED: &str =
 pub const SCAN_NOT_READ: &str =
     "The tool did not read {count} files as certificates. They have PEM data but no certificate.";
 
+/// The error when the tool cannot load the scope file. The tool fills in {reason}.
+pub const SCOPE_LOAD: &str = "The tool cannot load the scope. {reason}";
+
+/// A planned target with a host name. The tool fills in {host}, {ip}, {port}, {protocol}, and {connections}.
+pub const NET_TARGET_NAMED: &str = "Target: host {host}, address {ip}, port {port}, protocol {protocol}, connections {connections}.";
+
+/// A planned target without a host name. The tool fills in {ip}, {port}, {protocol}, and {connections}.
+pub const NET_TARGET_IP: &str =
+    "Target: address {ip}, port {port}, protocol {protocol}, connections {connections}.";
+
+/// A refused target. The tool fills in {target} and {reason}.
+pub const NET_REFUSED: &str = "Refused: {target}. {reason}";
+
+/// The summary of the plan. The tool fills in {targets} and {refused}.
+pub const NET_SUMMARY: &str = "The plan has {targets} targets and {refused} refusals.";
+
+/// The text when the plan has no targets.
+pub const NET_NO_TARGETS: &str = "The plan has no targets. Add a target to the file scope.toml.";
+
+/// The text when the plan has a refusal.
+pub const NET_REFUSED_STOP: &str = "The tool refuses the full scan.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
+    ("SCOPE_LOAD", SCOPE_LOAD),
+    ("NET_TARGET_NAMED", NET_TARGET_NAMED),
+    ("NET_TARGET_IP", NET_TARGET_IP),
+    ("NET_REFUSED", NET_REFUSED),
+    ("NET_SUMMARY", NET_SUMMARY),
+    ("NET_NO_TARGETS", NET_NO_TARGETS),
+    ("NET_REFUSED_STOP", NET_REFUSED_STOP),
     ("NOT_IMPLEMENTED", NOT_IMPLEMENTED),
     ("UNKNOWN_PROFILE", UNKNOWN_PROFILE),
     ("RULES_SIGNATURE_OK", RULES_SIGNATURE_OK),

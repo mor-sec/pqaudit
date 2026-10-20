@@ -78,13 +78,10 @@ fn dispatch(cli: &Cli) -> ExitCode {
                 output: output.as_deref(),
             },
         ),
-        Command::Merge
-        | Command::Report
-        | Command::Cbom
-        | Command::Explain
-        | Command::Scan {
-            command: ScanCommand::Net,
-        } => not_implemented(),
+        Command::Scan {
+            command: ScanCommand::Net { dry_run },
+        } => commands::scan_net::run(cli, *dry_run),
+        Command::Merge | Command::Report | Command::Cbom | Command::Explain => not_implemented(),
     }
 }
 
