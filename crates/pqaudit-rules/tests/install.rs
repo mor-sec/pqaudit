@@ -100,7 +100,21 @@ fn active_pack_prefers_a_newer_installed_pack() {
     store.install(&archive, &sig).unwrap();
     let active = store.active_pack(false).unwrap();
     assert_eq!(active.pack.version.to_string(), "99.0.0");
-    assert!(matches!(active.origin, PackOrigin::Installed { .. }));
+    match active.origin {
+        PackOrigin::Installed {
+            signed_by,
+            rotation_chain,
+            ..
+        } => {
+            assert_eq!(signed_by, fx.key.public_key().key_id());
+            assert_eq!(rotation_chain, vec![signed_by]);
+        }
+        other => panic!("wrong origin: {other:?}"),
+    }
+    match &store.list_installed()[0].state {
+        InstalledState::Verified { rotation_chain, .. } => assert_eq!(rotation_chain.len(), 1),
+        other => panic!("wrong state: {other:?}"),
+    }
 }
 
 #[test]
@@ -193,4 +207,54 @@ fn data_dir_uses_the_environment_variable() {
     let root = pqaudit_rules::install::data_root().unwrap();
     std::env::remove_var("PQAUDIT_DATA_DIR");
     assert_eq!(root, dir.path());
+}
+
+#[test]
+fn rotation_chain_survives_into_the_active_pack() {
+    use pqaudit_rules::signing::make_rotation;
+    let dir = tempfile::tempdir().unwrap();
+    let a = HybridSigningKey::generate().unwrap();
+    let b = HybridSigningKey::generate().unwrap();
+    let c = HybridSigningKey::generate().unwrap();
+    let mut files = vec![
+        (
+            "pack.toml".to_string(),
+            b"id = \"test\"\nversion = \"99.0.0\"\n".to_vec(),
+        ),
+        ("algorithms.yaml".to_string(), b"[]\n".to_vec()),
+    ];
+    for (index, (old, new)) in [(&a, &b), (&b, &c)].iter().enumerate() {
+        let (statement, sig) = make_rotation(old, &new.public_key(), "2026-10-20").unwrap();
+        files.push((format!("rotations/{:03}.json", index + 1), statement));
+        files.push((
+            format!("rotations/{:03}.json.sig.json", index + 1),
+            sig.to_json().into_bytes(),
+        ));
+    }
+    let archive = build_archive(files).unwrap();
+    let archive_path = dir.path().join("in.tar.zst");
+    let sig_path = dir.path().join("in.sig.json");
+    fs::write(&archive_path, &archive).unwrap();
+    fs::write(&sig_path, c.sign(&archive).to_json()).unwrap();
+    // Only A is in the trust list.
+    let store = RulesStore::new(
+        dir.path().join("data"),
+        TrustStore::new(vec![a.public_key()], vec![]),
+    );
+    store.install(&archive_path, &sig_path).unwrap();
+    let expected: Vec<String> = [&a, &b, &c]
+        .iter()
+        .map(|k| k.public_key().key_id())
+        .collect();
+    match store.active_pack(false).unwrap().origin {
+        PackOrigin::Installed {
+            signed_by,
+            rotation_chain,
+            ..
+        } => {
+            assert_eq!(signed_by, expected[2]);
+            assert_eq!(rotation_chain, expected);
+        }
+        other => panic!("wrong origin: {other:?}"),
+    }
 }

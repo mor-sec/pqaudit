@@ -28,7 +28,7 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub no_color: bool,
 
-    /// Accept a rules pack that has no valid signature. Use this flag for tests only.
+    /// Accept a rules pack that has no correct signature. The results record this choice.
     #[arg(long, global = true)]
     pub allow_unsigned_rules: bool,
 

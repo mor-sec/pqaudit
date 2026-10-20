@@ -85,8 +85,8 @@ impl SigFile {
 
     /// Write the signature file as JSON text.
     pub fn to_json(&self) -> String {
-        // The fields are plain strings, so the conversion cannot fail.
-        let mut text = serde_json::to_string_pretty(self).unwrap_or_default();
+        let mut text = serde_json::to_string_pretty(self)
+            .expect("a struct of plain strings always converts to JSON");
         text.push('\n');
         text
     }
@@ -126,20 +126,18 @@ impl HybridPublicKey {
 
     /// Return the SPKI DER bytes of the Ed25519 key.
     pub fn ed25519_spki_der(&self) -> Vec<u8> {
-        // Encoding a valid public key cannot fail.
         self.ed25519
             .to_public_key_der()
             .map(|der| der.as_bytes().to_vec())
-            .unwrap_or_default()
+            .expect("a valid Ed25519 public key always encodes to DER")
     }
 
     /// Return the SPKI DER bytes of the ML-DSA-65 key.
     pub fn ml_dsa_65_spki_der(&self) -> Vec<u8> {
-        // Encoding a valid public key cannot fail.
         self.ml_dsa_65
             .to_public_key_der()
             .map(|der| der.as_bytes().to_vec())
-            .unwrap_or_default()
+            .expect("a valid ML-DSA-65 public key always encodes to DER")
     }
 
     /// Return the key ID: the hex SHA-256 of the Ed25519 SPKI DER and the ML-DSA-65 SPKI DER.
@@ -258,8 +256,10 @@ impl TrustStore {
     /// # Panics
     /// Panics if the list in the program is wrong. A test finds this error.
     pub fn builtin() -> Self {
-        #[cfg(feature = "test-trust")]
+        // Only a debug build with the feature can replace the trust list.
+        #[cfg(all(feature = "test-trust", debug_assertions))]
         if let Ok(path) = std::env::var("PQAUDIT_TEST_TRUST_FILE") {
+            eprintln!("{}", crate::messages::TEST_TRUST_WARNING);
             let text = std::fs::read_to_string(&path).expect("the test trust file is readable");
             return Self::from_toml(&text).expect("the test trust file is valid");
         }

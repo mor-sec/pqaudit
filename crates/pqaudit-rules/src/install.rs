@@ -59,6 +59,8 @@ pub enum PackOrigin {
         path: PathBuf,
         /// The ID of the key that signed the pack.
         signed_by: String,
+        /// The key IDs from the trusted key to the signing key.
+        rotation_chain: Vec<String>,
     },
     /// The pack has no valid signature. The user accepted it.
     Unsigned {
@@ -85,6 +87,8 @@ pub enum InstalledState {
         pack: Arc<RulesPack>,
         /// The ID of the key that signed the pack.
         signed_by: String,
+        /// The key IDs from the trusted key to the signing key.
+        rotation_chain: Vec<String>,
     },
     /// The pack has no signature, or the signature is wrong. The pack itself is valid.
     Unverified {
@@ -273,6 +277,7 @@ impl RulesStore {
                 Ok(verified) => Ok(InstalledState::Verified {
                     pack: Arc::new(verified.pack),
                     signed_by: verified.signed_by,
+                    rotation_chain: verified.rotation_chain,
                 }),
                 Err(error) => self.unverified(&archive, version, error.to_string()),
             };
@@ -333,11 +338,16 @@ impl RulesStore {
         };
         for installed in self.list_installed() {
             let candidate = match installed.state {
-                InstalledState::Verified { pack, signed_by } => ActivePack {
+                InstalledState::Verified {
+                    pack,
+                    signed_by,
+                    rotation_chain,
+                } => ActivePack {
                     pack,
                     origin: PackOrigin::Installed {
                         path: installed.path,
                         signed_by,
+                        rotation_chain,
                     },
                 },
                 InstalledState::Unverified { pack, .. } if allow_unsigned => ActivePack {

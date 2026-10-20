@@ -98,6 +98,44 @@ fn rules_verify_unsigned_or_bad_pack_exit_1() {
 }
 
 #[test]
+fn rules_verify_bad_pack_exit_1_even_with_flag() {
+    let fx = Fixture::new();
+    let archive = fx.archive("99.0.0");
+    fx.pqaudit()
+        .args(["--allow-unsigned-rules", "rules", "verify"])
+        .arg(&archive)
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("Warning"));
+}
+
+#[test]
+fn test_trust_file_gives_a_warning() {
+    let fx = Fixture::new();
+    fx.pqaudit()
+        .args(["rules", "list"])
+        .assert()
+        .code(0)
+        .stderr(predicate::str::contains("test trust list replaces"));
+}
+
+#[test]
+fn rules_list_shows_the_key_chain() {
+    let fx = Fixture::new();
+    let archive = fx.archive("99.0.0");
+    fx.sign_with(&archive, &fx.key);
+    fx.pqaudit()
+        .args(["rules", "update", "--from"])
+        .arg(&archive)
+        .assert()
+        .code(0);
+    fx.pqaudit()
+        .args(["rules", "list"])
+        .assert()
+        .stdout(predicate::str::contains("key chain"));
+}
+
+#[test]
 fn rules_verify_accepts_an_explicit_signature_path() {
     let fx = Fixture::new();
     let archive = fx.archive("99.0.0");

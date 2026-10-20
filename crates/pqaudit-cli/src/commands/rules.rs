@@ -52,7 +52,14 @@ fn list(store: &RulesStore, allow_unsigned: bool) -> ExitCode {
     };
     let origin = match &active.origin {
         PackOrigin::Embedded => String::from("embedded"),
-        PackOrigin::Installed { signed_by, .. } => format!("installed, signed by {signed_by}"),
+        PackOrigin::Installed {
+            signed_by,
+            rotation_chain,
+            ..
+        } => format!(
+            "installed, signed by {signed_by}, key chain {}",
+            rotation_chain.join(" > ")
+        ),
         PackOrigin::Unsigned { .. } => String::from("installed, unsigned"),
     };
     println!(
@@ -62,9 +69,14 @@ fn list(store: &RulesStore, allow_unsigned: bool) -> ExitCode {
     );
     for installed in store.list_installed() {
         match installed.state {
-            InstalledState::Verified { pack, signed_by } => println!(
-                "installed  {}  signed by {signed_by}  {}",
+            InstalledState::Verified {
+                pack,
+                signed_by,
+                rotation_chain,
+            } => println!(
+                "installed  {}  signed by {signed_by}, key chain {}  {}",
                 describe(&pack),
+                rotation_chain.join(" > "),
                 pack.content_hash
             ),
             InstalledState::Unverified { pack, reason } => println!(
@@ -102,7 +114,8 @@ fn verify(
                 eprintln!("{error}");
                 eprintln!("{}", messages::RULES_UNSIGNED_WARNING);
                 println!("pack: {}", describe(&pack));
-                ExitCode::Success
+                // The flag allows use of the pack. A failed check stays a failed check.
+                ExitCode::Error
             }
             Err(_) => fail(&error),
         },
