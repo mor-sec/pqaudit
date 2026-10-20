@@ -173,7 +173,8 @@ xtask/src/main.rs   keygen, sign, pack-rules, sign-release, strings, self-cbom, 
   - Each stub returns `ExitCode::Error` with the message `messages::NOT_IMPLEMENTED`, until its task replaces it.
   - Each crate has a `messages.rs` that exports `pub const ALL: &[(&str, &str)]`.
 
-- [ ] **Step 1:** If `cargo` is not installed, install rustup (`curl https://sh.rustup.rs -sSf | sh -s -- -y`).
+- [ ] **Step 1:** Do these steps:
+  - If `cargo` is not installed, install rustup (`curl https://sh.rustup.rs -sSf | sh -s -- -y`).
   - Then write `rust-toolchain.toml`. Pin the version that `rustc --version` shows.
   - Add the targets in the Global Constraints.
 - [ ] **Step 2: Write the failing tests** in `cli_basics.rs`, with `assert_cmd`:
@@ -235,7 +236,8 @@ xtask/src/main.rs   keygen, sign, pack-rules, sign-release, strings, self-cbom, 
   - It runs `cargo xtask strings --out target/ste --commits "${{ github.event.pull_request.base.sha || 'HEAD~1' }}..HEAD"`.
   - Then it runs `vale README.md docs/ target/ste/ crates/pqaudit-report/src/templates/ crates/pqaudit-cli/src/templates/ .github/release-notes-template.md`.
   - It skips paths that do not exist yet.
-- [ ] **Step 7:** If Vale shows errors in the Task 1 comments, rewrite them.
+- [ ] **Step 7:** Do these steps:
+  - If Vale shows errors in the Task 1 comments, rewrite them.
   - Run the xtask tests. Expected result: PASS.
   - Run the `ste` job commands locally. Expected result: 0 errors.
 - [ ] **Step 8:** Commit: `Add the STE style guide, the Vale rules, and the text extraction`.
@@ -497,9 +499,10 @@ xtask/src/main.rs   keygen, sign, pack-rules, sign-release, strings, self-cbom, 
     - Skip the encrypted key bytes and do not decode them.
     - Ignore the integrity hash at the end.
   - PKCS#12: try each password that the user supplies, then the empty password.
-    - If all passwords fail, record one `KeyInfo { kind: EncryptedPrivate, algorithm: None }` inventory item.
-    - Also record a note "encrypted — not inspected" in `errors`.
-    - Make no finding for it.
+    - If all passwords fail, do these steps:
+      - Record one `KeyInfo { kind: EncryptedPrivate, algorithm: None }` inventory item.
+      - Record a note "encrypted — not inspected" in `errors`.
+      - Make no finding for it.
   - Detection by extension (`.p12 .pfx .jks .jceks .keystore`) and by magic bytes.
 
 - [ ] **Step 1: Write the failing tests:** `p12_with_empty_password_reads_certs`, `p12_with_supplied_password_reads_certs`, `p12_wrong_password_is_not_inspected_note`, `jks_trusted_and_chain_certs_read`, `jceks_magic_detected`, `truncated_jks_is_error`, and `keystore_private_material_not_in_results`.
@@ -929,14 +932,15 @@ xtask/src/main.rs   keygen, sign, pack-rules, sign-release, strings, self-cbom, 
   4. Write a `scope.toml` that targets them, with `allowed_cidrs = ["127.0.0.0/8"]`, and test limits below the defaults.
   5. Run `scan net --dry-run` (exit 0), `scan net`, `scan files` on the fixtures, `merge`, `report --format html`, `report --format json`, `cbom`, and `explain <first id>`.
   - Check these results:
-    - Each command exits with 0. (Exit 3 is correct only where the fixtures include errors on purpose.)
+    - Each command exits with 0. (The test accepts exit 3 only where the fixtures include errors on purpose.)
     - The audit log has one line for each connection.
     - The findings in the JSON report include `tls.no-pq-kex`, with the deadline `2030-12-31` from the profile `au`.
     - The CBOM is valid.
     - The HTML report contains all its content.
 - [ ] **Step 2:** Run `cargo test -p pqaudit-cli --test e2e`. Expected result: PASS.
-  - If an integration problem occurs, repair it in the crate that owns the code.
-  - Add a regression test in that crate.
+  - If an integration problem occurs, do these steps:
+    - Repair it in the crate that owns the code.
+    - Add a regression test in that crate.
 - [ ] **Step 3:** Commit: `Add the end-to-end test for Stage 1`.
 
 ### Task 19: Documents
