@@ -51,16 +51,17 @@ pub fn run(cli: &Cli, args: FilesArgs<'_>) -> ExitCode {
         }
     };
 
+    let host = host_name();
     let options = ScanOptions {
         max_file_size: args.max_file_size,
         follow_symlinks: args.follow_symlinks,
         passwords,
+        host: host.clone(),
     };
     let run_id = Uuid::new_v4();
     let output = scan(args.paths, &options, &active.pack, run_id);
     let finished = Utc::now();
 
-    let host = host_name();
     let results = ResultsFile {
         header: ResultsHeader {
             schema_version: SCHEMA_VERSION,

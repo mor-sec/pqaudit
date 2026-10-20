@@ -124,6 +124,18 @@ fn count_lines(data: &[u8]) -> u32 {
 ///
 /// The block does not need an end line. The data can be the start of a file.
 pub fn has_kind(data: &[u8], kind: BlockKind) -> bool {
+    has_start_line(data, |label| BlockKind::of(label) == kind)
+}
+
+/// Return true if the data has the start line of an OpenPGP armor block that holds keys.
+pub fn has_pgp_key_armor(data: &[u8]) -> bool {
+    has_start_line(data, |label| {
+        label == b"PGP PUBLIC KEY BLOCK" || label == b"PGP PRIVATE KEY BLOCK"
+    })
+}
+
+/// Return true if the data has a start line whose label the test accepts.
+fn has_start_line(data: &[u8], accepts: impl Fn(&[u8]) -> bool) -> bool {
     let mut cursor = 0;
     while let Some(start) = find(data, BEGIN, cursor) {
         let label_start = start + BEGIN.len();
@@ -132,7 +144,7 @@ pub fn has_kind(data: &[u8], kind: BlockKind) -> bool {
             return false;
         };
         let label = &data[label_start..label_end];
-        if label.len() <= MAX_LABEL && !label.contains(&b'\n') && BlockKind::of(label) == kind {
+        if label.len() <= MAX_LABEL && !label.contains(&b'\n') && accepts(label) {
             return true;
         }
     }

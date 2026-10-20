@@ -10,6 +10,9 @@ repository.workspace = true
 [dependencies]
 base64 = "0.23.1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+ed25519-dalek = { version = "3.0.0", features = ["zeroize"] }
+ml-dsa = { version = "0.1.1", features = ["zeroize"] }
+ml-kem = { version = "0.3.3", features = ["zeroize"] }
 p12-keystore = "0.4.1"
 pqaudit-core = { version = "0.1.0", path = "../pqaudit-core" }
 pqaudit-rules = { version = "0.1.0", path = "../pqaudit-rules" }

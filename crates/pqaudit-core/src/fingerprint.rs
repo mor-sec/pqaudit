@@ -23,6 +23,14 @@ impl Fingerprint {
         Self::build("key", &[spki_or_blob_sha256_hex])
     }
 
+    /// Make the fingerprint of a private key that has no public part the tool can find.
+    ///
+    /// The input is the name of the scanned host and the place of the key in the file system.
+    /// It never holds key bytes.
+    pub fn place(host: &str, place: &str) -> Self {
+        Self::build("place", &[&host.to_lowercase(), place])
+    }
+
     /// Make the fingerprint of an endpoint. The host is in lower case.
     pub fn endpoint(host: &str, port: u16, rule_family: &str) -> Self {
         Self::build(

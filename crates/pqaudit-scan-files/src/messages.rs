@@ -10,6 +10,9 @@ pub const SYMLINK_LOOP: &str = "This path is in a loop of symbolic links. The to
 pub const TOO_LARGE: &str =
     "The file is too large. The limit is {limit} bytes. The tool skips the file.";
 
+/// The error for a file that changes while the tool reads it.
+pub const FILE_CHANGED: &str = "The file changed while the tool read it. The tool skips the file.";
+
 /// The note for a file name that is not valid UTF-8.
 pub const NAME_NOT_UTF8: &str =
     "The file name is not valid UTF-8. The results show a changed name. The tool scans the file.";
@@ -115,6 +118,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("CANNOT_READ", CANNOT_READ),
     ("SYMLINK_LOOP", SYMLINK_LOOP),
     ("TOO_LARGE", TOO_LARGE),
+    ("FILE_CHANGED", FILE_CHANGED),
     ("NAME_NOT_UTF8", NAME_NOT_UTF8),
     ("NO_CERTIFICATE", NO_CERTIFICATE),
     ("DER_INVALID", DER_INVALID),

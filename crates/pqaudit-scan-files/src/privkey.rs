@@ -16,6 +16,7 @@ use pqaudit_core::KeyKind;
 
 use crate::algorithm::{self, Parts};
 use crate::der::{self, Tlv, BIT_STRING, INTEGER, NULL, OCTET_STRING, OID, SEQUENCE};
+use crate::derive;
 use crate::keys::{FoundKey, KeyProblem};
 use crate::messages;
 use crate::pem::{self, Block};
@@ -156,7 +157,7 @@ fn pkcs8(data: &[u8], place: &str) -> Result<FoundKey, KeyProblem> {
     let (id, rest) = der::read_tag(rest, SEQUENCE).ok_or_else(invalid)?;
     let id = algorithm_id(id).ok_or_else(invalid)?;
     // The header of the key field. The code does not read the content of a key it cannot use.
-    let (key_field, _) = der::read_tag(rest, OCTET_STRING).ok_or_else(invalid)?;
+    let (key_field, after_key) = der::read_tag(rest, OCTET_STRING).ok_or_else(invalid)?;
 
     let mut parts = Parts {
         curve_oid: id.curve(),
@@ -176,7 +177,12 @@ fn pkcs8(data: &[u8], place: &str) -> Result<FoundKey, KeyProblem> {
             public_spki =
                 sec1_public(key_field.content).map(|point| make_spki_from_bits(id.whole, point));
         }
-        _ => {}
+        // The public key of a version 2 key (RFC 5958) is in the field [1].
+        _ => {
+            public_spki = embedded_public(after_key)
+                .or_else(|| derived_public(&id.oid, key_field.content))
+                .map(|public| make_spki(id.whole, &public));
+        }
     }
     let algorithm = algorithm::from_oid(&id.oid, &parts).map_err(unknown)?;
     Ok(match public_spki {
@@ -189,6 +195,94 @@ fn pkcs8(data: &[u8], place: &str) -> Result<FoundKey, KeyProblem> {
         ),
         None => FoundKey::private_without_public(algorithm, place),
     })
+}
+
+/// The context tag of the public key in a version 2 PKCS#8 key.
+const PKCS8_PUBLIC: u8 = 0x81;
+/// The context tag of a seed in a post-quantum PKCS#8 key.
+const PQ_SEED: u8 = 0x80;
+
+/// Find the public key in the fields after the private key of a PKCS#8 key.
+///
+/// Return the BIT STRING content: the unused-bits byte and the key.
+fn embedded_public(mut fields: &[u8]) -> Option<Vec<u8>> {
+    while let Some((field, next)) = der::read(fields) {
+        if field.tag == PKCS8_PUBLIC {
+            return Some(field.content.to_vec());
+        }
+        fields = next;
+    }
+    None
+}
+
+/// Find the seed in the private key field of a post-quantum key.
+///
+/// The field is a seed `[0]`, an expanded key, or a sequence with both.
+/// Return the seed and the expanded key. Each can be missing.
+fn pq_fields(field: &[u8]) -> (Option<&[u8]>, Option<&[u8]>) {
+    match der::read(field) {
+        Some((tlv, _)) if tlv.tag == PQ_SEED => (Some(tlv.content), None),
+        Some((tlv, _)) if tlv.tag == OCTET_STRING => (None, Some(tlv.content)),
+        Some((tlv, _)) if tlv.tag == SEQUENCE => {
+            let seed = der::read_tag(tlv.content, OCTET_STRING);
+            match seed {
+                Some((seed, rest)) => (
+                    Some(seed.content),
+                    der::read_tag(rest, OCTET_STRING).map(|(expanded, _)| expanded.content),
+                ),
+                None => (None, None),
+            }
+        }
+        _ => (None, None),
+    }
+}
+
+/// Compute the public key of a key that has a seed. Return the BIT STRING content.
+///
+/// The seed stays in the buffer of the caller. The result is public.
+fn derived_public(oid: &str, key_field: &[u8]) -> Option<Vec<u8>> {
+    let public = match oid {
+        "1.3.101.112" => {
+            let (seed, _) = der::read_tag(key_field, OCTET_STRING)?;
+            derive::ed25519(seed.content)?
+        }
+        "2.16.840.1.101.3.4.4.1" | "2.16.840.1.101.3.4.4.2" | "2.16.840.1.101.3.4.4.3" => {
+            let level = match oid {
+                "2.16.840.1.101.3.4.4.1" => 512,
+                "2.16.840.1.101.3.4.4.2" => 768,
+                _ => 1024,
+            };
+            let (seed, expanded) = pq_fields(key_field);
+            match (seed, expanded) {
+                (Some(seed), _) => derive::ml_kem(level, seed)?,
+                // The expanded key holds the public key after the secret vector.
+                (None, Some(expanded)) => {
+                    let k = level / 256;
+                    let start = usize::from(384 * k);
+                    let end = start + usize::from(384 * k + 32);
+                    if expanded.len() != usize::from(768 * k + 96) {
+                        return None;
+                    }
+                    expanded.get(start..end)?.to_vec()
+                }
+                _ => return None,
+            }
+        }
+        "2.16.840.1.101.3.4.3.17" | "2.16.840.1.101.3.4.3.18" | "2.16.840.1.101.3.4.3.19" => {
+            let level = match oid {
+                "2.16.840.1.101.3.4.3.17" => 44,
+                "2.16.840.1.101.3.4.3.18" => 65,
+                _ => 87,
+            };
+            // An expanded ML-DSA key does not hold the public key. The tool cannot find it.
+            let (seed, _) = pq_fields(key_field);
+            derive::ml_dsa(level, seed?)?
+        }
+        _ => return None,
+    };
+    let mut bits = vec![0u8];
+    bits.extend_from_slice(&public);
+    Some(bits)
 }
 
 /// Make the SPKI bytes from a BIT STRING element.

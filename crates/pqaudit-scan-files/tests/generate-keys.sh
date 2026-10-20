@@ -59,7 +59,16 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:1024 -out "$out/pkcs8-rs
 # Post-quantum keys. A certificate for the ML-KEM key is signed with an ML-DSA key.
 openssl genpkey -algorithm ML-KEM-768 -out "$out/pkcs8-mlkem768.pem"
 openssl pkey -in "$out/pkcs8-mlkem768.pem" -pubout -out "$out/spki-mlkem768.pem"
-openssl genpkey -algorithm ML-DSA-65 -out "$work/mldsa.key"
+openssl pkey -in "$out/pkcs8-mlkem768.pem" -provparam ml-kem.output_formats=seed-only \
+  -out "$out/pkcs8-mlkem768-seed.pem"
+openssl pkey -in "$out/pkcs8-mlkem768.pem" -provparam ml-kem.output_formats=priv-only \
+  -out "$out/pkcs8-mlkem768-expanded.pem"
+openssl genpkey -algorithm ML-DSA-65 -out "$out/pkcs8-mldsa65.pem"
+openssl pkey -in "$out/pkcs8-mldsa65.pem" -pubout -out "$out/spki-mldsa65.pem"
+openssl pkey -in "$out/pkcs8-mldsa65.pem" -provparam ml-dsa.output_formats=priv-only \
+  -out "$out/pkcs8-mldsa65-expanded.pem"
+openssl pkey -in "$out/pkcs8-ed25519.pem" -pubout -out "$out/spki-ed25519.pem"
+cp "$out/pkcs8-mldsa65.pem" "$work/mldsa.key"
 openssl x509 -new -force_pubkey "$out/spki-mlkem768.pem" -key "$work/mldsa.key" \
   -subj "/CN=mlkem768.test" -days 365 -out "$out/cert-mlkem768.pem"
 

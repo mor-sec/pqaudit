@@ -462,7 +462,10 @@ fn malformed_key_files_are_errors_not_panics() {
     // OpenPGP data that ends too soon.
     let gpg = fs::read(key_fixture("gpg-rsa3072.pub.gpg")).unwrap();
     fs::write(root.join("cut.gpg"), &gpg[..gpg.len() / 2]).unwrap();
-    fs::write(root.join("junk.gpg"), vec![0x99_u8; 50]).unwrap();
+    // A key packet whose number claims more bytes than the packet has.
+    let mut junk = vec![0x99, 0x00, 0x30, 4, 0, 0, 0, 0, 1, 0xff, 0xff];
+    junk.resize(51, 0);
+    fs::write(root.join("junk.gpg"), junk).unwrap();
 
     let out = scan_paths(&[root.to_path_buf()]);
     for name in [
@@ -502,6 +505,10 @@ fn private_parts() -> Vec<(&'static str, Vec<u8>)> {
         "pkcs8-ed25519.pem",
         "pkcs8-rsa-enc.pem",
         "pkcs8-mlkem768.pem",
+        "pkcs8-mlkem768-seed.pem",
+        "pkcs8-mlkem768-expanded.pem",
+        "pkcs8-mldsa65.pem",
+        "pkcs8-mldsa65-expanded.pem",
         "pkcs1-rsa.pem",
         "sec1-ec.pem",
         "id_rsa",
@@ -689,4 +696,123 @@ fn keystore_error_paths_pass_the_same_window_check() {
 fn leak_check_detects_a_raw_leak() {
     let secret = b"this-is-a-private-key-text".to_vec();
     assert_no_window("{\"x\":\"this-is-a-private-key-text\"}", &secret, "control");
+}
+
+fn write_files(files: &[(&str, Vec<u8>)]) -> (tempfile::TempDir, ScanOutput) {
+    let dir = tempfile::tempdir().unwrap();
+    for (name, bytes) in files {
+        fs::write(dir.path().join(name), bytes).unwrap();
+    }
+    let out = scan_paths(&[dir.path().to_path_buf()]);
+    (dir, out)
+}
+
+#[test]
+fn non_key_files_with_key_extensions_are_not_read() {
+    let mut trustdb = vec![0x01];
+    trustdb.extend(pseudo_random(31, 300));
+    // An encrypted message with partial body lengths, like a file of the tool "pass".
+    let mut message = vec![0xc9, 0xe1];
+    message.extend(pseudo_random(32, 4096));
+    message.extend([0x01, 0x02]);
+    // The start of an old Publisher file.
+    let mut publisher = vec![0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+    publisher.extend(pseudo_random(33, 600));
+    let (_dir, out) = write_files(&[
+        ("trustdb.gpg", trustdb),
+        ("secret.gpg", message),
+        (
+            "notes.asc",
+            b"Hello.\nThis is a plain text file.\n".to_vec(),
+        ),
+        (
+            "sig.asc",
+            b"-----BEGIN PGP SIGNATURE-----\n\nAAAA\n-----END PGP SIGNATURE-----\n".to_vec(),
+        ),
+        ("brochure.pub", publisher),
+        ("empty.pgp", Vec::new()),
+    ]);
+    assert!(out.errors.is_empty(), "errors: {:?}", out.errors);
+    assert!(out.findings.is_empty() && out.inventory.is_empty());
+    assert_eq!(out.files_read, 0);
+    assert_eq!(out.files_not_read, 6);
+}
+
+#[test]
+fn pem_certificate_in_a_key_extension_is_a_certificate() {
+    let cert = fs::read(support::fixture("rsa2048-leaf.pem")).unwrap();
+    let (_dir, out) = write_files(&[
+        ("cert.pub", cert.clone()),
+        ("cert.asc", cert.clone()),
+        ("cert.gpg", cert),
+    ]);
+    assert!(out.errors.is_empty(), "errors: {:?}", out.errors);
+    assert_eq!(out.findings.len(), 1);
+    assert_eq!(out.findings[0].rule_id, "cert.classical-key");
+    assert_eq!(out.findings[0].occurrences.len(), 3);
+    assert_eq!(out.files_read, 3);
+}
+
+#[test]
+fn private_key_and_public_key_of_seed_based_algorithms_give_one_item() {
+    let out = scan_paths(&[
+        key_fixture("pkcs8-ed25519.pem"),
+        key_fixture("spki-ed25519.pem"),
+    ]);
+    let finding = only_finding(&out);
+    assert_eq!(finding.rule_id, "key.classical");
+    assert_eq!(finding.occurrences.len(), 2);
+    assert!(finding.fingerprint.0.starts_with("key:"));
+
+    // ML-DSA with a seed.
+    let out = scan_paths(&[
+        key_fixture("pkcs8-mldsa65.pem"),
+        key_fixture("spki-mldsa65.pem"),
+    ]);
+    let item = only_inventory(&out);
+    assert_eq!(item.occurrences.len(), 2);
+    assert!(item.pq_ready);
+
+    // ML-KEM: the seed form, the expanded form, the form with both, and the public key.
+    let out = scan_paths(&[
+        key_fixture("pkcs8-mlkem768.pem"),
+        key_fixture("pkcs8-mlkem768-seed.pem"),
+        key_fixture("pkcs8-mlkem768-expanded.pem"),
+        key_fixture("spki-mlkem768.pem"),
+    ]);
+    let item = only_inventory(&out);
+    assert_eq!(item.occurrences.len(), 4);
+    assert!(item.fingerprint.0.starts_with("key:"));
+}
+
+#[test]
+fn underivable_private_key_gets_a_place_fingerprint_with_the_host_name() {
+    let path = key_fixture("pkcs8-mldsa65-expanded.pem");
+    let scan_on = |host: &str| {
+        let options = ScanOptions {
+            host: host.to_string(),
+            ..ScanOptions::default()
+        };
+        scan(
+            std::slice::from_ref(&path),
+            &options,
+            default_pack(),
+            Uuid::new_v4(),
+        )
+    };
+    let first = scan_on("host-a");
+    let item = only_inventory(&first);
+    assert!(
+        item.fingerprint.0.starts_with("place:"),
+        "{:?}",
+        item.fingerprint
+    );
+    assert_eq!(item.key.as_ref().unwrap().fingerprint_sha256, "");
+    let again = scan_on("host-a");
+    assert_eq!(only_inventory(&again).fingerprint, item.fingerprint);
+    let other = scan_on("host-b");
+    assert_ne!(only_inventory(&other).fingerprint, item.fingerprint);
+    // The public key of the same key has a different fingerprint kind.
+    let public = scan_key("spki-mldsa65.pem");
+    assert_ne!(only_inventory(&public).fingerprint, item.fingerprint);
 }

@@ -164,9 +164,25 @@ fn too_large(location: &str, limit: u64) -> ScanError {
     }
 }
 
-/// Read `limit` bytes at most from the reader into the buffer.
-fn read_up_to(reader: impl Read, limit: u64, buffer: &mut Vec<u8>) -> std::io::Result<()> {
-    reader.take(limit).read_to_end(buffer).map(|_| ())
+/// Fill the buffer from the reader. Return the number of bytes read.
+///
+/// The code never grows the buffer. A buffer that grows can leave a copy that nothing wipes.
+fn fill(mut reader: impl Read, buffer: &mut [u8]) -> std::io::Result<usize> {
+    let mut filled = 0;
+    while filled < buffer.len() {
+        match reader.read(&mut buffer[filled..]) {
+            Ok(0) => break,
+            Ok(count) => filled += count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(filled)
+}
+
+/// Make a buffer of zeros that wipes itself on drop. The file can hold private keys.
+fn wiped_buffer(size: u64) -> Zeroizing<Vec<u8>> {
+    Zeroizing::new(vec![0u8; usize::try_from(size).unwrap_or(0)])
 }
 
 /// Scan one file.
@@ -211,25 +227,42 @@ pub(crate) fn scan_file(
         }
     };
 
-    // The file can hold private keys. The buffer wipes itself on drop.
-    // It has room for the whole file, so the buffer does not move while it grows.
-    let room = usize::try_from(length.min(opts.max_file_size).saturating_add(1)).unwrap_or(0);
-    let mut data = Zeroizing::new(Vec::with_capacity(room));
-    let head_limit = if read_all {
+    let changed = || ScanError {
+        location: location.clone(),
+        reason: messages::FILE_CHANGED.to_string(),
+    };
+    // A file with a known name needs the whole file. The tool reads the start of other files
+    // into a small buffer first, and reads the rest only if the start shows a known format.
+    let head_size = if read_all {
         if length > opts.max_file_size {
             errors.push(too_large(&location, opts.max_file_size));
             return Outcome::Failed;
         }
-        opts.max_file_size
+        length
     } else {
-        SNIFF_BYTES.min(opts.max_file_size)
+        length.min(SNIFF_BYTES.min(opts.max_file_size))
     };
-    if let Err(error) = read_up_to(&mut file, head_limit.saturating_add(1), &mut data) {
-        errors.push(cannot_read(error));
+    // One byte more than expected shows that the file grew after the size check.
+    let mut data = wiped_buffer(head_size + 1);
+    let head_length = match fill(&mut file, &mut data) {
+        Ok(count) => count,
+        Err(error) => {
+            errors.push(cannot_read(error));
+            return Outcome::Failed;
+        }
+    };
+    data.truncate(head_length);
+    if read_all && head_length as u64 > length {
+        errors.push(changed());
         return Outcome::Failed;
     }
     let Some(format) = sniff::resolve(named, &data) else {
-        return Outcome::Read;
+        // A file with a key-like name and other content has no keys.
+        return if sniff::has_key_extension(path) {
+            Outcome::NotRead
+        } else {
+            Outcome::Read
+        };
     };
     let ctx = FileContext {
         location: &location,
@@ -245,16 +278,24 @@ pub(crate) fn scan_file(
             errors.push(too_large(&location, opts.max_file_size));
             return Outcome::Failed;
         }
-        let rest = opts.max_file_size.saturating_add(1) - data.len() as u64;
-        if let Err(error) = read_up_to(&mut file, rest, &mut data) {
-            errors.push(cannot_read(error));
+        // The full buffer has room for the whole file and one byte more. It never grows.
+        let mut full = wiped_buffer(length + 1);
+        full[..head_length].copy_from_slice(&data);
+        let more = match fill(&mut file, &mut full[head_length..]) {
+            Ok(count) => count,
+            Err(error) => {
+                errors.push(cannot_read(error));
+                return Outcome::Failed;
+            }
+        };
+        let total = head_length + more;
+        if total as u64 > length {
+            errors.push(changed());
             return Outcome::Failed;
         }
-    }
-    // The file can grow after the size check.
-    if data.len() as u64 > opts.max_file_size {
-        errors.push(too_large(&location, opts.max_file_size));
-        return Outcome::Failed;
+        full.truncate(total);
+        // The small buffer wipes itself here.
+        data = full;
     }
 
     match format {

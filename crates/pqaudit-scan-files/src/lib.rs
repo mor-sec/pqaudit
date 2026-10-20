@@ -5,6 +5,7 @@
 mod algorithm;
 pub mod cert;
 mod der;
+mod derive;
 mod file;
 pub mod gpg;
 pub mod jks;
@@ -41,6 +42,9 @@ pub struct ScanOptions {
     /// Passwords for PKCS#12 key stores. The tool tries each one, then the empty password.
     /// The tool never logs them.
     pub passwords: Vec<Zeroizing<String>>,
+    /// The name of the host that the tool scans. It goes into the fingerprint of a private key
+    /// that has no public part, so two hosts do not merge their keys.
+    pub host: String,
 }
 
 impl std::fmt::Debug for ScanOptions {
@@ -53,8 +57,28 @@ impl std::fmt::Debug for ScanOptions {
                 "passwords",
                 &format_args!("{} hidden", self.passwords.len()),
             )
+            .field("host", &self.host)
             .finish()
     }
+}
+
+/// Find the name of this computer. Return "unknown" if the tool cannot find it.
+pub fn local_host_name() -> String {
+    for variable in ["HOSTNAME", "COMPUTERNAME"] {
+        if let Ok(name) = std::env::var(variable) {
+            if !name.trim().is_empty() {
+                return name.trim().to_string();
+            }
+        }
+    }
+    for path in ["/proc/sys/kernel/hostname", "/etc/hostname"] {
+        if let Ok(name) = std::fs::read_to_string(path) {
+            if !name.trim().is_empty() {
+                return name.trim().to_string();
+            }
+        }
+    }
+    String::from("unknown")
 }
 
 impl Default for ScanOptions {
@@ -63,6 +87,7 @@ impl Default for ScanOptions {
             max_file_size: 10_485_760,
             follow_symlinks: false,
             passwords: Vec::new(),
+            host: local_host_name(),
         }
     }
 }
@@ -161,7 +186,11 @@ pub fn scan(paths: &[PathBuf], opts: &ScanOptions, pack: &RulesPack, run_id: Uui
         }
     }
     for (_, item) in keys {
-        let fingerprint = Fingerprint::key(&item.key.id);
+        let fingerprint = if item.key.place_based {
+            Fingerprint::place(&opts.host, &item.key.id)
+        } else {
+            Fingerprint::key(&item.key.id)
+        };
         let algorithm = item.key.info.algorithm.clone();
         let verdict = algorithm
             .as_ref()

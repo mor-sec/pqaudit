@@ -24,6 +24,8 @@ pub struct FoundKey {
     pub evidence: &'static str,
     /// The line where the key starts. A binary file has no line.
     pub line: Option<u32>,
+    /// True if the ID is the place of the key and not a hash of a public key.
+    pub place_based: bool,
 }
 
 impl FoundKey {
@@ -46,24 +48,26 @@ impl FoundKey {
             },
             evidence,
             line: None,
+            place_based: false,
         }
     }
 
-    /// Make a private key that the tool cannot identify by a public part.
+    /// Make a private key whose public key the tool cannot find.
     ///
-    /// The ID is a hash of the `place`, never of the key bytes.
+    /// The ID is the `place` of the key. The scan turns it into a fingerprint with the host name.
+    /// The key has no hash of a public key, so `fingerprint_sha256` is empty.
     pub fn private_without_public(algorithm: Algorithm, place: &str) -> Self {
-        let hash = sha256_hex(format!("private-key:{place}").as_bytes());
         Self {
-            id: hash.clone(),
+            id: place.to_string(),
             info: KeyInfo {
-                fingerprint_sha256: hash,
+                fingerprint_sha256: String::new(),
                 kind: KeyKind::Pkcs8Private,
                 algorithm: Some(algorithm),
                 comment: None,
             },
             evidence: messages::EVIDENCE_PRIVATE_KEY,
             line: None,
+            place_based: true,
         }
     }
 
@@ -80,6 +84,7 @@ impl FoundKey {
             },
             evidence: messages::ENCRYPTED_KEY_NOT_INSPECTED,
             line: None,
+            place_based: false,
         }
     }
 
