@@ -119,6 +119,33 @@ fn no_readable_file_exits_1() {
 }
 
 #[test]
+fn empty_directory_exits_1() {
+    let setup = Setup::new();
+    setup
+        .pqaudit()
+        .args(["scan", "files"])
+        .arg(setup.target())
+        .assert()
+        .code(1);
+}
+
+#[cfg(unix)]
+#[test]
+fn only_symlinks_exits_1_and_shows_the_hint() {
+    let setup = Setup::new();
+    let real = setup.dir.path().join("real.pem");
+    fs::copy(fixture("rsa2048-leaf.pem"), &real).unwrap();
+    std::os::unix::fs::symlink(&real, setup.target().join("link.pem")).unwrap();
+    setup
+        .pqaudit()
+        .args(["scan", "files"])
+        .arg(setup.target())
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("--follow-symlinks"));
+}
+
+#[test]
 fn too_large_file_gives_partial_exit_3() {
     let setup = Setup::new();
     fs::copy(fixture("rsa2048-leaf.pem"), setup.target().join("a.pem")).unwrap();

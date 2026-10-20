@@ -44,6 +44,17 @@ for level in intermediate leaf; do
 done
 cat "$work/leaf.pem" "$work/intermediate.pem" "$work/root.pem" >"$out/chain3.pem"
 
+# An RSA-PSS key in the certificate.
+openssl req -x509 -newkey rsa-pss -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_pss_keygen_md:sha256 \
+  -nodes -keyout "$work/pss.key" -out "$out/rsa-pss.pem" -subj "/CN=rsa-pss.test" -days 365 \
+  -addext "basicConstraints=CA:FALSE" 2>/dev/null
+
+# The OpenSSL trusted form of a certificate. It has trust data after the certificate.
+openssl x509 -in "$out/rsa2048-leaf.pem" -trustout -addtrust serverAuth -out "$out/trusted.pem"
+
+# A PEM file with no certificate. This block has no key data. It only has a test label.
+printf -- '-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n' >"$out/other-block.pem"
+
 # A DER certificate.
 openssl x509 -in "$out/rsa2048-leaf.pem" -outform DER -out "$out/rsa2048-leaf.der"
 

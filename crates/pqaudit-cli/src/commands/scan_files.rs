@@ -133,11 +133,25 @@ pub fn run(cli: &Cli, args: FilesArgs<'_>) -> ExitCode {
     );
     println!("{} {}", messages::SCAN_RESULTS, path.display());
 
-    if output.errors.is_empty() {
-        ExitCode::Success
-    } else if output.files_read == 0 {
+    if output.skipped_symlinks > 0 {
+        println!(
+            "{}",
+            messages::SCAN_SYMLINKS_SKIPPED
+                .replace("{count}", &output.skipped_symlinks.to_string())
+        );
+    }
+    if output.files_not_read > 0 {
+        println!(
+            "{}",
+            messages::SCAN_NOT_READ.replace("{count}", &output.files_not_read.to_string())
+        );
+    }
+
+    if output.files_read == 0 {
         eprintln!("{}", messages::SCAN_NO_FILES);
         ExitCode::Error
+    } else if output.errors.is_empty() {
+        ExitCode::Success
     } else {
         ExitCode::Partial
     }

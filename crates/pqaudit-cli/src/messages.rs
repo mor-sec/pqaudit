@@ -63,6 +63,14 @@ pub const SCAN_ERRORS_HIDDEN: &str =
 /// The error when the tool could read no file.
 pub const SCAN_NO_FILES: &str = "The tool could read no file.";
 
+/// The summary line for skipped symbolic links. The tool fills in {count}.
+pub const SCAN_SYMLINKS_SKIPPED: &str =
+    "The tool skipped {count} symbolic links. Use the flag --follow-symlinks to scan them.";
+
+/// The summary line for files with PEM data but no certificate. The tool fills in {count}.
+pub const SCAN_NOT_READ: &str =
+    "The tool did not read {count} files as certificates. They have PEM data but no certificate.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("NOT_IMPLEMENTED", NOT_IMPLEMENTED),
@@ -84,4 +92,6 @@ pub const ALL: &[(&str, &str)] = &[
     ("SCAN_ERROR_LINE", SCAN_ERROR_LINE),
     ("SCAN_ERRORS_HIDDEN", SCAN_ERRORS_HIDDEN),
     ("SCAN_NO_FILES", SCAN_NO_FILES),
+    ("SCAN_SYMLINKS_SKIPPED", SCAN_SYMLINKS_SKIPPED),
+    ("SCAN_NOT_READ", SCAN_NOT_READ),
 ];

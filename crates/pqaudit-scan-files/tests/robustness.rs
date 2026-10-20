@@ -88,3 +88,32 @@ fn missing_path_is_an_error() {
     assert_eq!(out.errors.len(), 1);
     assert_eq!(out.files_read, 0);
 }
+
+#[cfg(unix)]
+#[test]
+fn skipped_symlinks_are_counted_and_noted() {
+    let dir = tempfile::tempdir().unwrap();
+    let cert = dir.path().join("real.pem");
+    fs::write(&cert, good_cert()).unwrap();
+    std::os::unix::fs::symlink(&cert, dir.path().join("link.pem")).unwrap();
+    let scan_with = |follow| {
+        scan(
+            &[dir.path().to_path_buf()],
+            &ScanOptions {
+                follow_symlinks: follow,
+                ..ScanOptions::default()
+            },
+            default_pack(),
+            Uuid::new_v4(),
+        )
+    };
+    let out = scan_with(false);
+    assert_eq!(out.skipped_symlinks, 1);
+    assert_eq!(out.errors.len(), 1);
+    assert!(out.errors[0].reason.contains("symbolic link"));
+    assert_eq!(out.findings.len(), 1);
+    let out = scan_with(true);
+    assert_eq!(out.skipped_symlinks, 0);
+    assert!(out.errors.is_empty());
+    assert_eq!(out.findings[0].occurrences.len(), 2);
+}

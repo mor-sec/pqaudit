@@ -8,16 +8,16 @@ use chrono::{DateTime, Utc};
 use pqaudit_core::{Algorithm, CertInfo};
 use sha2::{Digest, Sha256};
 use x509_parser::prelude::*;
-use x509_parser::public_key::PublicKey;
+use x509_parser::public_key::{PublicKey, RSAPublicKey};
 
 use crate::messages;
 
-/// The start line of a PEM certificate block.
-const PEM_BEGIN: &[u8] = b"-----BEGIN CERTIFICATE-----";
-/// The end line of a PEM certificate block.
-const PEM_END: &[u8] = b"-----END CERTIFICATE-----";
 /// The start of every PEM block.
 const PEM_ANY_BEGIN: &[u8] = b"-----BEGIN ";
+/// The end of a PEM label.
+const PEM_DASHES: &[u8] = b"-----";
+/// The PEM labels that hold an X.509 certificate.
+const CERT_LABELS: [&[u8]; 3] = [b"CERTIFICATE", b"TRUSTED CERTIFICATE", b"X509 CERTIFICATE"];
 /// The longest subject or issuer text that the tool keeps, in characters.
 const MAX_NAME_CHARS: usize = 512;
 
@@ -35,15 +35,22 @@ pub struct Found {
 pub struct PemResult {
     /// The valid certificates.
     pub certs: Vec<Found>,
-    /// The number of blocks that are not valid.
+    /// The number of certificate blocks that are not valid.
     pub bad: usize,
+    /// The number of PEM blocks of other types, for example keys. The tool does not read them.
+    pub other: usize,
     /// The reason for the first bad block.
-    pub first_problem: Option<&'static str>,
+    pub first_problem: Option<String>,
 }
 
 /// Return true if the data has the start line of a certificate block.
 pub fn has_pem_certificate(data: &[u8]) -> bool {
-    find(data, PEM_BEGIN, 0).is_some()
+    CERT_LABELS.iter().any(|label| {
+        let mut marker = PEM_ANY_BEGIN.to_vec();
+        marker.extend_from_slice(label);
+        marker.extend_from_slice(PEM_DASHES);
+        find(data, &marker, 0).is_some()
+    })
 }
 
 /// Return true if the data has the start line of any PEM block.
@@ -64,13 +71,26 @@ pub fn parse_pem(data: &[u8]) -> PemResult {
     let mut cursor = 0;
     let mut line = 1u32;
     let mut counted = 0;
-    while let Some(start) = find(data, PEM_BEGIN, cursor) {
+    while let Some(start) = find(data, PEM_ANY_BEGIN, cursor) {
+        let label_start = start + PEM_ANY_BEGIN.len();
+        let Some(label_end) = find(data, PEM_DASHES, label_start) else {
+            break;
+        };
+        let label = &data[label_start..label_end];
+        let body_start = label_end + PEM_DASHES.len();
+        if !CERT_LABELS.contains(&label) {
+            result.other += 1;
+            cursor = body_start;
+            continue;
+        }
         // Count the line breaks between the last counted place and this block.
         line = line.saturating_add(count_lines(&data[counted..start]));
         counted = start;
-        let body_start = start + PEM_BEGIN.len();
-        let Some(end) = find(data, PEM_END, body_start) else {
-            result.problem(messages::PEM_NOT_CLOSED);
+        let mut end_marker = b"-----END ".to_vec();
+        end_marker.extend_from_slice(label);
+        end_marker.extend_from_slice(PEM_DASHES);
+        let Some(end) = find(data, &end_marker, body_start) else {
+            result.problem(messages::PEM_NOT_CLOSED.to_string());
             break;
         };
         let index = result.certs.len() + result.bad;
@@ -80,17 +100,17 @@ pub fn parse_pem(data: &[u8]) -> PemResult {
                     info,
                     line: Some(line),
                 }),
-                Err(reason) => result.problem(reason),
+                Err(error) => result.problem(error.reason()),
             },
-            None => result.problem(messages::PEM_BAD_BASE64),
+            None => result.problem(messages::PEM_BAD_BASE64.to_string()),
         }
-        cursor = end + PEM_END.len();
+        cursor = end + end_marker.len();
     }
     result
 }
 
 impl PemResult {
-    fn problem(&mut self, reason: &'static str) {
+    fn problem(&mut self, reason: String) {
         self.bad += 1;
         self.first_problem.get_or_insert(reason);
     }
@@ -110,16 +130,42 @@ fn decode_block(body: &[u8]) -> Option<Vec<u8>> {
     STANDARD.decode(text).ok()
 }
 
+/// Why the tool cannot read a certificate.
+#[derive(Debug)]
+pub enum CertError {
+    /// The data is not a valid certificate.
+    Invalid,
+    /// The public key type is not known. The value is the OID text.
+    UnknownKey(String),
+}
+
+impl CertError {
+    /// The text for the user. It never holds certificate bytes.
+    pub fn reason(&self) -> String {
+        match self {
+            Self::Invalid => messages::CERT_INVALID.to_string(),
+            Self::UnknownKey(oid) => messages::UNKNOWN_KEY.replace("{oid}", oid),
+        }
+    }
+}
+
 /// Read one DER certificate.
-pub fn parse_der(data: &[u8]) -> Result<CertInfo, &'static str> {
-    parse_certificate(data, 0).map_err(|_| messages::DER_INVALID)
+pub fn parse_der(data: &[u8]) -> Result<CertInfo, String> {
+    parse_certificate(data, 0).map_err(|error| match error {
+        CertError::Invalid => messages::DER_INVALID.to_string(),
+        other => other.reason(),
+    })
 }
 
 /// Read the facts of one certificate. The `position` is the place in the file.
-fn parse_certificate(der: &[u8], position: usize) -> Result<CertInfo, &'static str> {
-    let (_, cert) = X509Certificate::from_der(der).map_err(|_| messages::CERT_INVALID)?;
+///
+/// The data can have bytes after the certificate, for example OpenSSL trust data.
+/// The hash covers the certificate only.
+fn parse_certificate(der: &[u8], position: usize) -> Result<CertInfo, CertError> {
+    let (rest, cert) = X509Certificate::from_der(der).map_err(|_| CertError::Invalid)?;
+    let der = &der[..der.len() - rest.len()];
     let spki = cert.public_key();
-    let public_key = public_key_algorithm(spki);
+    let public_key = public_key_algorithm(spki)?;
     let signature_algorithm = signature_name(&cert.signature_algorithm.algorithm.to_id_string());
 
     let (key_usage, is_ca) = key_usage_and_ca(&cert);
@@ -208,19 +254,19 @@ fn ext_key_usage(cert: &X509Certificate<'_>) -> Vec<String> {
 }
 
 /// Return the algorithm of the public key.
-fn public_key_algorithm(spki: &SubjectPublicKeyInfo<'_>) -> Algorithm {
+fn public_key_algorithm(spki: &SubjectPublicKeyInfo<'_>) -> Result<Algorithm, CertError> {
     let oid = spki.algorithm.algorithm.to_id_string();
     let plain = |name: &str, key_bits: Option<u32>| Algorithm {
         name: name.to_string(),
         key_bits,
         curve: None,
     };
-    match oid.as_str() {
-        "1.2.840.113549.1.1.1" => {
-            let bits = match spki.parsed() {
-                Ok(PublicKey::RSA(rsa)) => bit_length(rsa.modulus),
-                _ => None,
-            };
+    Ok(match oid.as_str() {
+        // The key of an RSA-PSS certificate has the same format as an RSA key.
+        "1.2.840.113549.1.1.1" | "1.2.840.113549.1.1.10" => {
+            let bits = RSAPublicKey::from_der(&spki.subject_public_key.data)
+                .ok()
+                .and_then(|(_, rsa)| bit_length(rsa.modulus));
             plain("RSA", bits)
         }
         "1.2.840.10040.4.1" => {
@@ -260,8 +306,8 @@ fn public_key_algorithm(spki: &SubjectPublicKeyInfo<'_>) -> Algorithm {
         "2.16.840.1.101.3.4.3.18" => plain("ML-DSA-65", None),
         "2.16.840.1.101.3.4.3.19" => plain("ML-DSA-87", None),
         other if is_slh_dsa(other) => plain("SLH-DSA", None),
-        other => plain(other, None),
-    }
+        other => return Err(CertError::UnknownKey(other.to_string())),
+    })
 }
 
 /// SLH-DSA has 12 parameter sets. Their last OID numbers are 20 to 31.

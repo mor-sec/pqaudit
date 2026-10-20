@@ -25,7 +25,6 @@ use zeroize::Zeroizing;
 const SNIFF_BYTES: u64 = 64 * 1024;
 
 /// The settings of a file scan.
-#[derive(Debug)]
 pub struct ScanOptions {
     /// The tool skips a file that is larger than this number of bytes.
     pub max_file_size: u64,
@@ -33,6 +32,20 @@ pub struct ScanOptions {
     pub follow_symlinks: bool,
     /// Passwords for key stores. A later scanner step uses them. The tool never logs them.
     pub passwords: Vec<Zeroizing<String>>,
+}
+
+impl std::fmt::Debug for ScanOptions {
+    /// Show the number of passwords. Never show a password.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScanOptions")
+            .field("max_file_size", &self.max_file_size)
+            .field("follow_symlinks", &self.follow_symlinks)
+            .field(
+                "passwords",
+                &format_args!("{} hidden", self.passwords.len()),
+            )
+            .finish()
+    }
 }
 
 impl Default for ScanOptions {
@@ -56,6 +69,21 @@ pub struct ScanOutput {
     pub errors: Vec<ScanError>,
     /// The number of files that the tool read.
     pub files_read: u64,
+    /// The number of files with PEM data but no certificate, for example key files.
+    /// The tool does not count them in `files_read`.
+    pub files_not_read: u64,
+    /// The number of symbolic links that the tool skipped.
+    pub skipped_symlinks: u64,
+}
+
+/// What happened to one file.
+enum Outcome {
+    /// The tool read the file.
+    Read,
+    /// The file has PEM data but no certificate.
+    NotRead,
+    /// The tool could not read the file. An error explains why.
+    Failed,
 }
 
 /// A certificate and the places where the tool saw it.
@@ -71,11 +99,25 @@ pub fn scan(paths: &[PathBuf], opts: &ScanOptions, pack: &RulesPack, run_id: Uui
     let mut errors = Vec::new();
     let mut files_read = 0u64;
 
-    walk::walk(paths, opts.follow_symlinks, &mut errors, |path, errors| {
-        if scan_file(path, opts, run_id, &mut seen, errors) {
-            files_read += 1;
-        }
-    });
+    let mut files_not_read = 0u64;
+
+    let skipped_symlinks =
+        walk::walk(
+            paths,
+            opts.follow_symlinks,
+            &mut errors,
+            |path, errors| match scan_file(path, opts, run_id, &mut seen, errors) {
+                Outcome::Read => files_read += 1,
+                Outcome::NotRead => files_not_read += 1,
+                Outcome::Failed => {}
+            },
+        );
+    if skipped_symlinks > 0 {
+        errors.push(ScanError {
+            location: String::from("symbolic links"),
+            reason: messages::SYMLINKS_SKIPPED.replace("{count}", &skipped_symlinks.to_string()),
+        });
+    }
 
     let today = Utc::now().date_naive();
     for (index, (_, item)) in seen.into_iter().enumerate() {
@@ -116,6 +158,8 @@ pub fn scan(paths: &[PathBuf], opts: &ScanOptions, pack: &RulesPack, run_id: Uui
     }
     output.errors = errors;
     output.files_read = files_read;
+    output.files_not_read = files_not_read;
+    output.skipped_symlinks = skipped_symlinks;
     output
 }
 
@@ -135,14 +179,14 @@ fn read_up_to(reader: impl Read, limit: u64, buffer: &mut Vec<u8>) -> std::io::R
     reader.take(limit).read_to_end(buffer).map(|_| ())
 }
 
-/// Scan one file. Return true if the tool could read the file.
+/// Scan one file.
 fn scan_file(
     path: &Path,
     opts: &ScanOptions,
     run_id: Uuid,
     seen: &mut BTreeMap<String, Seen>,
     errors: &mut Vec<ScanError>,
-) -> bool {
+) -> Outcome {
     let location = path.to_string_lossy().into_owned();
     if path.to_str().is_none() {
         errors.push(ScanError {
@@ -164,14 +208,14 @@ fn scan_file(
         Ok(file) => file,
         Err(error) => {
             errors.push(cannot_read(error));
-            return false;
+            return Outcome::Failed;
         }
     };
     let length = match file.metadata() {
         Ok(metadata) => metadata.len(),
         Err(error) => {
             errors.push(cannot_read(error));
-            return false;
+            return Outcome::Failed;
         }
     };
 
@@ -179,7 +223,7 @@ fn scan_file(
     let head_limit = if by_extension {
         if length > opts.max_file_size {
             errors.push(too_large(&location, opts.max_file_size));
-            return false;
+            return Outcome::Failed;
         }
         opts.max_file_size
     } else {
@@ -187,31 +231,35 @@ fn scan_file(
     };
     if let Err(error) = read_up_to(&mut file, head_limit.saturating_add(1), &mut data) {
         errors.push(cannot_read(error));
-        return false;
+        return Outcome::Failed;
     }
     if !by_extension {
         if !cert::has_pem_certificate(&data) {
-            return true;
+            return Outcome::Read;
         }
         if length > opts.max_file_size {
             errors.push(too_large(&location, opts.max_file_size));
-            return false;
+            return Outcome::Failed;
         }
         let rest = opts.max_file_size.saturating_add(1) - data.len() as u64;
         if let Err(error) = read_up_to(&mut file, rest, &mut data) {
             errors.push(cannot_read(error));
-            return false;
+            return Outcome::Failed;
         }
     }
     // The file can grow after the size check.
     if data.len() as u64 > opts.max_file_size {
         errors.push(too_large(&location, opts.max_file_size));
-        return false;
+        return Outcome::Failed;
     }
 
     let mut found = Vec::new();
-    if cert::has_pem_certificate(&data) {
+    if cert::has_any_pem(&data) {
         let result = cert::parse_pem(&data);
+        if result.certs.is_empty() && result.bad == 0 {
+            // Only blocks of other types, for example keys.
+            return Outcome::NotRead;
+        }
         if result.bad > 0 {
             let total = result.bad + result.certs.len();
             errors.push(ScanError {
@@ -219,11 +267,11 @@ fn scan_file(
                 reason: messages::PEM_BLOCKS_INVALID
                     .replace("{bad}", &result.bad.to_string())
                     .replace("{total}", &total.to_string())
-                    .replace("{reason}", result.first_problem.unwrap_or_default()),
+                    .replace("{reason}", &result.first_problem.unwrap_or_default()),
             });
         }
         found = result.certs;
-    } else if by_extension && !cert::has_any_pem(&data) {
+    } else if by_extension {
         if extension == "pem" {
             errors.push(ScanError {
                 location: location.clone(),
@@ -234,7 +282,7 @@ fn scan_file(
                 Ok(info) => found.push(cert::Found { info, line: None }),
                 Err(reason) => errors.push(ScanError {
                     location: location.clone(),
-                    reason: reason.to_string(),
+                    reason,
                 }),
             }
         }
@@ -263,5 +311,5 @@ fn scan_file(
             .occurrences
             .push(occurrence);
     }
-    true
+    Outcome::Read
 }

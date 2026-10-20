@@ -186,3 +186,75 @@ fn private_key_in_bundle_is_not_read() {
     assert!(!json.contains("SECRETSECRET"));
     assert_eq!(out.findings.len(), 1);
 }
+
+#[test]
+fn trusted_certificate_block_is_read_as_the_same_certificate() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::copy(fixture("trusted.pem"), dir.path().join("trusted.pem")).unwrap();
+    fs::copy(fixture("rsa2048-leaf.pem"), dir.path().join("plain.pem")).unwrap();
+    let out = scan_paths(&[dir.path().to_path_buf()]);
+    // The trust data does not change the hash. Both files give one finding.
+    let finding = only_finding(&out);
+    assert_eq!(finding.occurrences.len(), 2);
+}
+
+#[test]
+fn x509_certificate_block_label_is_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let text = fs::read_to_string(fixture("rsa2048-leaf.pem"))
+        .unwrap()
+        .replace("CERTIFICATE", "X509 CERTIFICATE");
+    fs::write(dir.path().join("old.pem"), text).unwrap();
+    let out = scan_paths(&[dir.path().to_path_buf()]);
+    only_finding(&out);
+}
+
+#[test]
+fn pem_without_certificate_is_counted_as_not_read() {
+    let out = scan_fixture("other-block.pem");
+    assert!(out.errors.is_empty(), "errors: {:?}", out.errors);
+    assert!(out.findings.is_empty() && out.inventory.is_empty());
+    assert_eq!(out.files_read, 0);
+    assert_eq!(out.files_not_read, 1);
+}
+
+#[test]
+fn rsa_pss_cert_is_classical_key() {
+    let out = scan_fixture("rsa-pss.pem");
+    let finding = only_finding(&out);
+    assert_eq!(finding.rule_id, "cert.classical-key");
+    let algorithm = finding.algorithm.as_ref().unwrap();
+    assert_eq!(algorithm.name, "RSA");
+    assert_eq!(algorithm.key_bits, Some(2048));
+}
+
+#[test]
+fn unknown_key_type_is_an_error_that_names_the_oid() {
+    let mut der = fs::read(fixture("rsa2048-leaf.der")).unwrap();
+    // Change the key OID 1.2.840.113549.1.1.1 to 1.2.840.113549.1.1.7.
+    let oid = [
+        0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+    ];
+    let at = der.windows(oid.len()).position(|w| w == oid).unwrap();
+    der[at + oid.len() - 1] = 0x07;
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("odd.der"), der).unwrap();
+    let out = scan_paths(&[dir.path().to_path_buf()]);
+    assert!(out.findings.is_empty() && out.inventory.is_empty());
+    assert_eq!(out.errors.len(), 1);
+    assert!(
+        out.errors[0].reason.contains("1.2.840.113549.1.1.7"),
+        "{}",
+        out.errors[0].reason
+    );
+}
+
+#[test]
+fn debug_output_of_options_hides_passwords() {
+    let options = ScanOptions {
+        passwords: vec![zeroize::Zeroizing::new("hunter2-secret".to_string())],
+        ..ScanOptions::default()
+    };
+    let text = format!("{options:?}");
+    assert!(!text.contains("hunter2"), "{text}");
+}

@@ -11,12 +11,14 @@ use crate::messages;
 ///
 /// The walk sorts names. The order of the results does not change between runs.
 /// The walk skips a symbolic link unless `follow_symlinks` is true.
+/// Return the number of symbolic links that the walk skipped.
 pub fn walk(
     paths: &[PathBuf],
     follow_symlinks: bool,
     errors: &mut Vec<ScanError>,
     mut visit: impl FnMut(&Path, &mut Vec<ScanError>),
-) {
+) -> u64 {
+    let mut skipped_symlinks = 0;
     for root in paths {
         let walker = WalkDir::new(root)
             .follow_links(follow_symlinks)
@@ -26,6 +28,8 @@ pub fn walk(
                 Ok(entry) => {
                     if entry.file_type().is_file() {
                         visit(entry.path(), errors);
+                    } else if entry.file_type().is_symlink() {
+                        skipped_symlinks += 1;
                     }
                 }
                 Err(error) => {
@@ -47,4 +51,5 @@ pub fn walk(
             }
         }
     }
+    skipped_symlinks
 }
