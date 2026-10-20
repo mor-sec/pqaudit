@@ -62,7 +62,17 @@ pub enum Command {
         command: ScanCommand,
     },
     /// Combine results files into one results file.
-    Merge,
+    Merge {
+        /// The results files to combine.
+        #[arg(required = true, value_name = "INPUTS")]
+        inputs: Vec<PathBuf>,
+        /// Write the merged results to this file. The default is `results/merged.pqr` in the engagement directory.
+        #[arg(long, value_name = "FILE")]
+        output: Option<PathBuf>,
+        /// Replace host names, addresses, paths, names, banners, and key comments with hashes.
+        #[arg(long)]
+        redact: bool,
+    },
     /// Make a report from a results file.
     Report,
     /// Make a cryptography bill of materials (CBOM).

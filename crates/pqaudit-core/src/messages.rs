@@ -44,8 +44,22 @@ pub const CERT_INVALID: &str = "The certificate data is not valid.";
 pub const UNKNOWN_KEY: &str =
     "The certificate has a public key type that the tool does not know. The OID is {oid}.";
 
+/// The error when a merge has no input files.
+pub const MERGE_NO_INPUTS: &str = "The merge has no input files.";
+
+/// The error when results files belong to different engagements. The tool fills in {first} and {other}.
+pub const MERGE_ENGAGEMENT_MISMATCH: &str =
+    "The results files belong to different engagements: {first} and {other}. Merge files of one engagement only.";
+
+/// The warning when the rules packs differ. The tool fills in {versions}.
+pub const MERGE_PACK_MISMATCH: &str =
+    "The input files used different rules packs: {versions}. The merged file names the pack with the highest version.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
+    ("MERGE_NO_INPUTS", MERGE_NO_INPUTS),
+    ("MERGE_ENGAGEMENT_MISMATCH", MERGE_ENGAGEMENT_MISMATCH),
+    ("MERGE_PACK_MISMATCH", MERGE_PACK_MISMATCH),
     ("UNSUPPORTED_SCHEMA", UNSUPPORTED_SCHEMA),
     ("RESULTS_PARSE", RESULTS_PARSE),
     ("RESULTS_IO", RESULTS_IO),

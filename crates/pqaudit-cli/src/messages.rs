@@ -3,6 +3,19 @@
 /// The text of a command that is not ready yet.
 pub const NOT_IMPLEMENTED: &str = "This command is not implemented yet.";
 
+/// The error when the tool cannot merge. The tool fills in {reason}.
+pub const MERGE_FAILED: &str = "The tool cannot merge the results files. {reason}";
+
+/// The error when the tool cannot read an input file. The tool fills in {path} and {reason}.
+pub const MERGE_READ: &str = "The tool cannot read the results file {path}. {reason}";
+
+/// The summary of a merge. The tool fills in {inputs}, {findings}, {inventory}, and {errors}.
+pub const MERGE_SUMMARY: &str =
+    "Merged {inputs} files. The result has {findings} findings, {inventory} inventory items, and {errors} errors.";
+
+/// The note that the output has no sensitive names.
+pub const MERGE_REDACTED: &str = "The output file has no host names, addresses, paths, or banners.";
+
 /// The text when a profile ID is not in the rules pack.
 pub const UNKNOWN_PROFILE: &str = "This profile does not exist:";
 
@@ -134,6 +147,10 @@ pub const ALL: &[(&str, &str)] = &[
     ("NET_NO_TARGETS", NET_NO_TARGETS),
     ("NET_REFUSED_STOP", NET_REFUSED_STOP),
     ("NOT_IMPLEMENTED", NOT_IMPLEMENTED),
+    ("MERGE_FAILED", MERGE_FAILED),
+    ("MERGE_READ", MERGE_READ),
+    ("MERGE_SUMMARY", MERGE_SUMMARY),
+    ("MERGE_REDACTED", MERGE_REDACTED),
     ("UNKNOWN_PROFILE", UNKNOWN_PROFILE),
     ("RULES_SIGNATURE_OK", RULES_SIGNATURE_OK),
     ("RULES_UNSIGNED_WARNING", RULES_UNSIGNED_WARNING),

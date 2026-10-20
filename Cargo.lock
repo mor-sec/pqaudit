@@ -1265,6 +1265,7 @@ dependencies = [
  "ipnet",
  "pqaudit-rules",
  "schemars",
+ "semver",
  "serde",
  "serde_json",
  "sha2",
