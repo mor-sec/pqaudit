@@ -143,6 +143,18 @@ pub struct ResultsFile {
     pub errors: Vec<ScanError>,
 }
 
+/// The part of a results file that the tool reads first to check the schema version.
+#[derive(Deserialize)]
+struct Probe {
+    header: ProbeHeader,
+}
+
+/// The header part that the probe reads.
+#[derive(Deserialize)]
+struct ProbeHeader {
+    schema_version: Option<u64>,
+}
+
 /// An error when the tool reads a results file.
 #[derive(Debug)]
 pub enum ResultsError {
@@ -220,16 +232,16 @@ impl ResultsFile {
     pub fn read_with_limit(path: &Path, limit: u64) -> Result<Self, ResultsError> {
         let mut raw = Vec::new();
         std::fs::File::open(path)?
-            .take(limit + 1)
+            .take(limit.saturating_add(1))
             .read_to_end(&mut raw)?;
         if raw.len() as u64 > limit {
             return Err(ResultsError::TooLarge { limit });
         }
         let json = if raw.starts_with(&ZSTD_MAGIC) {
             let mut text = Vec::new();
-            zstd::Decoder::new(raw.as_slice())?
-                .take(limit + 1)
-                .read_to_end(&mut text)?;
+            zstd::Decoder::new(raw.as_slice())
+                .and_then(|decoder| decoder.take(limit.saturating_add(1)).read_to_end(&mut text))
+                .map_err(|e| ResultsError::Parse(e.to_string()))?;
             if text.len() as u64 > limit {
                 return Err(ResultsError::TooLarge { limit });
             }
@@ -237,11 +249,11 @@ impl ResultsFile {
         } else {
             raw
         };
-        let value: serde_json::Value =
+        let probe: Probe =
             serde_json::from_slice(&json).map_err(|e| ResultsError::Parse(e.to_string()))?;
-        let found = value
-            .pointer("/header/schema_version")
-            .and_then(serde_json::Value::as_u64)
+        let found = probe
+            .header
+            .schema_version
             .ok_or_else(|| ResultsError::Parse(messages::NO_SCHEMA_VERSION.into()))?;
         if found > u64::from(SCHEMA_VERSION) {
             return Err(ResultsError::UnsupportedSchema {
@@ -249,6 +261,6 @@ impl ResultsFile {
                 supported: SCHEMA_VERSION,
             });
         }
-        serde_json::from_value(value).map_err(|e| ResultsError::Parse(e.to_string()))
+        serde_json::from_slice(&json).map_err(|e| ResultsError::Parse(e.to_string()))
     }
 }

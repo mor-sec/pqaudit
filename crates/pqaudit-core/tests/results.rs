@@ -204,7 +204,10 @@ fn truncated_zstd_is_an_error() {
     sample().write(&path, true).unwrap();
     let bytes = std::fs::read(&path).unwrap();
     std::fs::write(&path, &bytes[..bytes.len() / 2]).unwrap();
-    assert!(ResultsFile::read(&path).is_err());
+    assert!(matches!(
+        ResultsFile::read(&path),
+        Err(ResultsError::Parse(_))
+    ));
 }
 
 #[test]
@@ -212,7 +215,10 @@ fn corrupt_zstd_is_an_error() {
     let mut bytes = vec![0x28, 0xB5, 0x2F, 0xFD];
     bytes.extend_from_slice(&[0xFF; 64]);
     let (_dir, path) = write_raw("c.pqr", &bytes);
-    assert!(ResultsFile::read(&path).is_err());
+    assert!(matches!(
+        ResultsFile::read(&path),
+        Err(ResultsError::Parse(_))
+    ));
 }
 
 #[test]
@@ -230,4 +236,22 @@ fn missing_schema_version_is_a_parse_error() {
     let err = ResultsFile::read(&path).unwrap_err();
     assert!(matches!(err, ResultsError::Parse(_)));
     assert!(err.to_string().contains("schema version"));
+}
+
+#[test]
+fn missing_file_is_an_io_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let err = ResultsFile::read(&dir.path().join("none.pqr")).unwrap_err();
+    assert!(matches!(err, ResultsError::Io(_)));
+}
+
+#[test]
+fn max_limit_does_not_overflow() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("ok.pqr");
+    sample().write(&path, true).unwrap();
+    assert_eq!(
+        ResultsFile::read_with_limit(&path, u64::MAX).unwrap(),
+        sample()
+    );
 }
