@@ -9,7 +9,7 @@ use pqaudit_rules::pack::RulesPack;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// Read all files of a directory. Skip the trust list.
-fn collect(root: &Path, dir: &Path, files: &mut Vec<(String, Vec<u8>)>) -> Result<()> {
+pub fn collect(root: &Path, dir: &Path, files: &mut Vec<(String, Vec<u8>)>) -> Result<()> {
     for entry in fs::read_dir(dir)? {
         let path = entry?.path();
         if path.is_dir() {

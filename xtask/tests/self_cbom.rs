@@ -1,0 +1,296 @@
+//! Tests for the `self-cbom` and `sign-release` tasks.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+
+use serde_json::Value;
+
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf()
+}
+
+/// Read the schema files that the CycloneDX schema names with a URI.
+struct LocalSchemas;
+
+impl jsonschema::Retrieve for LocalSchemas {
+    fn retrieve(
+        &self,
+        uri: &jsonschema::Uri<String>,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        let name = uri.path().as_str().rsplit('/').next().unwrap_or_default();
+        Ok(serde_json::from_str(&fs::read_to_string(
+            schema_dir().join(name),
+        )?)?)
+    }
+}
+
+fn schema_dir() -> PathBuf {
+    workspace_root().join("crates/pqaudit-report/tests/schema")
+}
+
+fn validator() -> jsonschema::Validator {
+    let text = fs::read_to_string(schema_dir().join("bom-1.6.schema.json")).unwrap();
+    let schema: Value = serde_json::from_str(&text).unwrap();
+    jsonschema::options()
+        .with_retriever(LocalSchemas)
+        .build(&schema)
+        .unwrap()
+}
+
+const DECLARATION: &str = r#"
+[[use]]
+purpose = "tls-probe"
+algorithms = ["X25519MLKEM768", "X25519", "RSA"]
+crates = ["aws-lc-rs"]
+
+[[use]]
+purpose = "rules-pack-verify"
+algorithms = ["Ed25519", "ML-DSA-65"]
+crates = ["ed25519-dalek", "ml-dsa"]
+
+[[use]]
+purpose = "fingerprints"
+algorithms = ["SHA-256"]
+crates = ["sha2"]
+"#;
+
+fn sbom(names: &[&str]) -> String {
+    let components: Vec<Value> = names
+        .iter()
+        .map(|name| serde_json::json!({"type": "library", "name": name, "version": "1.2.3"}))
+        .collect();
+    serde_json::json!({"bomFormat": "CycloneDX", "specVersion": "1.6", "components": components})
+        .to_string()
+}
+
+fn self_cbom(dir: &Path, names: &[&str], declaration: &str) -> Output {
+    fs::write(dir.join("sbom.json"), sbom(names)).unwrap();
+    fs::write(dir.join("self-crypto.toml"), declaration).unwrap();
+    Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .arg("self-cbom")
+        .arg("--root")
+        .arg(workspace_root())
+        .arg("--sbom")
+        .arg(dir.join("sbom.json"))
+        .arg("--declaration")
+        .arg(dir.join("self-crypto.toml"))
+        .arg("--out")
+        .arg(dir.join("cbom.json"))
+        .env("SOURCE_DATE_EPOCH", "1700000000")
+        .output()
+        .unwrap()
+}
+
+const ALL: [&str; 4] = ["aws-lc-rs", "ed25519-dalek", "ml-dsa", "sha2"];
+
+#[test]
+fn undeclared_crypto_crate_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut names = ALL.to_vec();
+    names.push("rustls");
+    let output = self_cbom(dir.path(), &names, DECLARATION);
+    assert!(!output.status.success());
+    let message = String::from_utf8_lossy(&output.stderr);
+    assert!(message.contains("rustls"), "{message}");
+    assert!(!dir.path().join("cbom.json").exists());
+}
+
+#[test]
+fn declared_but_absent_crate_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = self_cbom(
+        dir.path(),
+        &["aws-lc-rs", "ed25519-dalek", "sha2"],
+        DECLARATION,
+    );
+    assert!(!output.status.success());
+    let message = String::from_utf8_lossy(&output.stderr);
+    assert!(message.contains("ml-dsa"), "{message}");
+}
+
+#[test]
+fn valid_declaration_writes_cbom() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut names = ALL.to_vec();
+    names.push("serde");
+    let output = self_cbom(dir.path(), &names, DECLARATION);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = fs::read_to_string(dir.path().join("cbom.json")).unwrap();
+    let cbom: Value = serde_json::from_str(&text).unwrap();
+    let errors: Vec<String> = validator()
+        .iter_errors(&cbom)
+        .map(|error| error.to_string())
+        .collect();
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(cbom["metadata"]["timestamp"], "2023-11-14T22:13:20Z");
+    assert!(text.contains("alg:ML-DSA-65"));
+    assert!(text.contains("pkg:cargo/aws-lc-rs@1.2.3"));
+    assert!(text.contains("tls-probe"));
+    // The same input gives the same CBOM.
+    let again = self_cbom(dir.path(), &names, DECLARATION);
+    assert!(again.status.success());
+    assert_eq!(
+        text,
+        fs::read_to_string(dir.path().join("cbom.json")).unwrap()
+    );
+}
+
+#[cfg(unix)]
+mod sign_release {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn run(keys: &Path, release: &Path, bin: &Path) -> Output {
+        let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+        Command::new(env!("CARGO_BIN_EXE_xtask"))
+            .args(["sign-release", "--repo", "mor-sec/pqaudit"])
+            .arg("--keys")
+            .arg(keys)
+            .arg("--dir")
+            .arg(release)
+            .env("PATH", path)
+            .output()
+            .unwrap()
+    }
+
+    /// A fake `cosign` in a new directory. It records its arguments. It fails for a file named `bad`.
+    fn fake_cosign(dir: &Path) -> PathBuf {
+        let bin = dir.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        let script = bin.join("cosign");
+        fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\necho \"$@\" >> {}/cosign.log\ncase \"$2\" in *bad) exit 1;; esac\n",
+                dir.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+        bin
+    }
+
+    fn setup() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let keys = dir.path().join("keys");
+        let status = Command::new(env!("CARGO_BIN_EXE_xtask"))
+            .args(["keygen", "--out"])
+            .arg(&keys)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let release = dir.path().join("release");
+        fs::create_dir_all(&release).unwrap();
+        fs::write(release.join("pqaudit-linux"), b"binary").unwrap();
+        fs::write(release.join("pqaudit-linux.sigstore.json"), b"{}").unwrap();
+        (dir, keys, release)
+    }
+
+    #[test]
+    fn writes_and_signs_the_checksum_files() {
+        let (dir, keys, release) = setup();
+        let bin = fake_cosign(dir.path());
+        let output = run(&keys, &release, &bin);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let sums = fs::read_to_string(release.join("SHA256SUMS")).unwrap();
+        assert_eq!(sums, format!("{}  pqaudit-linux\n", sha256_of(b"binary")));
+        assert!(release.join("SHA3-256SUMS").is_file());
+        for file in ["SHA256SUMS", "SHA3-256SUMS"] {
+            for suffix in [".sig.json", ".ed25519.sig", ".mldsa65.sig"] {
+                assert!(release.join(format!("{file}{suffix}")).is_file());
+            }
+        }
+        let log = fs::read_to_string(dir.path().join("cosign.log")).unwrap();
+        assert!(log.contains("verify-blob"));
+        assert!(log.contains("--certificate-identity-regexp ^https://github.com/mor-sec/pqaudit/"));
+    }
+
+    fn sha256_of(data: &[u8]) -> String {
+        use sha2::{Digest, Sha256};
+        Sha256::digest(data)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+
+    #[test]
+    fn missing_bundle_fails() {
+        let (dir, keys, release) = setup();
+        fs::write(release.join("extra.txt"), b"x").unwrap();
+        let output = run(&keys, &release, &fake_cosign(dir.path()));
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("extra.txt"));
+        assert!(!release.join("SHA256SUMS").exists());
+    }
+
+    #[test]
+    fn failed_cosign_check_fails() {
+        let (dir, keys, release) = setup();
+        fs::write(release.join("bad"), b"x").unwrap();
+        fs::write(release.join("bad.sigstore.json"), b"{}").unwrap();
+        let output = run(&keys, &release, &fake_cosign(dir.path()));
+        assert!(!output.status.success());
+        assert!(!release.join("SHA256SUMS").exists());
+    }
+}
+
+#[test]
+fn not_linked_crate_is_allowed_and_must_be_in_the_sbom() {
+    let dir = tempfile::tempdir().unwrap();
+    let declaration = format!(
+        "{DECLARATION}\n[[not-linked]]\ncrate = \"ring\"\nreason = \"A dev-dependency.\"\n"
+    );
+    let mut names = ALL.to_vec();
+    names.push("ring");
+    let output = self_cbom(dir.path(), &names, &declaration);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = fs::read_to_string(dir.path().join("cbom.json")).unwrap();
+    assert!(!text.contains("pkg:cargo/ring"));
+    let output = self_cbom(dir.path(), &ALL, &declaration);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("ring"));
+    assert!(!output.status.success());
+}
+
+#[test]
+fn repository_declaration_makes_a_valid_cbom() {
+    let dir = tempfile::tempdir().unwrap();
+    let text = fs::read_to_string(workspace_root().join("docs/self-crypto.toml")).unwrap();
+    let table: toml::Table = text.parse().unwrap();
+    let mut names: Vec<String> = Vec::new();
+    for key in ["use", "not-linked"] {
+        for item in table[key].as_array().unwrap() {
+            if let Some(list) = item.get("crates").and_then(|v| v.as_array()) {
+                names.extend(list.iter().map(|v| v.as_str().unwrap().to_string()));
+            }
+            if let Some(name) = item.get("crate").and_then(|v| v.as_str()) {
+                names.push(name.to_string());
+            }
+        }
+    }
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    let output = self_cbom(dir.path(), &names, &text);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let cbom: Value =
+        serde_json::from_str(&fs::read_to_string(dir.path().join("cbom.json")).unwrap()).unwrap();
+    assert!(validator().is_valid(&cbom));
+}

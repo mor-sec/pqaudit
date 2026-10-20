@@ -238,6 +238,23 @@ pub struct DeadlineProfile {
     pub milestones: Vec<Milestone>,
 }
 
+/// The content of `algorithms.yaml`: a plain list, or a table with the list and the crate names.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum AlgorithmsFile {
+    List(Vec<AlgorithmFact>),
+    Table(AlgorithmsTable),
+}
+
+/// The table form of `algorithms.yaml`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AlgorithmsTable {
+    algorithms: Vec<AlgorithmFact>,
+    #[serde(default)]
+    crypto_crates: Vec<String>,
+}
+
 /// A complete rules pack.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RulesPack {
@@ -249,6 +266,8 @@ pub struct RulesPack {
     pub rules: Vec<RuleDef>,
     /// The algorithm facts.
     pub algorithms: Vec<AlgorithmFact>,
+    /// The names of the Rust crates that do cryptography. The release check uses this list.
+    pub crypto_crates: Vec<String>,
     /// The deadline profiles.
     pub profiles: Vec<DeadlineProfile>,
     /// The SHA-256 hash (hex) of the sorted file list. Each entry is a path and its bytes.
@@ -364,10 +383,12 @@ impl RulesPack {
                 return Err(PackError::Misplaced { path: name.clone() });
             }
             if name == "algorithms.yaml" {
-                algorithms = Some(
-                    serde_yaml::from_str(&text_of(name, bytes)?)
-                        .map_err(|error| parse_err(name, error))?,
-                );
+                let file: AlgorithmsFile = serde_yaml::from_str(&text_of(name, bytes)?)
+                    .map_err(|error| parse_err(name, error))?;
+                algorithms = Some(match file {
+                    AlgorithmsFile::List(list) => (list, Vec::new()),
+                    AlgorithmsFile::Table(table) => (table.algorithms, table.crypto_crates),
+                });
             } else if name.starts_with("rules/") {
                 let list: Vec<RuleDef> = serde_yaml::from_str(&text_of(name, bytes)?)
                     .map_err(|error| parse_err(name, error))?;
@@ -378,7 +399,7 @@ impl RulesPack {
                 profiles.push(profile);
             }
         }
-        let algorithms = algorithms.ok_or_else(|| PackError::Missing {
+        let (algorithms, crypto_crates) = algorithms.ok_or_else(|| PackError::Missing {
             path: "algorithms.yaml".into(),
         })?;
 
@@ -395,6 +416,7 @@ impl RulesPack {
             version: manifest.version,
             rules,
             algorithms,
+            crypto_crates,
             profiles,
             content_hash,
         })

@@ -13,8 +13,8 @@ The default rules pack in this release has the version <pack-version>. The pack 
 Check each file before you use it. The short form is below.
 
 ```text
-gh attestation verify <file> --repo <org>/pqaudit
-cosign verify-blob <file> --bundle <file>.sigstore.json --certificate-identity-regexp '^https://github.com/<org>/pqaudit/.github/workflows/release.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com
+gh attestation verify <file> --repo mor-sec/pqaudit
+cosign verify-blob <file> --bundle <file>.sigstore.json --certificate-identity-regexp '^https://github.com/mor-sec/pqaudit/.github/workflows/release.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 Use the pinned version of cosign: <cosign-version>. Check the hybrid post-quantum signature of `SHA256SUMS` with OpenSSL 3.5 or later. Then run `sha256sum -c SHA256SUMS`. The full steps are in the file `docs/verifying.md` of the repository, at the tag of this release.

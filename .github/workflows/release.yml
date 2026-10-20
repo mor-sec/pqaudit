@@ -1,0 +1,306 @@
+# The release pipeline. It runs for tags that start with "v".
+#
+# It builds the binaries, signs them for the operating systems, and makes the SBOM
+# and the CBOM. It attests and signs each file with Sigstore. Then it makes a DRAFT release.
+# The maintainers sign the checksum files and the rules pack by hand, with offline keys.
+# The steps are in the appendix of docs/verifying.md.
+#
+# Optional secrets. A signing step runs only if its secrets exist. Else it prints a warning.
+#   macOS:   MACOS_CERTIFICATE (base64 .p12), MACOS_CERTIFICATE_PASSWORD, MACOS_SIGNING_IDENTITY,
+#            APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD
+#   Windows: WINDOWS_CERTIFICATE (base64 .pfx), WINDOWS_CERTIFICATE_PASSWORD
+#            (the variable WINDOWS_TIMESTAMP_URL is optional)
+#
+# Windows arm64 is not built. No one has checked that aws-lc-rs builds there with this toolchain.
+# To add it, add a matrix entry on the runner "windows-11-arm" and add it to the README list.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  COSIGN_VERSION: v3.1.3
+  CARGO_AUDITABLE_VERSION: 0.7.7
+  CARGO_CYCLONEDX_VERSION: 0.5.9
+  CARGO_ZIGBUILD_VERSION: 0.23.4
+  ZIG_VERSION: 0.15.1
+
+jobs:
+  # Run the tests once. Do not set SOURCE_DATE_EPOCH here: the CBOM test needs a fixed time.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: cargo test --workspace --locked
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            targets: x86_64-unknown-linux-musl
+            output: x86_64-unknown-linux-musl
+            zigbuild: true
+          - name: linux-aarch64
+            os: ubuntu-latest
+            targets: aarch64-unknown-linux-musl
+            output: aarch64-unknown-linux-musl
+            zigbuild: true
+          - name: macos-universal
+            os: macos-latest
+            targets: "x86_64-apple-darwin aarch64-apple-darwin"
+            output: universal-apple-darwin
+            zigbuild: false
+          - name: windows-x86_64
+            os: windows-latest
+            targets: x86_64-pc-windows-msvc
+            output: x86_64-pc-windows-msvc
+            zigbuild: false
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the pinned toolchain and the targets
+        run: |
+          rustup show active-toolchain
+          for target in ${{ matrix.targets }}; do rustup target add "$target"; done
+
+      - name: Install cargo-auditable
+        run: cargo install --locked cargo-auditable@${CARGO_AUDITABLE_VERSION}
+
+      - name: Install Zig and cargo-zigbuild
+        if: matrix.zigbuild
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Install cargo-zigbuild
+        if: matrix.zigbuild
+        run: cargo install --locked cargo-zigbuild@${CARGO_ZIGBUILD_VERSION}
+
+      # SOURCE_DATE_EPOCH is set for the build steps only, never for cargo test.
+      - name: Build
+        run: |
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          mkdir -p out
+          for target in ${{ matrix.targets }}; do
+            if [ "${{ matrix.zigbuild }}" = "true" ]; then
+              cargo auditable zigbuild --release --locked -p pqaudit-cli --target "$target"
+            else
+              cargo auditable build --release --locked -p pqaudit-cli --target "$target"
+            fi
+          done
+
+      - name: Make the output file
+        run: |
+          name="pqaudit-${GITHUB_REF_NAME}-${{ matrix.output }}"
+          case "${{ matrix.name }}" in
+            macos-universal)
+              lipo -create -output "out/${name}" \
+                target/x86_64-apple-darwin/release/pqaudit \
+                target/aarch64-apple-darwin/release/pqaudit
+              ;;
+            windows-*)
+              cp "target/${{ matrix.targets }}/release/pqaudit.exe" "out/${name}.exe"
+              ;;
+            *)
+              cp "target/${{ matrix.targets }}/release/pqaudit" "out/${name}"
+              ;;
+          esac
+          ls -l out
+
+      - name: Check that the binary has no test-only trust override
+        run: |
+          for file in out/*; do
+            if grep -aq PQAUDIT_TEST_TRUST_FILE "$file"; then
+              echo "::error::$file contains PQAUDIT_TEST_TRUST_FILE. A release build must not enable test-trust."
+              exit 1
+            fi
+          done
+
+      - name: Sign and notarize the macOS binary
+        if: startsWith(matrix.name, 'macos')
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ] || [ -z "$MACOS_CERTIFICATE_PASSWORD" ] || [ -z "$MACOS_SIGNING_IDENTITY" ]; then
+            echo "::warning::The macOS signing secrets are not set. The macOS binary is not signed."
+            exit 0
+          fi
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "ci-keychain" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "ci-keychain" build.keychain
+          security import "$RUNNER_TEMP/cert.p12" -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "ci-keychain" build.keychain
+          rm -f "$RUNNER_TEMP/cert.p12"
+          for file in out/*; do
+            codesign --force --options runtime --timestamp --sign "$MACOS_SIGNING_IDENTITY" "$file"
+            codesign --verify --strict --verbose=2 "$file"
+          done
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_TEAM_ID" ] || [ -z "$APPLE_APP_PASSWORD" ]; then
+            echo "::warning::The Apple notarization secrets are not set. The macOS binary is signed but not notarized."
+            exit 0
+          fi
+          for file in out/*; do
+            ditto -c -k --keepParent "$file" "$RUNNER_TEMP/notary.zip"
+            xcrun notarytool submit "$RUNNER_TEMP/notary.zip" \
+              --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          done
+
+      - name: Sign the Windows binary
+        if: startsWith(matrix.name, 'windows')
+        run: |
+          if [ -z "$WINDOWS_CERTIFICATE" ] || [ -z "$WINDOWS_CERTIFICATE_PASSWORD" ]; then
+            echo "::warning::The Windows signing secrets are not set. The Windows binary is not signed."
+            exit 0
+          fi
+          echo "$WINDOWS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.pfx"
+          signtool="$(ls /c/Program\ Files\ \(x86\)/Windows\ Kits/10/bin/*/x64/signtool.exe | sort | tail -1)"
+          timestamp="${WINDOWS_TIMESTAMP_URL:-http://timestamp.digicert.com}"
+          for file in out/*.exe; do
+            "$signtool" sign //f "$(cygpath -w "$RUNNER_TEMP/cert.pfx")" //p "$WINDOWS_CERTIFICATE_PASSWORD" \
+              //fd SHA256 //tr "$timestamp" //td SHA256 "$(cygpath -w "$file")"
+            "$signtool" verify //pa "$(cygpath -w "$file")"
+          done
+          rm -f "$RUNNER_TEMP/cert.pfx"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bin-${{ matrix.name }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: bin-*
+          path: bin
+          merge-multiple: true
+
+      - name: Check each binary again
+        run: |
+          ls -l bin
+          test "$(ls bin | wc -l)" -eq 4
+          for file in bin/*; do
+            if grep -aq PQAUDIT_TEST_TRUST_FILE "$file"; then
+              echo "::error::$file contains PQAUDIT_TEST_TRUST_FILE."
+              exit 1
+            fi
+          done
+
+      - name: Install cargo-cyclonedx
+        run: cargo install --locked cargo-cyclonedx@${CARGO_CYCLONEDX_VERSION}
+
+      # The tool writes CycloneDX 1.5 at most. The CBOM below is 1.6.
+      - name: Make the SBOM
+        run: |
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          mkdir -p release
+          (cd crates/pqaudit-cli && cargo cyclonedx --format json --spec-version 1.5)
+          mv crates/pqaudit-cli/pqaudit-cli.cdx.json "release/pqaudit-${GITHUB_REF_NAME}.sbom.cdx.json"
+
+      # The SBOM lists the dev-dependencies of dependencies. Each "not-linked" claim in
+      # docs/self-crypto.toml must be true: cargo tree must find no path to the crate.
+      - name: Check the not-linked claims
+        run: |
+          for name in $(sed -n '/^\[\[not-linked\]\]/,$ s/^crate = "\(.*\)"/\1/p' docs/self-crypto.toml); do
+            found="$(cargo tree -p pqaudit-cli --target all -e normal,build -i "$name" 2>/dev/null || true)"
+            if [ -n "$found" ]; then
+              echo "::error::The crate $name is linked. Remove it from not-linked in docs/self-crypto.toml."
+              exit 1
+            fi
+          done
+
+      - name: Make the CBOM of the tool
+        run: |
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          cargo xtask self-cbom --sbom "release/pqaudit-${GITHUB_REF_NAME}.sbom.cdx.json" \
+            --out "release/pqaudit-${GITHUB_REF_NAME}.cbom.cdx.json"
+
+      - name: Make the rules pack archive
+        run: cargo xtask pack-rules --out release
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: bin/*
+
+      - uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: bin/*
+          sbom-path: release/pqaudit-${{ github.ref_name }}.sbom.cdx.json
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      - name: Sign each file with cosign
+        run: |
+          cp bin/* release/
+          cd release
+          for file in *; do
+            cosign sign-blob --yes --bundle "${file}.sigstore.json" "$file"
+          done
+          ls -l
+
+      - name: Make the release notes
+        run: |
+          pack_version="$(sed -n 's/^version = "\(.*\)"/\1/p' rules/pack.toml)"
+          ed_key="release-keys/release-ed25519.pub.pem"
+          ml_key="release-keys/release-mldsa65.pub.pem"
+          if [ ! -f "$ed_key" ] || [ ! -f "$ml_key" ]; then
+            echo "::warning::The release public keys are not in release-keys/. Add them to the notes before you publish."
+            ed_text="NOT SET. Add the public key before you publish."
+            ml_text="NOT SET. Add the public key before you publish."
+          else
+            ed_text="$(printf '\n\n```text\n%s\n```' "$(cat "$ed_key")")"
+            ml_text="$(printf '\n\n```text\n%s\n```' "$(cat "$ml_key")")"
+          fi
+          python3 - "$GITHUB_REF_NAME" "$pack_version" "$COSIGN_VERSION" "$ed_text" "$ml_text" <<'PY' > notes.md
+          import sys
+          version, pack, cosign, ed, ml = sys.argv[1:6]
+          text = open(".github/release-notes-template.md").read()
+          for old, new in [("<version>", version), ("<pack-version>", pack), ("<cosign-version>", cosign),
+                           ("<ed25519-public-key-pem>", ed), ("<mldsa65-public-key-pem>", ml)]:
+              text = text.replace(old, new)
+          sys.stdout.write(text)
+          PY
+
+      - name: Make the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=""
+          case "$GITHUB_REF_NAME" in *-*) flags="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --draft $flags \
+            --title "pqaudit $GITHUB_REF_NAME" --notes-file notes.md release/*

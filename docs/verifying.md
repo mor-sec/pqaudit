@@ -4,7 +4,7 @@
 
 This document tells how to check a pqaudit release before you use it. Each check is separate. Do all of them if you can. Most checks do not need pqaudit. Only section 8 uses it.
 
-In the commands below, `<org>` is the owner of the GitHub repository, and `<file>` is the release file that you check. Use the name of the file as it appears in the release. Replace `<org>` with the real owner before you run a command.
+In the commands below, `<file>` is the release file that you check. Use the name of the file as it appears in the release. The GitHub repository is `mor-sec/pqaudit`.
 
 ## What a release contains
 
@@ -13,18 +13,18 @@ In the commands below, `<org>` is the owner of the GitHub repository, and `<file
 - `SHA256SUMS` and `SHA3-256SUMS`.
 - The hybrid post-quantum signatures of the checksum files: `SHA256SUMS.ed25519.sig` and `SHA256SUMS.mldsa65.sig`, and the same two for `SHA3-256SUMS`.
 - The files `SHA256SUMS.sig.json` and `SHA3-256SUMS.sig.json`.
-- The SBOM in CycloneDX format.
-- The CBOM of the tool.
+- The SBOM in CycloneDX 1.5 format, with the name `pqaudit-<tag>.sbom.cdx.json`.
+- The CBOM of the tool in CycloneDX 1.6 format, with the name `pqaudit-<tag>.cbom.cdx.json`.
 - The rules pack archive and its signature file.
 
-The workflow `.github/workflows/release.yml` in the repository `<org>/pqaudit` builds the release. The workflow runs only for tags that start with `v`.
+The workflow `.github/workflows/release.yml` in the repository `mor-sec/pqaudit` builds the release. The workflow runs only for tags that start with `v`.
 
 ## 1. Check the build provenance
 
 This check needs a network connection and the `gh` tool.
 
 ```text
-gh attestation verify <file> --repo <org>/pqaudit
+gh attestation verify <file> --repo mor-sec/pqaudit
 ```
 
 The command checks that the GitHub Actions workflow of this repository built the file. If the command fails, do not use the file.
@@ -36,7 +36,7 @@ This check also needs a network connection. It uses the bundle `<file>.sigstore.
 ```text
 cosign verify-blob <file> \
   --bundle <file>.sigstore.json \
-  --certificate-identity-regexp '^https://github.com/<org>/pqaudit/.github/workflows/release.yml@refs/tags/v' \
+  --certificate-identity-regexp '^https://github.com/mor-sec/pqaudit/.github/workflows/release.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
@@ -59,7 +59,7 @@ Then run the check on the offline computer:
 cosign verify-blob <file> \
   --bundle <file>.sigstore.json \
   --trusted-root trusted_root.json \
-  --certificate-identity-regexp '^https://github.com/<org>/pqaudit/.github/workflows/release.yml@refs/tags/v' \
+  --certificate-identity-regexp '^https://github.com/mor-sec/pqaudit/.github/workflows/release.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
@@ -69,7 +69,7 @@ If the check fails and the file is correct, the `trusted_root.json` can be too o
 
 The maintainers sign the checksum files with two keys: Ed25519 and ML-DSA-65. They keep the keys offline. Both signatures must be correct. You need OpenSSL 3.5 or later. Run `openssl version` to see your version.
 
-First get the public keys. They are in the repository, on the website of the project, and in the release notes. Compare the three copies before you trust a key. Name the files `release-ed25519.pub.pem` and `release-mldsa65.pub.pem`.
+First get the public keys. They are in the folder `release-keys/` of the repository, on the website of the project, and in the release notes. Compare the three copies before you trust a key. Name the files `release-ed25519.pub.pem` and `release-mldsa65.pub.pem`.
 
 Then run both commands:
 
@@ -147,7 +147,7 @@ The CI builds the release and makes a draft. The maintainers sign the release of
 3. Run the signing task. It checks each Sigstore bundle with `cosign verify-blob`. It stops if a bundle is missing.
 
    ```text
-   cargo xtask sign-release --keys <keys-dir> --dir <release-dir>
+   cargo xtask sign-release --keys <keys-dir> --dir <release-dir> --repo mor-sec/pqaudit
    ```
 
    The task writes `SHA256SUMS` and `SHA3-256SUMS` if they are not there. Then it signs both files.

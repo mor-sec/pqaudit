@@ -19,6 +19,9 @@ use uuid::Uuid;
 /// The name of the property that holds a place where the tool saw an item.
 const LOCATION: &str = "pqaudit:location";
 
+/// The name of the property that holds a purpose of an algorithm in the CBOM of a tool.
+const PURPOSE: &str = "pqaudit:purpose";
+
 /// The name of the property that marks redacted results.
 const REDACTED: &str = "pqaudit:redacted";
 
@@ -74,6 +77,104 @@ pub fn render(a: &Assessment, pack: &RulesPack) -> Value {
         "metadata": metadata,
         "components": components,
         "services": services,
+        "dependencies": dependencies,
+    })
+}
+
+/// A Rust crate that a tool build contains.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolCrate {
+    /// The crate name.
+    pub name: String,
+    /// The crate version.
+    pub version: String,
+}
+
+/// One purpose of the tool, with the algorithms and crates that serve it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolUse {
+    /// The purpose, for example `tls-probe`.
+    pub purpose: String,
+    /// The names of the algorithms.
+    pub algorithms: Vec<String>,
+    /// The crates that do the work.
+    pub crates: Vec<ToolCrate>,
+}
+
+/// Make the CBOM of a tool from the algorithms that it declares for each purpose.
+///
+/// The time comes from the caller, so the same input gives the same CBOM.
+/// Each crate is a library component. It depends on the algorithms of its purposes.
+/// Each algorithm shows its purposes in a property.
+pub fn render_tool(
+    name: &str,
+    version: &str,
+    time: DateTime<chrono::Utc>,
+    uses: &[ToolUse],
+    pack: &RulesPack,
+) -> Value {
+    let mut builder = Builder::new(pack);
+    let mut purposes: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut libraries: BTreeMap<String, Value> = BTreeMap::new();
+    for item in uses {
+        let refs: Vec<String> = item
+            .algorithms
+            .iter()
+            .map(|algorithm| {
+                let hash = algorithm.starts_with("SHA") || algorithm.starts_with("MD5");
+                builder.algorithm_ref(algorithm, None, None, if hash { "hash" } else { "unknown" })
+            })
+            .collect();
+        for reference in &refs {
+            purposes
+                .entry(reference.clone())
+                .or_default()
+                .insert(item.purpose.clone());
+        }
+        for krate in &item.crates {
+            let reference = format!("crate:{}@{}", krate.name, krate.version);
+            libraries.insert(
+                reference.clone(),
+                json!({
+                    "type": "library",
+                    "bom-ref": reference,
+                    "name": krate.name,
+                    "version": krate.version,
+                    "purl": format!("pkg:cargo/{}@{}", krate.name, krate.version),
+                }),
+            );
+            builder.depend(&reference, refs.clone());
+        }
+    }
+    let (mut components, _, dependencies) = builder.finish();
+    for component in &mut components {
+        let reference = component["bom-ref"].as_str().unwrap_or_default();
+        if let Some(list) = purposes.get(reference) {
+            let properties: Vec<Value> = list
+                .iter()
+                .map(|purpose| json!({"name": PURPOSE, "value": purpose}))
+                .collect();
+            component["properties"] = json!(properties);
+        }
+    }
+    components.extend(libraries.into_values());
+    let content = json!({"components": components, "dependencies": dependencies});
+    let text = serde_json::to_string(&content).unwrap_or_default();
+    json!({
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.6",
+        "serialNumber": format!("urn:uuid:{}", Uuid::new_v5(&Uuid::NAMESPACE_OID, text.as_bytes())),
+        "version": 1,
+        "metadata": {
+            "timestamp": time.to_rfc3339_opts(SecondsFormat::Secs, true),
+            "component": {
+                "type": "application",
+                "bom-ref": "tool",
+                "name": name,
+                "version": version,
+            },
+        },
+        "components": components,
         "dependencies": dependencies,
     })
 }
@@ -435,7 +536,7 @@ impl<'p> Builder<'p> {
         reference
     }
 
-    fn depend<const N: usize>(&mut self, from: &str, to: [String; N]) {
+    fn depend(&mut self, from: &str, to: impl IntoIterator<Item = String>) {
         self.dependencies
             .entry(from.to_string())
             .or_default()

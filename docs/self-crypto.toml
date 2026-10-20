@@ -1,0 +1,37 @@
+# The cryptography that pqaudit itself uses.
+# The release task `self-cbom` compares this file with the SBOM of the tool.
+# Each crate in this file must be in the SBOM.
+# Each cryptography crate in the SBOM must be in this file, or in a "not-linked" entry.
+
+[[use]]
+purpose = "tls-probe"
+algorithms = ["X25519MLKEM768", "X25519", "P-256", "P-384", "RSA", "ECDSA", "Ed25519"]
+crates = ["aws-lc-rs", "aws-lc-sys", "rustls"]
+
+[[use]]
+purpose = "rules-pack-verify"
+algorithms = ["Ed25519", "ML-DSA-65"]
+crates = ["ed25519-dalek", "ml-dsa"]
+
+[[use]]
+purpose = "fingerprints"
+algorithms = ["SHA-256"]
+crates = ["sha2"]
+
+# The file scan derives a public key from a seed, so that its fingerprint matches the public key file.
+[[use]]
+purpose = "key-file-inspection"
+algorithms = ["Ed25519", "X25519", "ML-DSA-44", "ML-DSA-65", "ML-DSA-87", "ML-KEM-512", "ML-KEM-768", "ML-KEM-1024"]
+crates = ["ed25519-dalek", "ml-dsa", "ml-kem"]
+
+# The file scan computes the SHA-1 fingerprint of a GPG key. This is a name, not a security function.
+[[use]]
+purpose = "gpg-fingerprints"
+algorithms = ["SHA-1"]
+crates = ["sha1"]
+
+# The SBOM tool lists dev-dependencies of dependencies. The build does not link these crates.
+# The release workflow checks each claim: `cargo tree -i <crate>` must print nothing.
+[[not-linked]]
+crate = "ring"
+reason = "A dev-dependency of rustls-webpki. The build does not link it."

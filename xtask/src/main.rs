@@ -3,7 +3,9 @@
 mod check_offline;
 mod keygen;
 mod pack_rules;
+mod self_cbom;
 mod sign;
+mod sign_release;
 mod strings;
 
 use std::path::PathBuf;
@@ -35,6 +37,33 @@ enum Task {
         keys: PathBuf,
         /// The file to sign.
         file: PathBuf,
+    },
+    /// Make the CBOM of pqaudit from its SBOM and `docs/self-crypto.toml`.
+    SelfCbom {
+        /// Read the SBOM (CycloneDX JSON) from this file.
+        #[arg(long)]
+        sbom: PathBuf,
+        /// Write the CBOM to this file.
+        #[arg(long)]
+        out: PathBuf,
+        /// Read the project from this directory.
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        /// Read the crypto declaration from this file. The default is `docs/self-crypto.toml` in the project.
+        #[arg(long)]
+        declaration: Option<PathBuf>,
+    },
+    /// Check the Sigstore bundles of a downloaded release. Write and sign the checksum files.
+    SignRelease {
+        /// Read the private keys from this directory.
+        #[arg(long)]
+        keys: PathBuf,
+        /// The directory with the downloaded release files.
+        #[arg(long)]
+        dir: PathBuf,
+        /// The GitHub repository that built the release, as `owner/name`.
+        #[arg(long)]
+        repo: String,
     },
     /// Make the archive of the rules pack.
     PackRules {
@@ -74,6 +103,16 @@ fn main() -> ExitCode {
         Task::CheckOfflineDeps => finish(check_offline::run()),
         Task::Keygen { out } => finish(keygen::run(&out)),
         Task::Sign { keys, file } => finish(sign::run(&keys, &file)),
+        Task::SelfCbom {
+            sbom,
+            out,
+            root,
+            declaration,
+        } => {
+            let declaration = declaration.unwrap_or_else(|| root.join("docs/self-crypto.toml"));
+            finish(self_cbom::run(&root, &sbom, &declaration, &out))
+        }
+        Task::SignRelease { keys, dir, repo } => finish(sign_release::run(&keys, &dir, &repo)),
         Task::PackRules { out, root } => finish(pack_rules::run(&root, &out)),
         Task::Strings { out, root, commits } => match strings::run(&root, &out, commits.as_deref())
         {

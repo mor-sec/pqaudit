@@ -2890,15 +2890,22 @@ dependencies = [
 name = "xtask"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "clap",
+ "jsonschema",
  "pqaudit-cli",
  "pqaudit-core",
  "pqaudit-report",
  "pqaudit-rules",
  "pqaudit-scan-files",
  "pqaudit-scan-net",
+ "serde",
+ "serde_json",
  "serde_yaml",
+ "sha2",
+ "sha3",
  "tempfile",
+ "toml",
 ]
 
 [[package]]
