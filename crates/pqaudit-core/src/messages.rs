@@ -69,8 +69,23 @@ pub const REDACT_KEY_INVALID: &str =
 /// The error when the system cannot make a random key. The tool fills in {reason}.
 pub const REDACT_KEY_RANDOM: &str = "The tool cannot make a random redaction key. {reason}";
 
+/// The error for a deadline profile that the rules pack does not have. The tool fills in {profile}.
+pub const UNKNOWN_PROFILE: &str =
+    "The engagement uses the deadline profile {profile}. The rules pack does not have this profile.";
+
+/// The error for a finding with a rule that the rules pack does not have. The tool fills in {rule}.
+pub const UNKNOWN_RULE: &str =
+    "A finding uses the rule {rule}. The rules pack does not have this rule. Use the rules pack that made the results.";
+
+/// The error for a path glob that is not valid. The tool fills in {asset} and {pattern}.
+pub const INVALID_GLOB: &str =
+    "The asset {asset} has the path pattern {pattern}. This pattern is not valid.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
+    ("UNKNOWN_PROFILE", UNKNOWN_PROFILE),
+    ("UNKNOWN_RULE", UNKNOWN_RULE),
+    ("INVALID_GLOB", INVALID_GLOB),
     ("REDACT_KEY_IO", REDACT_KEY_IO),
     ("REDACT_KEY_INVALID", REDACT_KEY_INVALID),
     ("REDACT_KEY_RANDOM", REDACT_KEY_RANDOM),
