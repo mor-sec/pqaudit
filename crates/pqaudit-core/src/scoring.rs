@@ -2,6 +2,7 @@
 
 use chrono::{Datelike, NaiveDate};
 use pqaudit_rules::pack::ThreatType;
+use serde::Serialize;
 
 use crate::assets::{AssetContext, Ctx};
 use crate::complexity::Complexity;
@@ -11,7 +12,7 @@ use crate::messages;
 use crate::Finding;
 
 /// The score of one factor.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FactorScore {
     /// The name of the factor.
     pub name: &'static str,
@@ -26,7 +27,7 @@ pub struct FactorScore {
 }
 
 /// The score of a finding with all its factors.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ScoreBreakdown {
     /// The factors.
     pub factors: Vec<FactorScore>,

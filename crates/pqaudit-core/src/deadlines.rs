@@ -2,12 +2,13 @@
 
 use chrono::NaiveDate;
 use pqaudit_rules::pack::{DeadlineProfile, Milestone, MilestoneKind, ThreatType, TierScope};
+use serde::Serialize;
 
 use crate::assets::Ctx;
 use crate::Tier;
 
 /// The deadline that applies to a finding, with its profile and source.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DeadlineRef {
     /// The date of the deadline.
     pub date: NaiveDate,

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use chrono::NaiveDate;
 use ipnet::IpNet;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::messages;
 use crate::Tier;
@@ -70,7 +70,7 @@ pub struct DeadlineSelection {
 }
 
 /// The assumptions that each report shows.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Assumptions {
     /// The year of the first cryptographically relevant quantum computer (CRQC).
@@ -176,7 +176,7 @@ pub struct AssetMatch {
 }
 
 /// How far an asset is open to attack.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Exposure {
     /// Anyone on the internet can reach the asset.
@@ -199,7 +199,7 @@ pub struct OverridesFile {
 }
 
 /// One customer override of a suggested priority.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Override {
     /// The stable fingerprint of the finding.
@@ -216,7 +216,7 @@ pub struct Override {
 }
 
 /// A priority band.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Band {
     /// The most urgent band.
@@ -230,7 +230,7 @@ pub enum Band {
 }
 
 /// The complexity size of a fix.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Size {
     /// Small.
     S,

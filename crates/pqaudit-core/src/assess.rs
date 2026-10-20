@@ -5,6 +5,7 @@ use std::fmt;
 
 use chrono::NaiveDate;
 use pqaudit_rules::pack::{DeadlineProfile, Milestone, RuleDef, RulesPack, TestType};
+use serde::Serialize;
 
 use crate::assets::{compile_paths, AssetContext, AssetIndex};
 use crate::complexity::{assess_complexity, testing_scope, Complexity};
@@ -15,7 +16,7 @@ use crate::scoring::{self, ScoreBreakdown};
 use crate::{Finding, InventoryItem, PackRef, ResultsFile, ResultsHeader, ScanError};
 
 /// A short description of the engagement, for the reports.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EngagementSummary {
     /// The name of the client.
     pub client: String,
@@ -30,7 +31,7 @@ pub struct EngagementSummary {
 }
 
 /// A finding with its customer context, deadline, score, and override.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AssessedFinding {
     /// The finding.
     pub finding: Finding,
@@ -57,7 +58,7 @@ pub struct AssessedFinding {
 }
 
 /// The result of an assessment.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Assessment {
     /// The engagement.
     pub engagement: EngagementSummary,

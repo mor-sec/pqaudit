@@ -45,6 +45,28 @@ pub enum LogFormat {
     Json,
 }
 
+/// The reader of a report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Audience {
+    /// The technical team of the client.
+    Technical,
+    /// The board of the client. This comes in a later release.
+    Board,
+}
+
+/// The format of a report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ReportFormat {
+    /// One HTML file.
+    Html,
+    /// Markdown text.
+    Md,
+    /// The assessment as JSON.
+    Json,
+    /// A PDF file. This comes in a later release.
+    Pdf,
+}
+
 /// The commands of pqaudit.
 #[derive(Debug, Subcommand)]
 pub enum Command {
@@ -77,7 +99,20 @@ pub enum Command {
         redact_key_file: Option<PathBuf>,
     },
     /// Make a report from a results file.
-    Report,
+    Report {
+        /// The reader of the report.
+        #[arg(long, value_enum, default_value = "technical")]
+        audience: Audience,
+        /// The format of the report.
+        #[arg(long, value_enum, default_value = "html")]
+        format: ReportFormat,
+        /// Read this results file. The default is `results/merged.pqr` in the engagement directory.
+        #[arg(long, value_name = "FILE")]
+        results: Option<PathBuf>,
+        /// Write the report to this file. The default is `reports/technical.<ext>` in the engagement directory.
+        #[arg(long, value_name = "FILE")]
+        output: Option<PathBuf>,
+    },
     /// Make a cryptography bill of materials (CBOM).
     Cbom,
     /// Explain a finding: its score, complexity, tests, and fix.

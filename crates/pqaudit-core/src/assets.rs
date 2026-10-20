@@ -3,12 +3,13 @@
 //! The tool never invents context. A field that the customer did not set is `Unassessed`.
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
+use serde::Serialize;
 
 use crate::engagement::{Asset, Exposure};
 use crate::{Location, Tier};
 
 /// A context value that is either set by the customer or not assessed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Ctx<T> {
     /// The customer set this value.
     Assessed(T),
@@ -37,7 +38,7 @@ impl<T> Ctx<T> {
 }
 
 /// The customer context of a finding. Each field is `Unassessed` when no asset gives it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AssetContext {
     /// The classification of the data, in the scheme of the customer.
     pub classification: Ctx<String>,

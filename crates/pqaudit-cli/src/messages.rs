@@ -216,8 +216,20 @@ pub const EXPLAIN_TESTS: &str = "Necessary tests: {tests}";
 /// The remediation line. The tool fills in {text}.
 pub const EXPLAIN_REMEDIATION: &str = "Remediation: {text}";
 
+/// The error for a feature that comes in a later release.
+pub const LATER_RELEASE: &str = "This feature comes in a later release.";
+
+/// The error when the tool cannot write the report. The tool fills in {path} and {reason}.
+pub const REPORT_WRITE: &str = "The tool cannot write the report {path}. {reason}";
+
+/// The text after the tool writes the report. The tool fills in {path}.
+pub const REPORT_WRITTEN: &str = "Wrote the report to {path}.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
+    ("LATER_RELEASE", LATER_RELEASE),
+    ("REPORT_WRITE", REPORT_WRITE),
+    ("REPORT_WRITTEN", REPORT_WRITTEN),
     ("EXPLAIN_READ", EXPLAIN_READ),
     ("EXPLAIN_UNKNOWN_ID", EXPLAIN_UNKNOWN_ID),
     ("EXPLAIN_TITLE", EXPLAIN_TITLE),

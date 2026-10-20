@@ -2,63 +2,23 @@
 
 use std::path::Path;
 
-use chrono::Local;
-use pqaudit_core::assess::{assess, AssessedFinding};
+use pqaudit_core::assess::AssessedFinding;
 use pqaudit_core::assets::Ctx;
 use pqaudit_core::complexity::{change_type_name, size_name, test_type_name};
-use pqaudit_core::engagement::{Band, Engagement};
+use pqaudit_core::engagement::Band;
 use pqaudit_core::scoring::{exposure_name, threat_name};
-use pqaudit_core::{Location, ResultsFile};
-use pqaudit_rules::install::active_pack;
+use pqaudit_core::Location;
 
 use crate::cli::Cli;
+use crate::commands::assessment;
 use crate::exit::ExitCode;
 use crate::messages;
 
 /// Run `explain`.
 pub fn run(cli: &Cli, finding_id: &str, results: Option<&Path>) -> ExitCode {
-    let path = results
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| cli.engagement.join("results").join("merged.pqr"));
-    let results = match ResultsFile::read(&path) {
-        Ok(results) => results,
-        Err(error) => {
-            eprintln!(
-                "{}",
-                messages::EXPLAIN_READ
-                    .replace("{path}", &path.display().to_string())
-                    .replace("{reason}", &error.to_string())
-            );
-            return ExitCode::Error;
-        }
-    };
-    let engagement = match Engagement::load(&cli.engagement) {
-        Ok(engagement) => engagement,
-        Err(error) => {
-            eprintln!(
-                "{}",
-                messages::ENGAGEMENT_LOAD.replace("{reason}", &error.to_string())
-            );
-            return ExitCode::Error;
-        }
-    };
-    let active = match active_pack(cli.allow_unsigned_rules) {
-        Ok(active) => active,
-        Err(error) => {
-            eprintln!(
-                "{}",
-                messages::PACK_LOAD.replace("{reason}", &error.to_string())
-            );
-            return ExitCode::Error;
-        }
-    };
-    let today = Local::now().date_naive();
-    let assessment = match assess(&results, &engagement, &active.pack, today) {
+    let assessment = match assessment::load(cli, results) {
         Ok(assessment) => assessment,
-        Err(error) => {
-            eprintln!("{error}");
-            return ExitCode::Error;
-        }
+        Err(code) => return code,
     };
     let Some(found) = assessment
         .findings

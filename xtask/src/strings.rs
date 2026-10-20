@@ -9,7 +9,7 @@ use clap::CommandFactory;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-/// Write the six text files to `out`.
+/// Write the seven text files to `out`.
 pub fn run(root: &Path, out: &Path, commits: Option<&str>) -> Result<()> {
     fs::create_dir_all(out)?;
     fs::write(out.join("cli-help.md"), cli_help())?;
@@ -17,6 +17,7 @@ pub fn run(root: &Path, out: &Path, commits: Option<&str>) -> Result<()> {
     fs::write(out.join("rules-text.md"), rules_text(&root.join("rules"))?)?;
     fs::write(out.join("comments.md"), comments(root)?)?;
     fs::write(out.join("templates.md"), templates(root)?)?;
+    fs::write(out.join("report-templates.md"), report_templates(root)?)?;
     fs::write(out.join("commits.md"), commit_messages(root, commits)?)?;
     Ok(())
 }
@@ -346,6 +347,88 @@ fn templates(root: &Path) -> Result<String> {
         let name = file.strip_prefix(root).unwrap_or(&file);
         for (line, paragraph) in toml_paragraphs(&fs::read_to_string(&file)?) {
             let _ = writeln!(out, "## `{}:{line}`\n\n{paragraph}\n", name.display());
+        }
+    }
+    Ok(out)
+}
+
+/// Remove the template syntax from one line. Return the fixed text that is left.
+///
+/// An expression `{{ ... }}` becomes `{value}`. This function drops each tag, comment, and HTML tag.
+/// It changes `&amp;` to `&`.
+fn template_text(line: &str) -> String {
+    let mut text = String::new();
+    let mut rest = line;
+    while !rest.is_empty() {
+        let next = [
+            ("{{", "}}", "{value}"),
+            ("{%", "%}", ""),
+            ("{#", "#}", ""),
+            ("<", ">", " "),
+        ]
+        .into_iter()
+        .filter_map(|(open, close, with)| rest.find(open).map(|at| (at, open, close, with)))
+        .min_by_key(|found| found.0);
+        let Some((at, open, close, with)) = next else {
+            text.push_str(rest);
+            break;
+        };
+        text.push_str(&rest[..at]);
+        let after = &rest[at + open.len()..];
+        match after.find(close) {
+            Some(end) => {
+                text.push_str(with);
+                rest = &after[end + close.len()..];
+            }
+            None => {
+                text.push_str(&rest[at..]);
+                break;
+            }
+        }
+    }
+    one_line(&text.replace("&amp;", "&"))
+}
+
+/// Read the fixed text of the report templates.
+///
+/// The lint cannot read a template, so this function removes the syntax and keeps the text.
+/// Each table cell and each line is a paragraph of its own.
+fn report_templates(root: &Path) -> Result<String> {
+    let dir = root.join("crates/pqaudit-report/src/templates");
+    let mut out = String::from("# Report templates\n\n");
+    if !dir.is_dir() {
+        return Ok(out);
+    }
+    let mut files: Vec<PathBuf> = fs::read_dir(&dir)?
+        .collect::<std::io::Result<Vec<_>>>()?
+        .into_iter()
+        .map(|entry| entry.path())
+        .collect();
+    files.sort();
+    for file in files {
+        let name = file.strip_prefix(root).unwrap_or(&file);
+        let mut in_style = false;
+        for (index, line) in fs::read_to_string(&file)?.lines().enumerate() {
+            if line.contains("<style>") {
+                in_style = true;
+            }
+            if in_style {
+                in_style = !line.contains("</style>");
+                continue;
+            }
+            let text = template_text(line);
+            for cell in text.split(['|', '\u{1}']) {
+                let cell = cell.trim().trim_start_matches(['#', '-']).trim();
+                if cell.chars().any(char::is_alphabetic) {
+                    let _ = writeln!(
+                        out,
+                        "## `{}:{}`\n\n{}\n",
+                        name.display(),
+                        index + 1,
+                        end_sentence(cell)
+                    );
+                }
+            }
         }
     }
     Ok(out)

@@ -1,6 +1,7 @@
 //! The complexity of a fix and the tests that the fix needs.
 
 use pqaudit_rules::pack::{ChangeType, RuleDef, TestType};
+use serde::Serialize;
 
 use crate::assets::{AssetContext, Ctx};
 use crate::engagement::{Exposure, ScoringConfig, Size};
@@ -11,7 +12,7 @@ use crate::Finding;
 const CERTIFICATION_SENSITIVITY: f64 = 0.7;
 
 /// The complexity of the fix for a finding.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Complexity {
     /// The kind of work that the fix needs.
     pub change_type: ChangeType,

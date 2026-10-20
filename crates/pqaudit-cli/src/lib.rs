@@ -99,7 +99,21 @@ fn dispatch(cli: &Cli) -> ExitCode {
             finding_id,
             results,
         } => commands::explain::run(cli, finding_id, results.as_deref()),
-        Command::Report | Command::Cbom => not_implemented(),
+        Command::Report {
+            audience,
+            format,
+            results,
+            output,
+        } => commands::report::run(
+            cli,
+            commands::report::ReportArgs {
+                audience: *audience,
+                format: *format,
+                results: results.as_deref(),
+                output: output.as_deref(),
+            },
+        ),
+        Command::Cbom => not_implemented(),
     }
 }
 

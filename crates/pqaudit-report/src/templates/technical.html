@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Technical report: {{ client }}</title>
+<style>
+:root { color-scheme: light; --ink: #1b1f24; --muted: #57606a; --line: #d0d7de; --soft: #f6f8fa; --critical: #b42318; --high: #b54708; --medium: #8a6a00; --low: #1a7f37; }
+* { box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: #fff; line-height: 1.5; margin: 0 auto; max-width: 62rem; padding: 2rem 1rem 4rem; }
+h1 { font-size: 1.9rem; margin: 0 0 0.5rem; }
+h2 { font-size: 1.3rem; margin: 2.5rem 0 0.75rem; padding-bottom: 0.25rem; border-bottom: 2px solid var(--line); }
+h3 { font-size: 1.05rem; margin: 0 0 0.5rem; }
+h4 { font-size: 0.95rem; margin: 1rem 0 0.25rem; }
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; margin: 0.75rem 0; }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; overflow-wrap: anywhere; }
+table { border-collapse: collapse; width: 100%; margin: 0.5rem 0 1rem; font-size: 0.88rem; }
+th, td { border: 1px solid var(--line); padding: 0.3rem 0.5rem; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+th { background: var(--soft); }
+.table-wrap { overflow-x: auto; }
+.notice { border-left: 4px solid var(--high); background: var(--soft); padding: 0.5rem 0.75rem; margin: 1rem 0; }
+article.finding { border: 1px solid var(--line); border-radius: 6px; padding: 1rem; margin: 1rem 0; }
+.band { display: inline-block; font-weight: 600; text-transform: uppercase; font-size: 0.75rem; padding: 0.1rem 0.45rem; border-radius: 3px; border: 1px solid currentColor; }
+.band-critical { color: var(--critical); }
+.band-high { color: var(--high); }
+.band-medium { color: var(--medium); }
+.band-low { color: var(--low); }
+code, .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 0.85em; overflow-wrap: anywhere; }
+ul, ol { padding-left: 1.25rem; }
+a { color: #0550ae; }
+@media print {
+  body { max-width: none; padding: 0; font-size: 10pt; }
+  h2 { break-after: avoid; }
+  article.finding, tr { break-inside: avoid; }
+  .table-wrap { overflow: visible; }
+  a { color: inherit; text-decoration: none; }
+  @page { margin: 15mm; }
+}
+</style>
+</head>
+<body>
+<header>
+<h1>Technical report</h1>
+<dl class="facts">
+<dt>Client</dt><dd>{{ client }}</dd>
+<dt>Assessor</dt><dd>{{ assessor }}</dd>
+<dt>Date</dt><dd>{{ date }}</dd>
+<dt>Engagement</dt><dd>{{ engagement }}</dd>
+<dt>Tool version</dt><dd>{{ tool_version }}</dd>
+<dt>Rules pack</dt><dd>{{ pack_id }} {{ pack_version }} (hash <span class="mono">{{ pack_hash }}</span>)</dd>
+</dl>
+{% if redacted %}
+<p class="notice">This report uses redacted results. The tool replaced host names and paths with hashes. The tool cannot match assets to the findings. All context fields show as Unassessed.</p>
+{% endif %}
+</header>
+
+<section>
+<h2>Method</h2>
+<p>The tool scanned files and network endpoints for cryptography. It compared each item with the rules pack. It then added the context of the customer from the assets file.</p>
+<p>Each finding has a score from 0 to 100. The score is the weighted sum of six factors: threat, exposure, sensitivity, mosca, deadline, and scale. A field that the customer did not set has the cautious value. The report shows such a field as Unassessed.</p>
+<p>The suggested band comes from the score. A customer can override the band. The report shows the original band, the override, and the reason.</p>
+</section>
+
+<section>
+<h2>Scope and coverage</h2>
+<dl class="facts">
+<dt>Runs</dt><dd>{{ runs | length }}</dd>
+<dt>Scope hash</dt><dd class="mono">{{ scope_hash }}</dd>
+<dt>Audit log hash</dt><dd class="mono">{{ audit_log_hash }}</dd>
+<dt>Errors</dt><dd>{{ error_count }}</dd>
+<dt>Inventory items</dt><dd>{{ inventory_count }}</dd>
+<dt>Count of findings with unassessed context</dt><dd>{{ unassessed_count }}</dd>
+</dl>
+{% if runs %}
+<div class="table-wrap">
+<table>
+<thead><tr><th>Scanner</th><th>Host</th><th>Started</th><th>Scope hash</th><th>Audit log hash</th></tr></thead>
+<tbody>
+{% for run in runs %}
+<tr><td>{{ run.scanner }}</td><td>{{ run.host }}</td><td>{{ run.started }}</td><td class="mono">{{ run.scope_hash }}</td><td class="mono">{{ run.audit_log_hash }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endif %}
+{% if errors %}
+<p>The scan had these errors. The tool did not assess the items that it could not read.</p>
+<ul>
+{% for e in errors %}
+<li><span class="mono">{{ e.location }}</span>: {{ e.reason }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+</section>
+
+<section>
+<h2>Assumptions</h2>
+<dl class="facts">
+<dt>Year of the first cryptographically relevant quantum computer</dt><dd>{{ crqc_year }}</dd>
+<dt>Deadline profiles</dt><dd>{{ profiles }}</dd>
+<dt>Sector overlay</dt><dd>{{ sector }}</dd>
+</dl>
+{% if milestones %}
+<p>Planning milestones:</p>
+<ul>
+{% for m in milestones %}
+<li>{{ m.date }} ({{ m.profile }}): {{ m.description }} Source: {% if m.link %}<a href="{{ m.source_url }}">{{ m.source_title }}</a>{% else %}{{ m.source_title }}, {{ m.source_url }}{% endif %}. As of {{ m.as_of }}.</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>The selected profiles have no planning milestones.</p>
+{% endif %}
+</section>
+
+<section>
+<h2>Summary</h2>
+<table>
+<thead><tr><th>Effective band</th><th>Findings</th></tr></thead>
+<tbody>
+{% for row in summary %}
+<tr><td><span class="band band-{{ row.band }}">{{ row.band }}</span></td><td>{{ row.count }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+<p>Total: {{ finding_count }}</p>
+</section>
+
+<section>
+<h2>Findings</h2>
+{% for f in findings %}
+<article class="finding" id="{{ f.id }}">
+<h3>{{ f.id }}: {{ f.title }}</h3>
+<p><span class="band band-{{ f.effective_band }}">{{ f.effective_band }}</span> Suggested band: {{ f.band }}. Score: {{ f.total }}.</p>
+<dl class="facts">
+<dt>Rule</dt><dd>{{ f.rule_id }}</dd>
+<dt>Threat type</dt><dd>{{ f.threat }}</dd>
+<dt>Asset</dt><dd>{{ f.asset }}</dd>
+<dt>Fingerprint</dt><dd class="mono">{{ f.fingerprint }}</dd>
+{% if f.cwe %}
+<dt>CWE</dt><dd>{{ f.cwe }}</dd>
+{% endif %}
+{% if f.attack %}
+<dt>ATT&amp;CK</dt><dd>{{ f.attack }}</dd>
+{% endif %}
+{% if f.override_text %}
+<dt>Override</dt><dd>{{ f.override_text }}</dd>
+{% endif %}
+</dl>
+<p>{{ f.description }}</p>
+<h4>Evidence</h4>
+<ul>
+{% for o in f.occurrences %}
+<li><span class="mono">{{ o.location }}</span>: {{ o.evidence }}</li>
+{% endfor %}
+</ul>
+<h4>Context</h4>
+<dl class="facts">
+{% for c in f.context %}
+<dt>{{ c.name }}</dt><dd>{{ c.value }}</dd>
+{% endfor %}
+</dl>
+{% if f.has_unassessed %}
+<p class="notice">The context has Unassessed fields. The tool used cautious values for them.</p>
+{% endif %}
+<h4>Deadline</h4>
+{% if f.deadline %}
+<p>{{ f.deadline.date }} ({{ f.deadline.profile }}). {{ f.deadline.description }} Source: {% if f.deadline.link %}<a href="{{ f.deadline.source_url }}">{{ f.deadline.source_title }}</a>{% else %}{{ f.deadline.source_title }}, {{ f.deadline.source_url }}{% endif %}.</p>
+{% else %}
+<p>No deadline applies.</p>
+{% endif %}
+<h4>Score</h4>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Factor</th><th>Value</th><th>Weight</th><th>Contribution</th><th>Note</th></tr></thead>
+<tbody>
+{% for x in f.factors %}
+<tr><td>{{ x.name }}</td><td>{{ x.value }}</td><td>{{ x.weight }}</td><td>{{ x.contribution }}</td><td>{{ x.note }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+<h4>Complexity</h4>
+<p>Size {{ f.size }}, change type {{ f.change_type }}, about {{ f.migration_years }} years.</p>
+{% if f.reasons %}
+<ul>
+{% for reason in f.reasons %}
+<li>{{ reason }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+<p>Necessary tests: {{ f.tests }}</p>
+<h4>Fix</h4>
+<p>{{ f.remediation }}</p>
+</article>
+{% else %}
+<p>The assessment has no findings.</p>
+{% endfor %}
+</section>
+
+<section>
+<h2>Fix now (not quantum)</h2>
+{% if fix_now %}
+<ul>
+{% for x in fix_now %}
+<li>{{ x.id }}: {{ x.title }}. Asset: {{ x.asset }}. Location: <span class="mono">{{ x.location }}</span>. Fix: {{ x.remediation }}</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No finding is weak without a quantum computer.</p>
+{% endif %}
+</section>
+
+<section>
+<h2>Ready for post-quantum cryptography</h2>
+{% if ready %}
+<ul>
+{% for r in ready %}
+<li>{{ r.kind }} <span class="mono">{{ r.fingerprint }}</span>: {{ r.algorithm }}. Location: <span class="mono">{{ r.location }}</span></li>
+{% endfor %}
+</ul>
+{% else %}
+<p>The scan found no item that is ready for post-quantum cryptography.</p>
+{% endif %}
+</section>
+
+<section>
+<h2>Questions for vendors</h2>
+{% if vendor_questions %}
+<ol>
+{% for q in vendor_questions %}
+<li>{{ q.id }}, {{ q.title }}. Asset: {{ q.asset }}. Question: Which release of your product has this fix, and on what date? The fix is: {{ q.remediation }}</li>
+{% endfor %}
+</ol>
+{% else %}
+<p>No finding needs a fix from a vendor.</p>
+{% endif %}
+</section>
+
+<section>
+<h2>Overrides log</h2>
+{% if overrides %}
+<div class="table-wrap">
+<table>
+<thead><tr><th>Finding</th><th>Title</th><th>Original band</th><th>Override</th><th>Reason</th><th>Person</th><th>Date</th></tr></thead>
+<tbody>
+{% for o in overrides %}
+<tr><td>{{ o.id }}</td><td>{{ o.title }}</td><td>{{ o.original }}</td><td>{{ o.new }}</td><td>{{ o.reason }}</td><td>{{ o.by }}</td><td>{{ o.date }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% else %}
+<p>The customer made no overrides.</p>
+{% endif %}
+</section>
+
+<section>
+<h2>Orphaned overrides</h2>
+{% if orphans %}
+<p>These overrides match no finding in the results.</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Fingerprint</th><th>Override</th><th>Reason</th><th>Person</th><th>Date</th></tr></thead>
+<tbody>
+{% for o in orphans %}
+<tr><td class="mono">{{ o.fingerprint }}</td><td>{{ o.priority }}</td><td>{{ o.reason }}</td><td>{{ o.by }}</td><td>{{ o.date }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% else %}
+<p>All overrides match a finding.</p>
+{% endif %}
+</section>
+
+<section>
+<h2>Appendix: risk register</h2>
+<p>Each row has the likelihood factors and the impact factors of one finding. The number in brackets is the value of the factor from 0 to 1. Classical weakness is Yes when an attacker can break the algorithm now.</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Fingerprint</th><th>Title</th><th>Exposure</th><th>Threat</th><th>Classical weakness</th><th>Classification</th><th>Lifespan</th><th>Scale</th><th>Suggested band</th><th>Effective band</th></tr></thead>
+<tbody>
+{% for r in register %}
+<tr class="register-row"><td class="mono">{{ r.fingerprint }}</td><td>{{ r.title }}</td><td>{{ r.exposure }}</td><td>{{ r.threat }}</td><td>{{ r.classical_weakness }}</td><td>{{ r.classification }}</td><td>{{ r.lifespan }}</td><td>{{ r.scale }}</td><td>{{ r.suggested }}</td><td>{{ r.effective }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</section>
+</body>
+</html>
