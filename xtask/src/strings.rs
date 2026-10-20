@@ -49,7 +49,7 @@ fn help_of(command: &clap::Command, path: &str, out: &mut String) {
         .get_long_about()
         .or_else(|| command.get_about())
         .map(ToString::to_string);
-    let _ = writeln!(out, "## {path}\n");
+    let _ = writeln!(out, "## `{path}`\n");
     if let Some(about) = about {
         let _ = writeln!(out, "{}\n", end_sentence(&about));
     }
@@ -59,7 +59,7 @@ fn help_of(command: &clap::Command, path: &str, out: &mut String) {
         }
         let help = arg.get_long_help().or_else(|| arg.get_help());
         if let Some(help) = help {
-            let _ = writeln!(out, "### {path} {}\n", arg_name(arg));
+            let _ = writeln!(out, "### `{path} {}`\n", arg_name(arg));
             let _ = writeln!(out, "{}\n", end_sentence(&help.to_string()));
         }
         for value in arg.get_possible_values() {
@@ -95,7 +95,7 @@ fn messages() -> String {
     let mut out = String::from("# Messages\n\n");
     for (krate, list) in all {
         for (id, text) in list {
-            let _ = writeln!(out, "## {krate} {id}\n\n{}\n", one_line(text));
+            let _ = writeln!(out, "## `{krate} {id}`\n\n{}\n", one_line(text));
         }
     }
     out
@@ -122,7 +122,7 @@ fn rules_text(dir: &Path) -> Result<String> {
         for (path, text) in found {
             let _ = writeln!(
                 out,
-                "## {} {path}\n\n{}\n",
+                "## `{} {path}`\n\n{}\n",
                 name.display(),
                 end_sentence(&text)
             );
@@ -187,7 +187,7 @@ fn comments(root: &Path) -> Result<String> {
         let text = fs::read_to_string(&file)?;
         let name = file.strip_prefix(root).unwrap_or(&file);
         for (line, paragraph) in comment_paragraphs(&text) {
-            let _ = writeln!(out, "## {}:{line}\n\n{paragraph}\n", name.display());
+            let _ = writeln!(out, "## `{}:{line}`\n\n{paragraph}\n", name.display());
         }
     }
     Ok(out)

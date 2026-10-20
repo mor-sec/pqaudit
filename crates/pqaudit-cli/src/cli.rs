@@ -63,12 +63,39 @@ pub enum Command {
     Cbom,
     /// Explain a finding or a rule.
     Explain,
-    /// Show or check the rules pack.
-    Rules,
+    /// Show, check, or update the rules pack.
+    Rules {
+        #[command(subcommand)]
+        command: RulesCommand,
+    },
     /// Show the deadline profiles.
     Profiles {
         #[command(subcommand)]
         command: ProfilesCommand,
+    },
+}
+
+/// The rules commands.
+#[derive(Debug, Subcommand)]
+pub enum RulesCommand {
+    /// Show the active rules pack and the installed packs.
+    List,
+    /// Check the signature of a rules pack archive.
+    Verify {
+        /// The pack archive, for example `rules-1.0.0.tar.zst`.
+        archive: PathBuf,
+        /// The signature file. The default is the archive name and `.sig.json`.
+        #[arg(long, value_name = "FILE")]
+        sig: Option<PathBuf>,
+    },
+    /// Check a rules pack archive and install it.
+    Update {
+        /// The pack archive to install.
+        #[arg(long, value_name = "ARCHIVE")]
+        from: PathBuf,
+        /// The signature file. The default is the archive name and `.sig.json`.
+        #[arg(long, value_name = "FILE")]
+        sig: Option<PathBuf>,
     },
 }
 

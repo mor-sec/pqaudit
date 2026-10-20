@@ -228,3 +228,24 @@ fn misplaced_yaml_files_are_errors() {
         assert!(error.to_string().contains(name), "{error}");
     }
 }
+
+#[test]
+fn trust_directory_is_not_pack_content() {
+    let with_trust = |extra: bool| {
+        let mut files = vec![
+            (
+                "pack.toml".to_string(),
+                b"id = \"t\"\nversion = \"1.0.0\"\n".to_vec(),
+            ),
+            ("algorithms.yaml".to_string(), b"[]\n".to_vec()),
+        ];
+        if extra {
+            files.push(("trust/keys.toml".to_string(), b"revoked = []\n".to_vec()));
+        }
+        RulesPack::from_files(files).unwrap()
+    };
+    assert_eq!(
+        with_trust(true).content_hash,
+        with_trust(false).content_hash
+    );
+}

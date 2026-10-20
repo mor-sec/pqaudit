@@ -32,7 +32,7 @@ where
         }
     };
     init_logging(&cli);
-    dispatch(&cli.command)
+    dispatch(&cli)
 }
 
 /// Set up the log output from the global flags.
@@ -56,15 +56,15 @@ fn init_logging(cli: &Cli) {
 }
 
 /// Run one command. Each command is a stub until its task replaces it.
-fn dispatch(command: &Command) -> ExitCode {
-    match command {
+fn dispatch(cli: &Cli) -> ExitCode {
+    match &cli.command {
         Command::Profiles { command } => commands::profiles::run(command),
+        Command::Rules { command } => commands::rules::run(command, cli.allow_unsigned_rules),
         Command::Init
         | Command::Merge
         | Command::Report
         | Command::Cbom
         | Command::Explain
-        | Command::Rules
         | Command::Scan {
             command: ScanCommand::Files | ScanCommand::Net,
         } => not_implemented(),

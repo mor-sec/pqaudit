@@ -303,6 +303,9 @@ impl RulesPack {
 
     /// Build a pack from a list of (relative path, bytes). Paths use `/`.
     pub fn from_files(mut files: Vec<(String, Vec<u8>)>) -> Result<RulesPack, PackError> {
+        // The trust list and the key rotations are not pack content.
+        // The trust list comes from the program, never from a pack.
+        files.retain(|(name, _)| !name.starts_with("trust/") && !name.starts_with("rotations/"));
         files.sort_by(|a, b| a.0.cmp(&b.0));
         let mut hasher = Sha256::new();
         for (name, bytes) in &files {

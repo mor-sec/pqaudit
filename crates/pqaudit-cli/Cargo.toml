@@ -23,3 +23,5 @@ tracing-subscriber.workspace = true
 [dev-dependencies]
 assert_cmd.workspace = true
 predicates.workspace = true
+pqaudit-rules = { path = "../pqaudit-rules", features = ["signing", "test-trust"] }
+tempfile = "3.27.0"

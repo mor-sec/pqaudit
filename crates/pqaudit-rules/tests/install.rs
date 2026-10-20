@@ -1,0 +1,196 @@
+//! Tests of the installation and the choice of the active rules pack.
+
+use std::fs;
+use std::path::Path;
+
+use pqaudit_rules::archive::build_archive;
+use pqaudit_rules::embedded::default_pack;
+use pqaudit_rules::install::{InstallError, InstalledState, PackOrigin, RulesStore};
+use pqaudit_rules::signing::HybridSigningKey;
+use pqaudit_rules::verify::TrustStore;
+
+fn archive_of(version: &str) -> Vec<u8> {
+    build_archive(vec![
+        (
+            "pack.toml".into(),
+            format!("id = \"test\"\nversion = \"{version}\"\n").into_bytes(),
+        ),
+        ("algorithms.yaml".into(), b"[]\n".to_vec()),
+    ])
+    .unwrap()
+}
+
+struct Fixture {
+    _dir: tempfile::TempDir,
+    root: std::path::PathBuf,
+    key: HybridSigningKey,
+}
+
+impl Fixture {
+    fn new() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        Fixture {
+            root: dir.path().join("data"),
+            _dir: dir,
+            key: HybridSigningKey::generate().unwrap(),
+        }
+    }
+    fn store(&self) -> RulesStore {
+        RulesStore::new(
+            self.root.clone(),
+            TrustStore::new(vec![self.key.public_key()], vec![]),
+        )
+    }
+    /// Write a signed archive and its signature in the scratch directory.
+    fn signed(&self, version: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let archive = archive_of(version);
+        let path = self
+            .root
+            .parent()
+            .unwrap()
+            .join(format!("in-{version}.tar.zst"));
+        fs::write(&path, &archive).unwrap();
+        let sig = self
+            .root
+            .parent()
+            .unwrap()
+            .join(format!("in-{version}.sig.json"));
+        fs::write(&sig, self.key.sign(&archive).to_json()).unwrap();
+        (path, sig)
+    }
+}
+
+fn installed_files(dir: &Path) -> Vec<String> {
+    let mut names: Vec<_> = fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn install_keeps_archive_and_signature() {
+    let fx = Fixture::new();
+    let (archive, sig) = fx.signed("99.0.0");
+    let dir = fx.store().install(&archive, &sig).unwrap();
+    assert!(dir.ends_with("rules/99.0.0"));
+    assert_eq!(
+        installed_files(&dir),
+        ["rules-99.0.0.tar.zst", "rules-99.0.0.tar.zst.sig.json"]
+    );
+}
+
+#[test]
+fn install_with_bad_signature_changes_nothing() {
+    let fx = Fixture::new();
+    let (archive, sig) = fx.signed("99.0.0");
+    let other = HybridSigningKey::generate().unwrap();
+    fs::write(&sig, other.sign(&fs::read(&archive).unwrap()).to_json()).unwrap();
+    let result = fx.store().install(&archive, &sig);
+    assert!(matches!(result, Err(InstallError::Verify(_))), "{result:?}");
+    assert!(!fx.root.join("rules").exists());
+}
+
+#[test]
+fn active_pack_prefers_a_newer_installed_pack() {
+    let fx = Fixture::new();
+    let (archive, sig) = fx.signed("99.0.0");
+    let store = fx.store();
+    store.install(&archive, &sig).unwrap();
+    let active = store.active_pack(false).unwrap();
+    assert_eq!(active.pack.version.to_string(), "99.0.0");
+    assert!(matches!(active.origin, PackOrigin::Installed { .. }));
+}
+
+#[test]
+fn active_pack_ignores_an_older_installed_pack() {
+    let fx = Fixture::new();
+    let (archive, sig) = fx.signed("0.0.1");
+    let store = fx.store();
+    store.install(&archive, &sig).unwrap();
+    let active = store.active_pack(false).unwrap();
+    assert_eq!(active.pack.version, default_pack().version);
+    assert!(matches!(active.origin, PackOrigin::Embedded));
+}
+
+#[test]
+fn installed_pack_is_checked_again_when_it_loads() {
+    let fx = Fixture::new();
+    let (archive, sig) = fx.signed("99.0.0");
+    let store = fx.store();
+    let dir = store.install(&archive, &sig).unwrap();
+    // Change the installed archive. The signature no longer fits.
+    fs::write(
+        dir.join("rules-99.0.0.tar.zst"),
+        archive_of("99.0.0").into_iter().rev().collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let active = store.active_pack(false).unwrap();
+    assert!(matches!(active.origin, PackOrigin::Embedded));
+    // The same change is also not accepted as "unsigned" without the flag.
+    let listed = store.list_installed();
+    assert_eq!(listed.len(), 1);
+    assert!(!matches!(listed[0].state, InstalledState::Verified { .. }));
+    let loose = store.active_pack(true).unwrap();
+    assert!(!matches!(loose.origin, PackOrigin::Installed { .. }));
+}
+
+#[test]
+fn revoked_key_stops_an_installed_pack() {
+    let fx = Fixture::new();
+    let (archive, sig) = fx.signed("99.0.0");
+    fx.store().install(&archive, &sig).unwrap();
+    let revoked = RulesStore::new(
+        fx.root.clone(),
+        TrustStore::new(
+            vec![fx.key.public_key()],
+            vec![fx.key.public_key().key_id()],
+        ),
+    );
+    let active = revoked.active_pack(false).unwrap();
+    assert!(matches!(active.origin, PackOrigin::Embedded));
+}
+
+#[test]
+fn unsigned_install_needs_the_flag_to_be_active() {
+    let fx = Fixture::new();
+    let path = fx.root.parent().unwrap().join("plain.tar.zst");
+    fs::write(&path, archive_of("99.0.0")).unwrap();
+    let store = fx.store();
+    let dir = store.install_unsigned(&path).unwrap();
+    assert_eq!(installed_files(&dir), ["rules-99.0.0.tar.zst"]);
+    let without = store.active_pack(false).unwrap();
+    assert!(matches!(without.origin, PackOrigin::Embedded));
+    let with = store.active_pack(true).unwrap();
+    assert!(matches!(with.origin, PackOrigin::Unsigned { .. }));
+    assert_eq!(with.pack.version.to_string(), "99.0.0");
+}
+
+#[test]
+fn unsigned_install_rejects_a_bad_archive() {
+    let fx = Fixture::new();
+    let path = fx.root.parent().unwrap().join("junk.tar.zst");
+    fs::write(&path, b"junk").unwrap();
+    assert!(fx.store().install_unsigned(&path).is_err());
+}
+
+#[test]
+fn install_replaces_the_same_version() {
+    let fx = Fixture::new();
+    let (archive, sig) = fx.signed("99.0.0");
+    let store = fx.store();
+    store.install(&archive, &sig).unwrap();
+    store.install(&archive, &sig).unwrap();
+    assert_eq!(store.list_installed().len(), 1);
+}
+
+#[test]
+fn data_dir_uses_the_environment_variable() {
+    // This test is the only one that changes the environment.
+    let dir = tempfile::tempdir().unwrap();
+    std::env::set_var("PQAUDIT_DATA_DIR", dir.path());
+    let root = pqaudit_rules::install::data_root().unwrap();
+    std::env::remove_var("PQAUDIT_DATA_DIR");
+    assert_eq!(root, dir.path());
+}
