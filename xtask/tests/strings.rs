@@ -96,3 +96,52 @@ fn strings_extracts_commits() {
     let commits = fs::read_to_string(out.join("commits.md")).unwrap();
     assert!(commits.contains("Add the file"), "{commits}");
 }
+
+#[test]
+fn strings_extracts_rules_text() {
+    let root = scratch("rules");
+    fs::create_dir_all(root.join("rules/rules")).unwrap();
+    fs::write(
+        root.join("rules/rules/tls.yaml"),
+        "rules:\n  - id: TLS-1\n    title: Old protocol\n    description: >-\n      The server accepts\n      an old protocol.\n    remediation: Turn it off.\n    milestones:\n      - description: Plan the change.\n  - id: TLS-2\n    other: Not text.\n    title: Weak cipher\n",
+    )
+    .unwrap();
+    fs::write(root.join("rules/pack.toml"), "title = \"Ignored\"\n").unwrap();
+    let git = Command::new("git")
+        .arg("init")
+        .arg("-q")
+        .arg(&root)
+        .status()
+        .unwrap();
+    assert!(git.success());
+    let out = scratch("rules-out");
+    run_strings(&root, &out, &[]);
+    let text = fs::read_to_string(out.join("rules-text.md")).unwrap();
+    for expected in [
+        "Old protocol.",
+        "The server accepts an old protocol.",
+        "Turn it off.",
+        "Plan the change.",
+        "Weak cipher.",
+    ] {
+        assert!(text.contains(expected), "{expected} missing in {text}");
+    }
+    assert!(!text.contains("Not text"));
+    assert!(!text.contains("Ignored"));
+}
+
+#[test]
+fn strings_skips_missing_rules_folder() {
+    let root = scratch("norules");
+    let out = scratch("norules-out");
+    let git = Command::new("git")
+        .arg("init")
+        .arg("-q")
+        .arg(&root)
+        .status()
+        .unwrap();
+    assert!(git.success());
+    run_strings(&root, &out, &[]);
+    let text = fs::read_to_string(out.join("rules-text.md")).unwrap();
+    assert!(!text.contains("##"));
+}

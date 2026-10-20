@@ -3,28 +3,28 @@ message: "Use '%s' instead of '%s'."
 level: error
 ignorecase: true
 swap:
-  utilize: use
-  utilise: use
-  ensure: make sure
-  perform: do
+  utiliz(?:e|es|ed|ing): use
+  utilis(?:e|es|ed|ing): use
+  ensur(?:e|es|ed|ing): make sure
+  perform(?:s|ed|ing)?: do
   in order to: to
   prior to: before
   subsequent to: after
-  commence: start
-  terminate: stop
-  require: need
-  indicate: show
-  display: show
-  initiate: start
-  modify: change
-  obtain: get
-  provide: give
+  commenc(?:e|es|ed|ing): start
+  terminat(?:e|es|ed|ing): stop
+  require(?:s|d)?|requiring: need
+  indicat(?:e|es|ed|ing): show
+  display(?:s|ed|ing)?: show
+  initiat(?:e|es|ed|ing): start
+  modif(?:y|ies|ied|ying): change
+  obtain(?:s|ed|ing)?: get
+  provid(?:e|es|ed|ing): give
   approximately: about
   additional: more
   however: but
   therefore: so
   numerous: many
   sufficient: enough
-  verify: check
-  facilitate: help
-  leverage: use
+  verif(?:y|ies|ied|ying): check
+  facilitat(?:e|es|ed|ing): help
+  leverag(?:e|es|ed|ing): use

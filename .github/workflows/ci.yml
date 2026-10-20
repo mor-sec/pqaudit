@@ -49,7 +49,8 @@ jobs:
         run: |
           vale .github/vale/fixtures/good.md
           test "$(vale --output=line .github/vale/fixtures/bad.md | wc -l)" -eq 5
+          test "$(vale --output=line .github/vale/fixtures/inflected.md | wc -l)" -eq 5
       - name: Extract the project text
-        run: cargo xtask strings --out target/ste --commits "${{ github.event.pull_request.base.sha || 'HEAD~1' }}..HEAD"
+        run: cargo xtask --locked strings --out target/ste --commits "${{ github.event.pull_request.base.sha || 'HEAD~1' }}..HEAD"
       - name: Check the project text
         run: .github/scripts/ste-lint.sh

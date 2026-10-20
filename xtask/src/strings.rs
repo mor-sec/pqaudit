@@ -108,60 +108,54 @@ fn rules_text(dir: &Path) -> Result<String> {
         return Ok(out);
     }
     let mut files = Vec::new();
-    collect_files(dir, "toml", &mut files)?;
+    collect_files(dir, "yaml", &mut files)?;
+    collect_files(dir, "yml", &mut files)?;
+    files.sort();
     for file in files {
-        let text = fs::read_to_string(&file)?;
+        let value: serde_yaml::Value = serde_yaml::from_str(&fs::read_to_string(&file)?)
+            .map_err(|error| format!("{}: {error}", file.display()))?;
         let name = file
             .strip_prefix(dir.parent().unwrap_or(dir))
             .unwrap_or(&file);
-        for (line_no, key, value) in toml_text_fields(&text) {
+        let mut found = Vec::new();
+        yaml_text_fields(&value, String::new(), &mut found);
+        for (path, text) in found {
             let _ = writeln!(
                 out,
-                "## {}:{line_no} {key}\n\n{}\n",
+                "## {} {path}\n\n{}\n",
                 name.display(),
-                one_line(&value)
+                end_sentence(&text)
             );
         }
     }
     Ok(out)
 }
 
-/// Find the fields `title`, `description`, and `remediation` in a TOML text.
-fn toml_text_fields(text: &str) -> Vec<(usize, String, String)> {
+/// Find the fields `title`, `description`, and `remediation` at any depth.
+fn yaml_text_fields(value: &serde_yaml::Value, path: String, found: &mut Vec<(String, String)>) {
     const KEYS: [&str; 3] = ["title", "description", "remediation"];
-    let mut found = Vec::new();
-    let mut lines = text.lines().enumerate();
-    while let Some((index, line)) = lines.next() {
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        let key = key.trim();
-        if !KEYS.contains(&key) {
-            continue;
-        }
-        let value = value.trim();
-        if let Some(rest) = value.strip_prefix("\"\"\"") {
-            let mut body = String::new();
-            let mut tail = rest;
-            loop {
-                if let Some(end) = tail.find("\"\"\"") {
-                    body.push_str(&tail[..end]);
-                    break;
-                }
-                body.push_str(tail);
-                body.push(' ');
-                match lines.next() {
-                    Some((_, next)) => tail = next,
-                    None => break,
+    match value {
+        serde_yaml::Value::Mapping(map) => {
+            for (key, child) in map {
+                let Some(key) = key.as_str() else { continue };
+                let path = if path.is_empty() {
+                    key.to_string()
+                } else {
+                    format!("{path}.{key}")
+                };
+                match child.as_str() {
+                    Some(text) if KEYS.contains(&key) => found.push((path, text.to_string())),
+                    _ => yaml_text_fields(child, path, found),
                 }
             }
-            found.push((index + 1, key.to_string(), body));
-        } else {
-            let unquoted = value.trim_matches(|c| c == '"' || c == '\'');
-            found.push((index + 1, key.to_string(), unquoted.to_string()));
         }
+        serde_yaml::Value::Sequence(items) => {
+            for (index, child) in items.iter().enumerate() {
+                yaml_text_fields(child, format!("{path}[{index}]"), found);
+            }
+        }
+        _ => {}
     }
-    found
 }
 
 fn collect_files(dir: &Path, extension: &str, files: &mut Vec<PathBuf>) -> Result<()> {

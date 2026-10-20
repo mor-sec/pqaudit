@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 clap.workspace = true
+serde_yaml = "0.9"
 pqaudit-cli = { path = "../crates/pqaudit-cli" }
 pqaudit-core = { path = "../crates/pqaudit-core" }
 pqaudit-rules = { path = "../crates/pqaudit-rules" }
