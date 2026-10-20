@@ -29,6 +29,7 @@ impl Engagement {
 
     /// Run `pqaudit` on the engagement. `PQAUDIT_DATA_DIR` is empty, so only the embedded rules pack is in use.
     fn pqaudit(&self) -> Command {
+        // Every command except `init` runs through this helper. `init` runs before the engagement exists.
         let mut cmd = Command::cargo_bin("pqaudit").unwrap();
         cmd.env_remove("SOURCE_DATE_EPOCH")
             .env("PQAUDIT_DATA_DIR", self.dir.path().join("data"))
@@ -154,16 +155,16 @@ fn full_stage1_engagement() {
     let files_results = results_with_prefix(&engagement, "files-");
     assert_eq!(files_results.len(), 1);
     let scanned = ResultsFile::read(&files_results[0]).unwrap();
-    let mut places: Vec<String> = scanned
+    let mut errors: Vec<(String, String)> = scanned
         .errors
         .iter()
-        .map(|error| error.location.clone())
+        .map(|error| {
+            let name = error.location.rsplit('/').next().unwrap().to_string();
+            (name, error.reason.clone())
+        })
         .collect();
-    places.sort();
-    let names: Vec<&str> = places
-        .iter()
-        .map(|place| place.rsplit('/').next().unwrap())
-        .collect();
+    errors.sort();
+    let names: Vec<&str> = errors.iter().map(|(name, _)| name.as_str()).collect();
     assert_eq!(
         names,
         [
@@ -172,8 +173,13 @@ fn full_stage1_engagement() {
             "store-pw.key.der",
             "store-pw.p12"
         ],
-        "{places:?}"
+        "{errors:?}"
     );
+    assert!(errors[0].1.contains("Unsupported format"), "{errors:?}");
+    assert!(errors[3].1.contains("Encrypted"), "{errors:?}");
+    // The two `.key.der` files are raw PKCS#8 RSA keys, not certificates. The scanner reads a DER file as a
+    // certificate only, so it reports them with a wrong message. This is a scanner gap that the report lists.
+    // The test does not pin the message of these two errors.
     assert_eq!(results_with_prefix(&engagement, "net-").len(), 1);
     assert_eq!(results_with_prefix(&engagement, "files-").len(), 1);
 
@@ -187,6 +193,7 @@ fn full_stage1_engagement() {
         .code(0);
     let merged = ResultsFile::read(&engagement.path().join("results/merged.pqr")).unwrap();
     let first_id = merged.findings[0].id.clone();
+    let first_rule = merged.findings[0].rule_id.clone();
     assert!(
         first_id.starts_with("F-") && first_id.len() == 10,
         "{first_id}"
@@ -213,8 +220,16 @@ fn full_stage1_engagement() {
         explained.starts_with(&format!("Finding {first_id}:")),
         "{explained}"
     );
-    assert!(explained.contains("Rule: "));
-    assert!(explained.contains("Total: "));
+    assert!(
+        explained.contains(&format!("Rule: {first_rule}\n")),
+        "{explained}"
+    );
+    let total = explained.split("Total: ").nth(1).expect("a total line");
+    let number: String = total
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
+    assert!(number.parse::<f64>().is_ok(), "{total}");
 
     // The JSON report: `tls.no-pq-kex` has the deadline 2030-12-31 from the profile `au`.
     let reports = engagement.path().join("reports");
@@ -255,13 +270,19 @@ fn full_stage1_engagement() {
     for banned in ["<script src", "<link", "@import", "url(http"] {
         assert!(!html.contains(banned), "found {banned}");
     }
+    // A link to another site is allowed only as the href of an anchor. No source may start with `//`.
+    for banned in ["src=\"//", "href=\"//"] {
+        assert!(!html.contains(banned), "found {banned}");
+    }
     for (at, _) in html.match_indices("http") {
         let rest = &html[at..];
         if rest.starts_with("http://") || rest.starts_with("https://") {
+            let tag_start = html[..at].rfind('<').unwrap_or(0);
+            let tag = &html[tag_start..at];
             assert!(
-                html[..at].ends_with("href=\""),
+                tag.starts_with("<a ") && tag.ends_with("href=\""),
                 "link outside an anchor: {}",
-                &rest[..40.min(rest.len())]
+                rest.chars().take(40).collect::<String>()
             );
         }
     }
