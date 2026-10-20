@@ -54,3 +54,26 @@ jobs:
         run: cargo --locked xtask strings --out target/ste --commits "${{ github.event.pull_request.base.sha || 'HEAD~1' }}..HEAD"
       - name: Check the project text
         run: .github/scripts/ste-lint.sh
+
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the crates of the file scanner
+        run: cargo xtask check-offline-deps
+      - name: Build the program
+        run: cargo build --locked -p pqaudit-cli
+      - name: Install strace
+        run: sudo apt-get update && sudo apt-get install -y strace
+      - name: Make an engagement directory
+        run: target/debug/pqaudit init ci --dir "$RUNNER_TEMP"
+      - name: Trace the system calls of a file scan
+        run: |
+          strace -f -e trace=socket,connect -o trace.txt \
+            target/debug/pqaudit --engagement "$RUNNER_TEMP/ci" scan files crates/pqaudit-scan-files/tests/fixtures
+      - name: Check that the scan opened no network socket
+        run: |
+          if grep -E 'socket\(AF_INET|socket\(AF_INET6|connect\(' trace.txt; then
+            echo "The file scan used the network."
+            exit 1
+          fi

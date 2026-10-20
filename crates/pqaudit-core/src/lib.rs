@@ -1,5 +1,6 @@
 //! Shared types of pqaudit: findings, results files, fingerprints, and engagement files.
 
+pub mod classify;
 pub mod engagement;
 pub mod finding;
 pub mod fingerprint;

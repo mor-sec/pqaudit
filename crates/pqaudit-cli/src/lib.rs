@@ -61,12 +61,29 @@ fn dispatch(cli: &Cli) -> ExitCode {
         Command::Profiles { command } => commands::profiles::run(command),
         Command::Rules { command } => commands::rules::run(command, cli.allow_unsigned_rules),
         Command::Init { name, dir } => commands::init::run(name, dir),
+        Command::Scan {
+            command:
+                ScanCommand::Files {
+                    paths,
+                    max_file_size,
+                    follow_symlinks,
+                    output,
+                },
+        } => commands::scan_files::run(
+            cli,
+            commands::scan_files::FilesArgs {
+                paths,
+                max_file_size: *max_file_size,
+                follow_symlinks: *follow_symlinks,
+                output: output.as_deref(),
+            },
+        ),
         Command::Merge
         | Command::Report
         | Command::Cbom
         | Command::Explain
         | Command::Scan {
-            command: ScanCommand::Files | ScanCommand::Net,
+            command: ScanCommand::Net,
         } => not_implemented(),
     }
 }

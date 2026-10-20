@@ -1,5 +1,6 @@
 //! Build tasks for pqaudit.
 
+mod check_offline;
 mod keygen;
 mod pack_rules;
 mod sign;
@@ -19,6 +20,8 @@ struct Xtask {
 
 #[derive(Debug, Subcommand)]
 enum Task {
+    /// Check that the offline scanner has no network crates.
+    CheckOfflineDeps,
     /// Make a hybrid key pair (Ed25519 and ML-DSA-65) as PEM files.
     Keygen {
         /// Write the four key files to this directory.
@@ -68,6 +71,7 @@ fn finish(result: Result<(), Box<dyn std::error::Error>>) -> ExitCode {
 
 fn main() -> ExitCode {
     match Xtask::parse().command {
+        Task::CheckOfflineDeps => finish(check_offline::run()),
         Task::Keygen { out } => finish(keygen::run(&out)),
         Task::Sign { keys, file } => finish(sign::run(&keys, &file)),
         Task::PackRules { out, root } => finish(pack_rules::run(&root, &out)),

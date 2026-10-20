@@ -121,7 +121,20 @@ pub enum ProfilesCommand {
 #[derive(Debug, Subcommand)]
 pub enum ScanCommand {
     /// Scan files on disk. This command does not use the network.
-    Files,
+    Files {
+        /// The files and directories to scan.
+        #[arg(required = true, value_name = "PATHS")]
+        paths: Vec<PathBuf>,
+        /// Skip each file that is larger than this number of bytes.
+        #[arg(long, value_name = "BYTES", default_value_t = 10_485_760)]
+        max_file_size: u64,
+        /// Follow symbolic links.
+        #[arg(long)]
+        follow_symlinks: bool,
+        /// Write the results to this file. The default is a new file in the results directory.
+        #[arg(long, value_name = "FILE")]
+        output: Option<PathBuf>,
+    },
     /// Scan network endpoints that the scope file lists.
     Net,
 }
