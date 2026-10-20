@@ -156,8 +156,34 @@ pub const REASON_SIZE_IMPACT: &str =
 /// The reason that gives the size. The tool fills in {size} and {years}.
 pub const REASON_SIZE: &str = "The size is {size}. The migration takes about {years} years.";
 
+/// The error for a scoring value that is not valid. The tool fills in {file}, {key}, and {rule}.
+pub const SCORING_INVALID: &str =
+    "The file {file} is not valid. The key {key} breaks this rule: {rule}";
+
+/// The rule for the weights: each weight is a number from 0 up.
+pub const RULE_WEIGHT: &str = "Each weight must be a finite number of 0 or more.";
+
+/// The rule for the sum of the weights.
+pub const RULE_WEIGHT_SUM: &str = "The sum of the weights must be more than 0.";
+
+/// The rule for a classification value.
+pub const RULE_CLASSIFICATION: &str = "Each classification value must be a number from 0 to 1.";
+
+/// The rule for the bands.
+pub const RULE_BANDS: &str =
+    "Each band must be a number from 0 to 100. The value of critical must be more than high. The value of high must be more than medium.";
+
+/// The rule for a migration time.
+pub const RULE_MIGRATION: &str = "Each migration time must be a finite number of more than 0.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
+    ("SCORING_INVALID", SCORING_INVALID),
+    ("RULE_WEIGHT", RULE_WEIGHT),
+    ("RULE_WEIGHT_SUM", RULE_WEIGHT_SUM),
+    ("RULE_CLASSIFICATION", RULE_CLASSIFICATION),
+    ("RULE_BANDS", RULE_BANDS),
+    ("RULE_MIGRATION", RULE_MIGRATION),
     ("NOTE_THREAT", NOTE_THREAT),
     ("NOTE_EXPOSURE", NOTE_EXPOSURE),
     ("NOTE_EXPOSURE_UNASSESSED", NOTE_EXPOSURE_UNASSESSED),

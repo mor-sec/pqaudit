@@ -392,6 +392,15 @@ pub enum EngagementError {
         /// The reason.
         reason: String,
     },
+    /// A scoring value breaks a rule.
+    Invalid {
+        /// The name of the file.
+        file: String,
+        /// The key with the wrong value.
+        key: String,
+        /// The rule that the value breaks.
+        rule: &'static str,
+    },
 }
 
 impl fmt::Display for EngagementError {
@@ -403,6 +412,10 @@ impl fmt::Display for EngagementError {
             Self::Io { file, reason } => messages::ENGAGEMENT_IO
                 .replace("{file}", file)
                 .replace("{reason}", reason),
+            Self::Invalid { file, key, rule } => messages::SCORING_INVALID
+                .replace("{file}", file)
+                .replace("{key}", key)
+                .replace("{rule}", rule),
             Self::Parse { file, line, reason } => messages::ENGAGEMENT_PARSE
                 .replace("{file}", file)
                 .replace("{line}", &line.to_string())
@@ -440,6 +453,62 @@ fn read_file<T: DeserializeOwned>(dir: &Path, name: &str) -> Result<Option<T>, E
     })
 }
 
+impl ScoringConfig {
+    /// Check the values. Return the first key that breaks a rule.
+    fn validate(&self) -> Result<(), EngagementError> {
+        let invalid = |key: String, rule: &'static str| EngagementError::Invalid {
+            file: SCORING_FILE.to_string(),
+            key,
+            rule,
+        };
+        let w = &self.weights;
+        let weights = [
+            ("threat", w.threat),
+            ("exposure", w.exposure),
+            ("sensitivity", w.sensitivity),
+            ("mosca", w.mosca),
+            ("deadline", w.deadline),
+            ("scale", w.scale),
+        ];
+        for (name, value) in weights {
+            if !value.is_finite() || value < 0.0 {
+                return Err(invalid(format!("weights.{name}"), messages::RULE_WEIGHT));
+            }
+        }
+        if weights.iter().map(|(_, value)| value).sum::<f64>() <= 0.0 {
+            return Err(invalid("weights".into(), messages::RULE_WEIGHT_SUM));
+        }
+        for (name, value) in &self.classification {
+            if !(0.0..=1.0).contains(value) {
+                return Err(invalid(
+                    format!("classification.{name}"),
+                    messages::RULE_CLASSIFICATION,
+                ));
+            }
+        }
+        let b = &self.bands;
+        let in_range = |v: f64| (0.0..=100.0).contains(&v);
+        if !(in_range(b.critical) && in_range(b.high) && in_range(b.medium)) {
+            return Err(invalid("bands".into(), messages::RULE_BANDS));
+        }
+        if b.critical <= b.high {
+            return Err(invalid("bands.critical".into(), messages::RULE_BANDS));
+        }
+        if b.high <= b.medium {
+            return Err(invalid("bands.high".into(), messages::RULE_BANDS));
+        }
+        for (size, value) in &self.migration_years {
+            if !value.is_finite() || *value <= 0.0 {
+                return Err(invalid(
+                    format!("migration_years.{size:?}"),
+                    messages::RULE_MIGRATION,
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 impl Engagement {
     /// Load the engagement files from a directory.
     ///
@@ -449,12 +518,14 @@ impl Engagement {
             file: ENGAGEMENT_FILE.to_string(),
             dir: dir.to_path_buf(),
         })?;
+        let scoring: ScoringConfig = read_file(dir, SCORING_FILE)?.unwrap_or_default();
+        scoring.validate()?;
         Ok(Engagement {
             dir: dir.to_path_buf(),
             config,
             assets: read_file(dir, ASSETS_FILE)?.unwrap_or_default(),
             overrides: read_file(dir, OVERRIDES_FILE)?.unwrap_or_default(),
-            scoring: read_file(dir, SCORING_FILE)?.unwrap_or_default(),
+            scoring,
         })
     }
 }

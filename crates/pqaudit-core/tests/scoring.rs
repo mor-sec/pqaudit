@@ -88,7 +88,7 @@ fn all_max_scores_100() {
         2035,
         today(),
     );
-    assert_eq!(b.total, 100.0);
+    assert!((b.total - 100.0).abs() < 1e-9, "total {}", b.total);
     assert_eq!(b.factors.len(), 6);
 }
 

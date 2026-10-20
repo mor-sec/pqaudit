@@ -264,3 +264,57 @@ fn assessment_date_parses_and_bad_date_has_line() {
     let text = Engagement::load(dir.path()).unwrap_err().to_string();
     assert!(text.contains("line 3"), "{text}");
 }
+
+/// Load an engagement with this `scoring.toml` text and return the error text.
+fn scoring_error(text: &str) -> String {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "engagement.toml", MINIMAL);
+    write(dir.path(), "scoring.toml", text);
+    Engagement::load(dir.path()).unwrap_err().to_string()
+}
+
+#[test]
+fn all_zero_weights_are_rejected() {
+    let text = scoring_error("[weights]\nthreat = 0\nexposure = 0\nsensitivity = 0\nmosca = 0\ndeadline = 0\nscale = 0\n");
+    assert!(text.contains("scoring.toml"), "{text}");
+    assert!(text.contains("weights"), "{text}");
+    assert!(text.contains("more than 0"), "{text}");
+}
+
+#[test]
+fn negative_weight_is_rejected() {
+    let text = scoring_error("[weights]\nthreat = -0.1\n");
+    assert!(text.contains("weights.threat"), "{text}");
+    assert!(text.contains("0 or more"), "{text}");
+}
+
+#[test]
+fn nan_weight_is_rejected() {
+    let text = scoring_error("[weights]\nmosca = nan\n");
+    assert!(text.contains("weights.mosca"), "{text}");
+}
+
+#[test]
+fn classification_value_above_one_is_rejected() {
+    let text = scoring_error("[classification]\nsecret = 2.0\n");
+    assert!(text.contains("classification.secret"), "{text}");
+    assert!(text.contains("0 to 1"), "{text}");
+}
+
+#[test]
+fn unordered_bands_are_rejected() {
+    let text = scoring_error("[bands]\ncritical = 50\nhigh = 60\nmedium = 40\n");
+    assert!(text.contains("bands.critical"), "{text}");
+    let text = scoring_error("[bands]\ncritical = 80\nhigh = 40\nmedium = 40\n");
+    assert!(text.contains("bands.high"), "{text}");
+    let text = scoring_error("[bands]\ncritical = 180\n");
+    assert!(text.contains("bands"), "{text}");
+}
+
+#[test]
+fn bad_migration_time_is_rejected() {
+    let text = scoring_error("[migration_years]\nM = 0\n");
+    assert!(text.contains("migration_years.M"), "{text}");
+    let text = scoring_error("[migration_years]\nL = nan\n");
+    assert!(text.contains("migration_years.L"), "{text}");
+}

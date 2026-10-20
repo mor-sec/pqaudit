@@ -151,7 +151,11 @@ pub fn score(
             note,
         })
         .collect();
-    let total = factors.iter().map(|factor| factor.contribution).sum();
+    let total = factors
+        .iter()
+        .map(|factor| factor.contribution)
+        .sum::<f64>()
+        .clamp(0.0, 100.0);
     ScoreBreakdown { factors, total }
 }
 
