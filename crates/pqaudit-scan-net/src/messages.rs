@@ -101,6 +101,14 @@ pub const LEGACY_BAD_REPLY: &str = "The server sent a reply that is not a TLS ha
 /// The error when the SSH probe does not exist yet.
 pub const SSH_NOT_AVAILABLE: &str = "The SSH probe is not available yet.";
 
+/// The error when other names used the handshake limit of this address and port.
+pub const HANDSHAKE_LIMIT_USED: &str =
+    "Other names used all handshakes for this address and port. The tool makes no connection.";
+
+/// The note when other names used part of the handshake limit of this address and port.
+pub const HANDSHAKE_LIMIT_PART: &str =
+    "Other names used part of the handshake limit for this address and port. The probe is not complete.";
+
 /// The error when the system cannot give random bytes.
 pub const RANDOM_FAILED: &str = "The system cannot give random bytes.";
 
@@ -157,6 +165,8 @@ pub const ALL: &[(&str, &str)] = &[
     ("LEGACY_FAILED", LEGACY_FAILED),
     ("LEGACY_BAD_REPLY", LEGACY_BAD_REPLY),
     ("SSH_NOT_AVAILABLE", SSH_NOT_AVAILABLE),
+    ("HANDSHAKE_LIMIT_USED", HANDSHAKE_LIMIT_USED),
+    ("HANDSHAKE_LIMIT_PART", HANDSHAKE_LIMIT_PART),
     ("RANDOM_FAILED", RANDOM_FAILED),
     ("NO_HANDSHAKE", NO_HANDSHAKE),
     ("EVIDENCE_PQ_READY", EVIDENCE_PQ_READY),

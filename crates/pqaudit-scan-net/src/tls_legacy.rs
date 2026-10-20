@@ -63,7 +63,7 @@ pub async fn probe(ctx: &ProbeCtx<'_>, t: &PlannedTarget) -> Result<Vec<String>,
         read_version(&mut stream).await
     })
     .await;
-    match attempt {
+    let result = match attempt {
         Ok(Ok(versions)) => {
             audit.set_outcome("ok");
             Ok(versions)
@@ -76,7 +76,11 @@ pub async fn probe(ctx: &ProbeCtx<'_>, t: &PlannedTarget) -> Result<Vec<String>,
             audit.set_outcome("timeout");
             Err(messages::HANDSHAKE_TIMEOUT.replace("{probe}", PROBE_NAME))
         }
-    }
+    };
+    // Close the socket first. The audit guard then releases the host permit.
+    drop(stream);
+    drop(audit);
+    result
 }
 
 /// Read the start of the reply and find the old version, if any.

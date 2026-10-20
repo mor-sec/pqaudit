@@ -220,7 +220,7 @@ async fn handshake(
     let connector = TlsConnector::from(setup.config.clone());
     let name = server_name(t);
     let attempt = timeout(ctx.limits.read_timeout, async {
-        let mut tls = connector.connect(name, stream).await?;
+        let tls = connector.connect(name, stream).await?;
         let (_, connection) = tls.get_ref();
         let shake = Shake {
             version: connection
@@ -234,14 +234,17 @@ async fn handshake(
                 .map(|suite| format!("{:?}", suite.suite())),
             chain: Vec::new(),
         };
-        // Send close_notify. A slow peer must not hold the tool.
-        let _ = timeout(CLOSE_TIMEOUT, tls.shutdown()).await;
-        Ok::<Shake, io::Error>(shake)
+        Ok::<_, io::Error>((tls, shake))
     })
     .await;
     let chain = setup.recorder.take();
     match attempt {
-        Ok(Ok(mut shake)) => {
+        Ok(Ok((mut tls, mut shake))) => {
+            // The handshake finished and the result is final. The close has its own time limit.
+            // A slow peer must not change the result.
+            let _ = timeout(CLOSE_TIMEOUT, tls.shutdown()).await;
+            // Close the socket before the audit guard releases the host permit.
+            drop(tls);
             audit.set_outcome("ok");
             shake.chain = chain;
             Ok(shake)
@@ -266,12 +269,12 @@ async fn handshake(
 }
 
 /// Read the certificates of a chain. Add the reason for each certificate that is not readable.
-fn read_chain(ders: &[Vec<u8>], errors: &mut Vec<String>) -> Vec<CertInfo> {
+fn read_chain(ders: &[Vec<u8>], failures: &mut Vec<String>) -> Vec<CertInfo> {
     let mut chain = Vec::new();
     for (position, der) in ders.iter().take(MAX_CHAIN).enumerate() {
         match parse_certificate(der, position) {
             Ok(cert) => chain.push(cert),
-            Err(error) => errors.push(
+            Err(error) => failures.push(
                 messages::CHAIN_CERT_BAD
                     .replace("{position}", &position.to_string())
                     .replace("{reason}", &short(&error.reason())),
@@ -279,7 +282,7 @@ fn read_chain(ders: &[Vec<u8>], errors: &mut Vec<String>) -> Vec<CertInfo> {
         }
     }
     if ders.len() > MAX_CHAIN {
-        errors.push(messages::CHAIN_TOO_LONG.replace("{max}", &MAX_CHAIN.to_string()));
+        failures.push(messages::CHAIN_TOO_LONG.replace("{max}", &MAX_CHAIN.to_string()));
     }
     chain
 }
@@ -308,14 +311,31 @@ async fn probe_tls(
         legacy_versions: None,
         errors: Vec::new(),
     };
-    let budget = t.connections.min(ctx.limits.tls_handshakes);
+    let mut failures: Vec<String> = Vec::new();
+    let wanted = t.connections.min(ctx.limits.tls_handshakes);
+    // The limit is for the address and port over all names. Other targets can use it first.
+    let budget = ctx.claim_handshakes(t.ip, t.port, wanted);
+    if budget == 0 {
+        failures.push(messages::HANDSHAKE_LIMIT_USED.to_string());
+        obs.errors.extend(failures.iter().cloned());
+        return TlsObservationWithCerts {
+            obs,
+            chain: Vec::new(),
+            failures,
+        };
+    }
+    if budget < wanted {
+        obs.errors.push(messages::HANDSHAKE_LIMIT_PART.to_string());
+    }
     let (hybrid, classical) = match (hybrid_setup(), classical_setup()) {
         (Ok(hybrid), Ok(classical)) => (hybrid, classical),
         (Err(error), _) | (_, Err(error)) => {
-            obs.errors.push(error);
+            failures.push(error);
+            obs.errors.extend(failures.iter().cloned());
             return TlsObservationWithCerts {
                 obs,
                 chain: Vec::new(),
+                failures,
             };
         }
     };
@@ -331,7 +351,7 @@ async fn probe_tls(
                 chain_der = shake.chain;
             }
             Err(failure) if failure.fatal => {
-                obs.errors.push(failure.text);
+                failures.push(failure.text);
                 stop = true;
             }
             Err(failure) => hybrid_rejected = Some(failure.text),
@@ -345,6 +365,7 @@ async fn probe_tls(
                     chain_der = shake.chain;
                 }
                 // The server speaks TLS. Only now is a rejection of the hybrid groups a fact.
+                // This is a result, not a failure.
                 if let Some(reason) = hybrid_rejected.take() {
                     obs.pq_hybrid_supported = Some(false);
                     obs.errors
@@ -353,18 +374,23 @@ async fn probe_tls(
             }
             Err(failure) => {
                 stop = failure.fatal;
-                obs.errors.push(failure.text);
+                failures.push(failure.text);
             }
         }
     }
     if !stop && legacy_tls_check && budget >= 3 {
         match tls_legacy::probe(ctx, t).await {
             Ok(versions) => obs.legacy_versions = Some(versions),
-            Err(reason) => obs
-                .errors
-                .push(messages::LEGACY_FAILED.replace("{reason}", &short(&reason))),
+            Err(reason) => {
+                failures.push(messages::LEGACY_FAILED.replace("{reason}", &short(&reason)))
+            }
         }
     }
-    let chain = read_chain(&chain_der, &mut obs.errors);
-    TlsObservationWithCerts { obs, chain }
+    let chain = read_chain(&chain_der, &mut failures);
+    obs.errors.extend(failures.iter().cloned());
+    TlsObservationWithCerts {
+        obs,
+        chain,
+        failures,
+    }
 }

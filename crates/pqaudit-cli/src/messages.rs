@@ -113,6 +113,10 @@ pub const NET_RUNTIME: &str = "The tool cannot start the network runtime. {reaso
 pub const NET_SCAN_SUMMARY: &str =
     "Probed {targets} targets. Found {findings} findings and {inventory} other items. {errors} targets gave errors.";
 
+/// The error when the user stops the scan. The results file is not complete.
+pub const NET_INTERRUPTED: &str =
+    "The user stopped the scan. The tool did not finish all targets, and the results are partial.";
+
 /// The error when the plan has no targets and the tool makes no scan.
 pub const NET_NOTHING_TO_SCAN: &str =
     "The plan has no targets. The tool made no connection. Add a target to the file scope.toml.";
@@ -127,6 +131,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("NET_RUNTIME", NET_RUNTIME),
     ("NET_SCAN_SUMMARY", NET_SCAN_SUMMARY),
     ("NET_NOTHING_TO_SCAN", NET_NOTHING_TO_SCAN),
+    ("NET_INTERRUPTED", NET_INTERRUPTED),
     ("NET_TARGET_NAMED", NET_TARGET_NAMED),
     ("NET_TARGET_IP", NET_TARGET_IP),
     ("NET_REFUSED", NET_REFUSED),

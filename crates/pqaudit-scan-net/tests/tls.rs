@@ -59,9 +59,16 @@ async fn tls_server(
     groups: Vec<&'static dyn rustls::crypto::SupportedKxGroup>,
     identity: Identity,
 ) -> (SocketAddr, Arc<AtomicUsize>) {
+    serve(server_config(groups, identity), Mode::Normal).await
+}
+
+fn server_config(
+    groups: Vec<&'static dyn rustls::crypto::SupportedKxGroup>,
+    identity: Identity,
+) -> ServerConfig {
     let mut provider = aws_lc_rs::default_provider();
     provider.kx_groups = groups;
-    let config = ServerConfig::builder_with_provider(Arc::new(provider))
+    ServerConfig::builder_with_provider(Arc::new(provider))
         .with_safe_default_protocol_versions()
         .unwrap()
         .with_no_client_auth()
@@ -69,18 +76,41 @@ async fn tls_server(
             vec![CertificateDer::from(identity.cert)],
             PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(identity.key)),
         )
-        .unwrap();
+        .unwrap()
+}
+
+/// How a test server treats its connections.
+#[derive(Clone, Copy)]
+enum Mode {
+    /// Finish the handshake. Wait for data for 2 seconds.
+    Normal,
+    /// Serve the first connections. Hold the later ones and never write.
+    SilentAfter(usize),
+    /// Finish the handshake. Then never read or write again.
+    HoldAfterHandshake,
+}
+
+async fn serve(config: ServerConfig, mode: Mode) -> (SocketAddr, Arc<AtomicUsize>) {
     let acceptor = TlsAcceptor::from(Arc::new(config));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let count = Arc::new(AtomicUsize::new(0));
     let counter = count.clone();
     tokio::spawn(async move {
+        let mut held = Vec::new();
         while let Ok((stream, _)) = listener.accept().await {
-            counter.fetch_add(1, Ordering::SeqCst);
+            let number = counter.fetch_add(1, Ordering::SeqCst) + 1;
+            if matches!(mode, Mode::SilentAfter(n) if number > n) {
+                held.push(stream);
+                continue;
+            }
             let acceptor = acceptor.clone();
             tokio::spawn(async move {
                 if let Ok(mut tls) = acceptor.accept(stream).await {
+                    if matches!(mode, Mode::HoldAfterHandshake) {
+                        tokio::time::sleep(Duration::from_secs(30)).await;
+                        return;
+                    }
                     let mut buffer = [0u8; 16];
                     let _ =
                         tokio::time::timeout(Duration::from_secs(2), tls.read(&mut buffer)).await;
@@ -119,11 +149,13 @@ fn audit_in(dir: &tempfile::TempDir) -> AuditLog {
     AuditLog::open(&dir.path().join("audit.log")).unwrap()
 }
 
+/// The final line of each connection attempt. The "started" lines are not in the list.
 fn read_entries(dir: &tempfile::TempDir) -> Vec<AuditEntry> {
     std::fs::read_to_string(dir.path().join("audit.log"))
         .unwrap()
         .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
+        .map(|line| serde_json::from_str::<AuditEntry>(line).unwrap())
+        .filter(|entry| entry.outcome != "started")
         .collect()
 }
 
@@ -579,4 +611,160 @@ async fn ssh_probe_is_a_stub() {
     assert_eq!(result.unwrap_err(), "The SSH probe is not available yet.");
     // The stub opens no socket, so the audit log stays empty.
     assert!(read_entries(&dir).is_empty());
+}
+
+fn sni_target(address: SocketAddr, name: &str, connections: u8) -> PlannedTarget {
+    let mut t = target_for(address, connections);
+    t.host = Some(name.to_string());
+    t
+}
+
+#[tokio::test]
+async fn two_sni_names_share_the_handshake_budget() {
+    let (address, count) = tls_server(hybrid_groups(), ecdsa_identity()).await;
+    let dir = tempfile::tempdir().unwrap();
+    let audit = audit_in(&dir);
+    let plan = TargetPlan {
+        targets: vec![
+            sni_target(address, "a.test", 2),
+            sni_target(address, "b.test", 2),
+            sni_target(address, "c.test", 2),
+        ],
+        refused: Vec::new(),
+        limits: limits(),
+    };
+    let out = run(
+        &plan,
+        &RealProbes::new(false),
+        &audit,
+        Uuid::new_v4(),
+        default_pack(),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    // The default limit is 3 handshakes for each port, over all names.
+    assert_eq!(count.load(Ordering::SeqCst), 3);
+    assert_eq!(read_entries(&dir).len(), 3);
+    assert_eq!(out.errors.len(), 1, "{:?}", out.errors);
+    assert!(out.errors[0]
+        .reason
+        .contains("all handshakes for this address"));
+}
+
+#[tokio::test]
+async fn failed_classical_handshake_after_hybrid_is_an_error() {
+    // The server accepts the hybrid group only. The classical handshake fails.
+    let (address, _) = tls_server(vec![kx_group::X25519MLKEM768], ecdsa_identity()).await;
+    let dir = tempfile::tempdir().unwrap();
+    let audit = audit_in(&dir);
+    let plan = TargetPlan {
+        targets: vec![target_for(address, 2)],
+        refused: Vec::new(),
+        limits: limits(),
+    };
+    let out = run(
+        &plan,
+        &RealProbes::new(false),
+        &audit,
+        Uuid::new_v4(),
+        default_pack(),
+    )
+    .await;
+    assert_eq!(out.errors.len(), 1, "{:?}", out.errors);
+    assert!(out.errors[0].reason.contains("tls-classical"));
+}
+
+#[tokio::test]
+async fn failed_legacy_check_is_an_error() {
+    // The server answers the two normal handshakes. It never answers the third connection.
+    let config = server_config(hybrid_groups(), ecdsa_identity());
+    let (address, _) = serve(config, Mode::SilentAfter(2)).await;
+    let dir = tempfile::tempdir().unwrap();
+    let audit = audit_in(&dir);
+    let mut limits = limits();
+    limits.read_timeout = Duration::from_secs(1);
+    let plan = TargetPlan {
+        targets: vec![target_for(address, 3)],
+        refused: Vec::new(),
+        limits,
+    };
+    let out = run(
+        &plan,
+        &RealProbes::new(true),
+        &audit,
+        Uuid::new_v4(),
+        default_pack(),
+    )
+    .await;
+    assert_eq!(out.errors.len(), 1, "{:?}", out.errors);
+    assert!(out.errors[0].reason.contains("old protocol versions"));
+}
+
+#[derive(Debug)]
+struct BadChain(Arc<rustls::sign::CertifiedKey>);
+
+impl rustls::server::ResolvesServerCert for BadChain {
+    fn resolve(
+        &self,
+        _client_hello: rustls::server::ClientHello<'_>,
+    ) -> Option<Arc<rustls::sign::CertifiedKey>> {
+        Some(self.0.clone())
+    }
+}
+
+#[tokio::test]
+async fn unreadable_chain_certificate_is_an_error() {
+    let identity = ecdsa_identity();
+    let key = aws_lc_rs::sign::any_supported_type(&PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
+        identity.key,
+    )))
+    .unwrap();
+    // The certificate is not valid DER.
+    let certified = rustls::sign::CertifiedKey::new(
+        vec![CertificateDer::from(vec![0x30, 0x03, 0x01, 0x02, 0x03])],
+        key,
+    );
+    let config = ServerConfig::builder_with_provider(Arc::new(aws_lc_rs::default_provider()))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_cert_resolver(Arc::new(BadChain(Arc::new(certified))));
+    let (address, _) = serve(config, Mode::Normal).await;
+    let dir = tempfile::tempdir().unwrap();
+    let audit = audit_in(&dir);
+    let plan = TargetPlan {
+        targets: vec![target_for(address, 2)],
+        refused: Vec::new(),
+        limits: limits(),
+    };
+    let out = run(
+        &plan,
+        &RealProbes::new(false),
+        &audit,
+        Uuid::new_v4(),
+        default_pack(),
+    )
+    .await;
+    assert_eq!(out.errors.len(), 1, "{:?}", out.errors);
+    assert!(out.errors[0].reason.contains("not readable"));
+}
+
+#[tokio::test]
+async fn slow_close_does_not_lose_the_result() {
+    // The server finishes the handshake and then never reads or writes.
+    let config = server_config(hybrid_groups(), ecdsa_identity());
+    let (address, _) = serve(config, Mode::HoldAfterHandshake).await;
+    let dir = tempfile::tempdir().unwrap();
+    let audit = audit_in(&dir);
+    let mut limits = limits();
+    limits.read_timeout = Duration::from_secs(1);
+    let ctx = ProbeCtx::new(limits, &audit, Uuid::new_v4());
+    let started = Instant::now();
+    let result = RealProbes::new(false)
+        .tls(&target_for(address, 2), &ctx)
+        .await;
+    assert!(started.elapsed() < Duration::from_secs(3));
+    assert_eq!(result.obs.pq_hybrid_supported, Some(true));
+    assert!(result.failures.is_empty(), "{:?}", result.failures);
+    assert!(read_entries(&dir).iter().all(|e| e.outcome == "ok"));
 }

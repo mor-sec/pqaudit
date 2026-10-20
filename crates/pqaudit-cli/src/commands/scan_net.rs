@@ -7,10 +7,12 @@ use std::path::Path;
 use chrono::{Local, Utc};
 use pqaudit_core::engagement::Engagement;
 use pqaudit_core::SCHEMA_VERSION;
-use pqaudit_core::{PackRef, Protocol, ResultsFile, ResultsHeader, RunInfo, ScannerKind};
+use pqaudit_core::{
+    PackRef, Protocol, ResultsFile, ResultsHeader, RunInfo, ScanError, ScannerKind,
+};
 use pqaudit_rules::install::active_pack;
 use pqaudit_scan_net::audit::{hash_file, AuditLog};
-use pqaudit_scan_net::runtime::{check_hours, run as run_probes};
+use pqaudit_scan_net::runtime::{check_hours, run as run_probes, NetOutput};
 use pqaudit_scan_net::scope::{build_plan, scope_hash, ScopeFile, SystemResolver, TargetPlan};
 use pqaudit_scan_net::tls::RealProbes;
 use uuid::Uuid;
@@ -93,7 +95,19 @@ fn scan(
 
     let run_id = Uuid::new_v4();
     let probes = RealProbes::new(scope.legacy_tls_check);
-    let output = runtime.block_on(run_probes(plan, &probes, &audit, run_id, &active.pack));
+    // Ctrl-C drops the run. Each open connection then writes its final audit line.
+    let output = runtime.block_on(async {
+        tokio::select! {
+            output = run_probes(plan, &probes, &audit, run_id, &active.pack) => output,
+            _ = tokio::signal::ctrl_c() => NetOutput {
+                errors: vec![ScanError {
+                    location: String::from("scan"),
+                    reason: messages::NET_INTERRUPTED.to_string(),
+                }],
+                ..NetOutput::default()
+            },
+        }
+    });
     let finished = Utc::now();
 
     let audit_hash = match audit.sync().and_then(|()| hash_file(&audit_path)) {
@@ -160,7 +174,7 @@ fn scan(
 
 /// Show the summary and choose the exit code.
 fn report(
-    output: &pqaudit_scan_net::runtime::NetOutput,
+    output: &NetOutput,
     results_path: &Path,
     audit_path: &Path,
     targets: usize,

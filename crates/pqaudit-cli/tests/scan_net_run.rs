@@ -72,7 +72,8 @@ impl Setup {
         fs::read_to_string(self.audit_log())
             .unwrap()
             .lines()
-            .map(|line| serde_json::from_str(line).unwrap())
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .filter(|line| line["outcome"] != "started")
             .collect()
     }
 }
@@ -284,4 +285,44 @@ fn full_scan_writes_findings_audit_log_and_results() {
     // A second run adds lines to the same log. It does not replace it.
     setup.scan().code(0);
     assert_eq!(setup.audit_lines().len(), 4);
+}
+
+#[cfg(unix)]
+#[test]
+fn ctrl_c_audits_open_connections_and_writes_partial_results() {
+    use std::process::{Command as Std, Stdio};
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    thread::spawn(move || {
+        let mut held = Vec::new();
+        while let Ok((stream, _)) = listener.accept() {
+            held.push(stream);
+        }
+    });
+    let setup = Setup::new(&scope_for(port, ""));
+    let mut child = Std::new(assert_cmd::cargo::cargo_bin("pqaudit"))
+        .env("PQAUDIT_DATA_DIR", setup.dir.path().join("data"))
+        .arg("--engagement")
+        .arg(setup.engagement())
+        .args(["scan", "net"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    // Wait for the connection. The default read timeout is 10 seconds.
+    thread::sleep(Duration::from_millis(1500));
+    Std::new("kill")
+        .args(["-INT", &child.id().to_string()])
+        .status()
+        .unwrap();
+    let status = child.wait().unwrap();
+    assert_eq!(status.code(), Some(3));
+    let lines = setup.audit_lines();
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert_eq!(lines[0]["outcome"], "aborted");
+    let files = setup.results();
+    assert_eq!(files.len(), 1);
+    let results = ResultsFile::read(&files[0]).unwrap();
+    assert_eq!(results.errors.len(), 1);
+    assert!(results.header.audit_log_hash.is_some());
 }

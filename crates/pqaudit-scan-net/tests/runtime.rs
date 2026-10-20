@@ -49,6 +49,7 @@ fn empty_obs(version: bool) -> TlsObservationWithCerts {
             errors: Vec::new(),
         },
         chain: Vec::new(),
+        failures: Vec::new(),
     }
 }
 
@@ -56,11 +57,20 @@ fn audit_in(dir: &tempfile::TempDir) -> AuditLog {
     AuditLog::open(&dir.path().join("audit.log")).unwrap()
 }
 
-fn read_entries(dir: &tempfile::TempDir) -> Vec<AuditEntry> {
+/// All lines of the audit log, with the "started" lines.
+fn read_all_entries(dir: &tempfile::TempDir) -> Vec<AuditEntry> {
     std::fs::read_to_string(dir.path().join("audit.log"))
         .unwrap()
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+/// The final line of each connection attempt.
+fn read_entries(dir: &tempfile::TempDir) -> Vec<AuditEntry> {
+    read_all_entries(dir)
+        .into_iter()
+        .filter(|entry| entry.outcome != "started")
         .collect()
 }
 
@@ -228,6 +238,8 @@ async fn every_connection_audited() {
     .await;
     // The failed target is an error in the output.
     assert_eq!(out.errors.len(), 1, "errors: {:?}", out.errors);
+    // Each attempt has one "started" line and one final line.
+    assert_eq!(read_all_entries(&dir).len(), 4);
     let entries = read_entries(&dir);
     assert_eq!(entries.len(), 2, "entries: {entries:?}");
     let ok = entries.iter().find(|e| e.port == good.port()).unwrap();
@@ -380,4 +392,70 @@ async fn broken_audit_log_stops_connections() {
         .connect(&target(good.ip(), good.port()), "tls-hybrid")
         .await;
     assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn cancelled_run_still_audits_open_connections() {
+    // A probe that connects and then waits for ever. The caller cancels the run (Ctrl-C).
+    struct Block;
+    #[async_trait]
+    impl Probes for Block {
+        async fn tls(&self, t: &PlannedTarget, ctx: &ProbeCtx<'_>) -> TlsObservationWithCerts {
+            let _connected = ctx.connect(t, "tls-hybrid").await;
+            std::future::pending::<()>().await;
+            empty_obs(false)
+        }
+        async fn ssh(&self, _t: &PlannedTarget, _ctx: &ProbeCtx<'_>) -> SshObservationResult {
+            Err(String::new())
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let audit = audit_in(&dir);
+    let good = five_byte_server().await;
+    let mut limits = Limits::DEFAULT;
+    limits.min_interval = Duration::from_millis(10);
+    let plan = plan(vec![target(good.ip(), good.port())], limits);
+    let cancelled = tokio::time::timeout(
+        Duration::from_millis(300),
+        run(&plan, &Block, &audit, Uuid::new_v4(), default_pack()),
+    )
+    .await;
+    assert!(cancelled.is_err());
+    let all = read_all_entries(&dir);
+    let outcomes: Vec<&str> = all.iter().map(|e| e.outcome.as_str()).collect();
+    assert_eq!(outcomes, ["started", "aborted"]);
+}
+
+#[tokio::test]
+async fn started_line_comes_first_for_each_attempt() {
+    let dir = tempfile::tempdir().unwrap();
+    let audit = audit_in(&dir);
+    let closed = {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        listener.local_addr().unwrap().port()
+    };
+    let ctx = ProbeCtx::new(Limits::DEFAULT, &audit, Uuid::new_v4());
+    let t = target(IpAddr::V4(Ipv4Addr::LOCALHOST), closed);
+    assert!(ctx.connect(&t, "tls-hybrid").await.is_err());
+    let all = read_all_entries(&dir);
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0].outcome, "started");
+    assert!(all[1].outcome.starts_with("connect-failed"));
+}
+
+#[tokio::test]
+async fn handshake_budget_is_per_address_and_port() {
+    let dir = tempfile::tempdir().unwrap();
+    let audit = audit_in(&dir);
+    let ctx = ProbeCtx::new(Limits::DEFAULT, &audit, Uuid::new_v4());
+    let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+    assert_eq!(ctx.claim_handshakes(ip, 443, 2), 2);
+    assert_eq!(ctx.claim_handshakes(ip, 443, 2), 1);
+    assert_eq!(ctx.claim_handshakes(ip, 443, 2), 0);
+    // Another port and another address have their own budget.
+    assert_eq!(ctx.claim_handshakes(ip, 8443, 3), 3);
+    assert_eq!(
+        ctx.claim_handshakes(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 443, 3),
+        3
+    );
 }

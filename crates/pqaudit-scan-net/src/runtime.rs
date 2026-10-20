@@ -36,6 +36,9 @@ pub struct TlsObservationWithCerts {
     pub obs: TlsObservation,
     /// The certificates of the server. The leaf is first.
     pub chain: Vec<CertInfo>,
+    /// Failures that make the probe of this target incomplete. Each one gives a scan error.
+    /// A rejection of the hybrid groups is a result, not a failure.
+    pub failures: Vec<String>,
 }
 
 /// The result of an SSH probe. The error is a text for the user.
@@ -153,6 +156,8 @@ pub struct ProbeCtx<'a> {
     /// The ID of the run.
     pub run_id: Uuid,
     pacer: Pacer,
+    /// The handshakes that the probes claimed for each address and port.
+    handshakes: Mutex<HashMap<(IpAddr, u16), u8>>,
 }
 
 impl<'a> ProbeCtx<'a> {
@@ -162,12 +167,28 @@ impl<'a> ProbeCtx<'a> {
             limits,
             audit,
             run_id,
+            handshakes: Mutex::new(HashMap::new()),
             pacer: Pacer {
                 per_host: limits.per_host,
                 min_interval: limits.min_interval,
                 gates: Mutex::new(HashMap::new()),
             },
         }
+    }
+
+    /// Claim TLS handshakes for an address and port.
+    ///
+    /// The limit `tls_handshakes` is for the address and port over all names.
+    /// Return the number of handshakes that the caller can make. It can be 0.
+    pub fn claim_handshakes(&self, ip: IpAddr, port: u16, wanted: u8) -> u8 {
+        let mut used = self
+            .handshakes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let count = used.entry((ip, port)).or_insert(0);
+        let granted = wanted.min(self.limits.tls_handshakes.saturating_sub(*count));
+        *count += granted;
+        granted
     }
 
     /// Wait until the tool can make a connection to the IP address.
@@ -229,6 +250,12 @@ impl<'a> ProbeCtx<'a> {
             bytes_received: 0,
             duration_ms: 0,
         };
+        // Write the "started" line first. A crash then still leaves a record of the attempt.
+        let mut started_entry = entry.clone();
+        started_entry.outcome = String::from(OUTCOME_STARTED);
+        if self.audit.record(&started_entry).is_err() {
+            return Err(ConnectError::AuditBroken);
+        }
         let address = SocketAddr::new(t.ip, t.port);
         let failure = match timeout(self.limits.connect_timeout, TcpStream::connect(address)).await
         {
@@ -264,6 +291,9 @@ impl<'a> ProbeCtx<'a> {
         Err(failure)
     }
 }
+
+/// The outcome of the first line of each attempt. A final line follows it.
+const OUTCOME_STARTED: &str = "started";
 
 /// The outcome of a connection that nobody finished. A dropped probe leaves this text.
 const OUTCOME_ABORTED: &str = "aborted";

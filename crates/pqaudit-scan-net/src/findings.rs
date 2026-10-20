@@ -53,7 +53,9 @@ pub(crate) fn build(
     };
     for (target, result) in targets.iter().zip(results) {
         match result {
-            TargetResult::Tls(result) => builder.tls(target, result.obs, result.chain),
+            TargetResult::Tls(result) => {
+                builder.tls(target, result.obs, result.chain, result.failures);
+            }
             // The SSH findings come with the SSH probe.
             TargetResult::Ssh(Ok(_)) => {}
             TargetResult::Ssh(Err(reason)) => builder.error(target, reason),
@@ -111,14 +113,23 @@ impl Builder<'_> {
             .unwrap_or(fallback)
     }
 
-    fn tls(&mut self, t: &PlannedTarget, obs: TlsObservation, chain: Vec<CertInfo>) {
+    fn tls(
+        &mut self,
+        t: &PlannedTarget,
+        obs: TlsObservation,
+        chain: Vec<CertInfo>,
+        failures: Vec<String>,
+    ) {
         let host = display_host(t);
         let endpoint = EndpointInfo {
             protocol: Protocol::Tls,
             tls: Some(obs.clone()),
             ssh: None,
         };
-        if obs.negotiated_version.is_none() && chain.is_empty() {
+        // A failure that stops part of the probe is an error. The scan then exits with 3.
+        if !failures.is_empty() {
+            self.error(t, failures.join(" "));
+        } else if obs.negotiated_version.is_none() && chain.is_empty() {
             let reason = if obs.errors.is_empty() {
                 messages::NO_HANDSHAKE.to_string()
             } else {
