@@ -1,0 +1,36 @@
+# The engagement file. It holds the main facts of the audit.
+# Each report shows these facts.
+
+# The name of your client.
+client = ""
+
+# Your name and your company.
+assessor = ""
+
+# The date of the assessment. Use the format YEAR-MONTH-DAY.
+# If you do not set a date, the tool uses today's date.
+# assessment_date = 2026-10-20
+
+[deadlines]
+# The deadline profiles to use. The profiles are us, uk, and au.
+# You can select more than one profile.
+# Each finding shows the earliest date of all the profiles.
+# To see the milestones of a profile, run: pqaudit profiles show <id>
+profiles = []
+
+# An optional sector overlay, for example "government".
+# sector = "government"
+
+[assumptions]
+# The year in which a cryptographically relevant quantum computer (CRQC) can exist.
+# The client sets this assumption. The Mosca test uses it.
+# Each report shows this year.
+crqc_year = 2035
+
+# Passwords for key stores. The tool never reads a password from the command line.
+# Use only one of the two keys below.
+# [passwords]
+# The name of an environment variable that holds the passwords.
+# env = "PQAUDIT_PASSWORDS"
+# The path of a file that holds the passwords. Put one password on each line.
+# file = "passwords.txt"

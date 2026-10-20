@@ -49,7 +49,13 @@ pub enum LogFormat {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Make the engagement directory and its template files.
-    Init,
+    Init {
+        /// The name of the new engagement directory.
+        name: String,
+        /// Make the new directory in this parent directory.
+        #[arg(long, value_name = "PARENT", default_value = ".")]
+        dir: PathBuf,
+    },
     /// Scan files or the network for cryptography.
     Scan {
         #[command(subcommand)]

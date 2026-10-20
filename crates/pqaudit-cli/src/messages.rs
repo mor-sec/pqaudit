@@ -19,6 +19,20 @@ pub const RULES_UNSIGNED_HINT: &str =
 /// The text before the directory of an installed pack.
 pub const RULES_INSTALLED: &str = "Installed the pack in:";
 
+/// The text before the directory that `init` made.
+pub const INIT_CREATED: &str = "Made the engagement directory:";
+
+/// The text that tells the user what to do after `init`.
+pub const INIT_NEXT: &str =
+    "Edit the files engagement.toml, scope.toml, and assets.toml. Then run a scan.";
+
+/// The error when the directory for `init` is not empty. The tool fills in {dir}.
+pub const INIT_NOT_EMPTY: &str =
+    "The directory {dir} is not empty. The command init does not change it.";
+
+/// The error when `init` cannot make a file or directory. The tool fills in {dir} and {reason}.
+pub const INIT_IO: &str = "The tool cannot make the engagement directory {dir}. {reason}";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("NOT_IMPLEMENTED", NOT_IMPLEMENTED),
@@ -27,4 +41,8 @@ pub const ALL: &[(&str, &str)] = &[
     ("RULES_UNSIGNED_WARNING", RULES_UNSIGNED_WARNING),
     ("RULES_UNSIGNED_HINT", RULES_UNSIGNED_HINT),
     ("RULES_INSTALLED", RULES_INSTALLED),
+    ("INIT_CREATED", INIT_CREATED),
+    ("INIT_NEXT", INIT_NEXT),
+    ("INIT_NOT_EMPTY", INIT_NOT_EMPTY),
+    ("INIT_IO", INIT_IO),
 ];

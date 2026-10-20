@@ -9,13 +9,14 @@ use clap::CommandFactory;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-/// Write the five text files to `out`.
+/// Write the six text files to `out`.
 pub fn run(root: &Path, out: &Path, commits: Option<&str>) -> Result<()> {
     fs::create_dir_all(out)?;
     fs::write(out.join("cli-help.md"), cli_help())?;
     fs::write(out.join("messages.md"), messages())?;
     fs::write(out.join("rules-text.md"), rules_text(&root.join("rules"))?)?;
     fs::write(out.join("comments.md"), comments(root)?)?;
+    fs::write(out.join("templates.md"), templates(root)?)?;
     fs::write(out.join("commits.md"), commit_messages(root, commits)?)?;
     Ok(())
 }
@@ -275,6 +276,79 @@ fn comment_paragraphs(source: &str) -> Vec<(usize, String)> {
     }
     flush(&mut current);
     result
+}
+
+/// Return the comment text of a TOML line, or `None` if the line has no prose comment.
+///
+/// A comment that holds a commented-out key or table is example code. It is not prose.
+fn toml_comment(line: &str) -> Option<&str> {
+    let mut in_string = false;
+    let mut previous = ' ';
+    for (index, c) in line.char_indices() {
+        if c == '"' && previous != '\\' {
+            in_string = !in_string;
+        }
+        if c == '#' && !in_string {
+            let body = line[index + 1..].trim();
+            return Some(body.strip_prefix(' ').unwrap_or(body));
+        }
+        previous = c;
+    }
+    None
+}
+
+/// A comment that is an example key (`name = value`) or an example table (`[name]`).
+fn is_toml_example(text: &str) -> bool {
+    let is_key = text.split_once('=').is_some_and(|(key, _)| {
+        !key.trim().is_empty()
+            && key
+                .trim()
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+    });
+    is_key || (text.starts_with('[') && text.ends_with(']'))
+}
+
+/// Join adjacent comment lines of a TOML file. Return the first line number and the text.
+fn toml_paragraphs(source: &str) -> Vec<(usize, String)> {
+    let mut result: Vec<(usize, String)> = Vec::new();
+    let mut open = false;
+    for (index, line) in source.lines().enumerate() {
+        let text = toml_comment(line).filter(|t| !t.is_empty() && !is_toml_example(t));
+        let Some(text) = text else {
+            open = false;
+            continue;
+        };
+        let whole_line = line.trim_start().starts_with('#');
+        match result.last_mut() {
+            Some((_, paragraph)) if open && whole_line => {
+                paragraph.push(' ');
+                paragraph.push_str(text);
+            }
+            _ => result.push((index + 1, text.to_string())),
+        }
+        open = whole_line;
+    }
+    result
+}
+
+/// Read the comments of the template files of the CLI.
+fn templates(root: &Path) -> Result<String> {
+    let dir = root.join("crates/pqaudit-cli/src/templates");
+    let mut out = String::from("# Template comments\n\n");
+    if !dir.is_dir() {
+        return Ok(out);
+    }
+    let mut files = Vec::new();
+    collect_files(&dir, "toml", &mut files)?;
+    files.sort();
+    for file in files {
+        let name = file.strip_prefix(root).unwrap_or(&file);
+        for (line, paragraph) in toml_paragraphs(&fs::read_to_string(&file)?) {
+            let _ = writeln!(out, "## `{}:{line}`\n\n{paragraph}\n", name.display());
+        }
+    }
+    Ok(out)
 }
 
 fn git(root: &Path, args: &[&str]) -> Result<std::process::Output> {

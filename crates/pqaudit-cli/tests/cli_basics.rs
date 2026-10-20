@@ -35,7 +35,7 @@ fn unknown_command_exits_1() {
 #[test]
 fn stub_command_exits_1_with_message() {
     pqaudit()
-        .arg("init")
+        .arg("merge")
         .assert()
         .code(1)
         .stderr(predicate::str::contains("not implemented"));

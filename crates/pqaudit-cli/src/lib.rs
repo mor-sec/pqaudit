@@ -60,8 +60,8 @@ fn dispatch(cli: &Cli) -> ExitCode {
     match &cli.command {
         Command::Profiles { command } => commands::profiles::run(command),
         Command::Rules { command } => commands::rules::run(command, cli.allow_unsigned_rules),
-        Command::Init
-        | Command::Merge
+        Command::Init { name, dir } => commands::init::run(name, dir),
+        Command::Merge
         | Command::Report
         | Command::Cbom
         | Command::Explain

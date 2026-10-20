@@ -145,3 +145,29 @@ fn strings_skips_missing_rules_folder() {
     let text = fs::read_to_string(out.join("rules-text.md")).unwrap();
     assert!(!text.contains("##"));
 }
+
+#[test]
+fn strings_extracts_template_comments() {
+    let root = scratch("templates");
+    let dir = root.join("crates/pqaudit-cli/src/templates");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("a.toml"),
+        "# Name the client.\n# Use the full name.\n\nclient = \"A # B\" # Trailing note.\n# other = 1\n# [table]\n#\n# Last note.\n",
+    )
+    .unwrap();
+    let out = scratch("templates-out");
+    run_strings(&root, &out, &[]);
+    let text = fs::read_to_string(out.join("templates.md")).unwrap();
+    assert!(text.contains("a.toml:1"), "{text}");
+    assert!(
+        text.contains("Name the client. Use the full name."),
+        "{text}"
+    );
+    assert!(text.contains("Trailing note."), "{text}");
+    assert!(text.contains("Last note."), "{text}");
+    assert!(!text.contains("other = 1"), "{text}");
+    assert!(!text.contains("[table]"), "{text}");
+    assert!(!text.contains("A # B"), "{text}");
+    assert_eq!(text.matches("\n## ").count(), 3, "{text}");
+}

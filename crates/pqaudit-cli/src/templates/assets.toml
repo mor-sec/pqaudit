@@ -1,0 +1,42 @@
+# The assets file. It holds context about your systems.
+# The tool cannot find this context itself.
+# An asset matches a finding by host, CIDR range, or path glob.
+#
+# If a finding matches no asset, each context field has the value unassessed.
+# The tool then uses a cautious value, and the report shows a flag.
+# Add one [[asset]] block for each asset.
+
+# [[asset]]
+# The name of the asset.
+# name = "Payments API"
+
+# The business unit. The board report groups the results by this field.
+# business_unit = "Retail Banking"
+
+# The rules that match a finding to this asset. Each list is optional.
+# match = { hosts = ["pay.acme.example"], cidrs = ["10.0.0.0/24"], paths = ["repos/payments/**"] }
+
+# The classification of the data. Use the scheme of your client.
+# The file scoring.toml gives a value to each classification.
+# classification = "confidential"
+
+# The number of years that the data must stay secret.
+# data_lifespan_years = 10
+
+# How far the asset is open to attack.
+# The values are internet, partner, internal, and isolated.
+# exposure = "internet"
+
+# The team or person that owns the asset.
+# owner = "Payments Platform team"
+
+# If this value is true, a vendor supplies the asset.
+# Each fix then becomes a question for the vendor.
+# vendor = false
+
+# The tier selects the deadline milestones that apply. The values are high and standard.
+# If you do not set a tier, the tool uses high. This is the cautious choice.
+# priority_tier = "high"
+
+# If this value is true, the fix needs a hardware change.
+# hardware_constrained = false

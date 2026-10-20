@@ -1,0 +1,38 @@
+# The scoring file. It sets the formula for the suggested priority.
+# The score is the sum of six factors. Each factor is between 0 and 1.
+# The tool multiplies the sum by 100.
+#
+# The values below are the defaults. Each report shows the weight of each factor.
+# If you remove a key, the tool uses the default value.
+
+[weights]
+# The weights of the six factors. Make the sum of the weights equal to 1.
+threat = 0.25
+exposure = 0.20
+sensitivity = 0.20
+mosca = 0.15
+deadline = 0.10
+scale = 0.10
+
+[classification]
+# The value of each data classification, between 0 and 1.
+# If you add a classification here, the tool uses only your list.
+# So keep all the names that your assets use.
+public = 0.1
+internal = 0.4
+confidential = 0.7
+secret = 1.0
+restricted = 1.0
+
+[bands]
+# The lowest score of each band. A score below the medium value is low.
+critical = 80
+high = 60
+medium = 40
+
+[migration_years]
+# The time in years to do a fix of each size. The Mosca test uses these values.
+S = 0.25
+M = 0.5
+L = 1
+XL = 2

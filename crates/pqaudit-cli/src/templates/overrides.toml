@@ -1,0 +1,20 @@
+# The overrides file. It holds your changes to suggested priorities.
+# An override replaces the band and the score of one finding.
+# The technical report shows each override, with its reason.
+# Add one [[override]] block for each finding.
+
+# [[override]]
+# The fingerprint of the finding. The report and the command explain show it.
+# fingerprint = "0123456789abcdef"
+
+# The new priority band. The values are critical, high, medium, and low.
+# priority = "low"
+
+# The reason for the change.
+# reason = "The system leaves service next year."
+
+# The name of the person who made the change.
+# by = "Jane Doe"
+
+# The date of the change. Use the format YEAR-MONTH-DAY.
+# date = 2026-10-20

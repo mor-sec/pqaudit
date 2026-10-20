@@ -16,6 +16,20 @@ pub const RESULTS_TOO_LARGE: &str =
 /// The error for a results file with no schema version in its header.
 pub const NO_SCHEMA_VERSION: &str = "The header of the results file has no schema version.";
 
+/// The error for a necessary engagement file that does not exist. The tool fills in {file} and {dir}.
+pub const ENGAGEMENT_MISSING: &str =
+    "The file {file} does not exist in {dir}. Run the command init to make the engagement files.";
+
+/// The error for an engagement file that the tool cannot read. The tool fills in {file} and {reason}.
+pub const ENGAGEMENT_IO: &str = "The tool cannot read the file {file}. {reason}";
+
+/// The error for an engagement file that is not valid. The tool fills in {file}, {line}, and {reason}.
+pub const ENGAGEMENT_PARSE: &str = "The file {file} is not valid at line {line}. {reason}";
+
+/// The error for a value that must be a date. The format is YEAR-MONTH-DAY.
+pub const DATE_EXPECTED: &str =
+    "This value must be a date in the format YEAR-MONTH-DAY, for example 2026-10-20.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("UNSUPPORTED_SCHEMA", UNSUPPORTED_SCHEMA),
@@ -23,4 +37,8 @@ pub const ALL: &[(&str, &str)] = &[
     ("RESULTS_IO", RESULTS_IO),
     ("RESULTS_TOO_LARGE", RESULTS_TOO_LARGE),
     ("NO_SCHEMA_VERSION", NO_SCHEMA_VERSION),
+    ("ENGAGEMENT_MISSING", ENGAGEMENT_MISSING),
+    ("ENGAGEMENT_IO", ENGAGEMENT_IO),
+    ("ENGAGEMENT_PARSE", ENGAGEMENT_PARSE),
+    ("DATE_EXPECTED", DATE_EXPECTED),
 ];
