@@ -292,10 +292,10 @@ fn full_scan_writes_findings_audit_log_and_results() {
 fn ctrl_c_keeps_finished_results_and_audits_open_connections() {
     use std::process::{Command as Std, Stdio};
     use std::sync::mpsc;
-    // A fast target on 127.0.0.1 and a held target on 127.0.0.2. They use different addresses,
-    // so the pacing of one does not delay the other.
+    // A fast target and a held target, both on 127.0.0.1 with different ports.
+    // The scope sets per_host to 2, so the held connection does not block the fast target.
     let fast = classical_tls_server();
-    let held = TcpListener::bind("127.0.0.2:0").unwrap();
+    let held = TcpListener::bind("127.0.0.1:0").unwrap();
     let held_port = held.local_addr().unwrap().port();
     let (ready_tx, ready_rx) = mpsc::channel();
     thread::spawn(move || {
@@ -307,8 +307,10 @@ fn ctrl_c_keeps_finished_results_and_audits_open_connections() {
     });
     let scope = format!(
         "allowed_cidrs = [\"127.0.0.0/8\"]\n\
+         override_limits = true\n\
+         [limits]\nper_host = 2\n\
          [[target]]\nhost = \"127.0.0.1\"\nports = [{}]\nprotocol = \"tls\"\n\
-         [[target]]\nhost = \"127.0.0.2\"\nports = [{held_port}]\nprotocol = \"tls\"\n",
+         [[target]]\nhost = \"127.0.0.1\"\nports = [{held_port}]\nprotocol = \"tls\"\n",
         fast.port()
     );
     let setup = Setup::new(&scope);
@@ -363,7 +365,9 @@ fn ctrl_c_keeps_finished_results_and_audits_open_connections() {
         .any(|finding| finding.rule_id == "tls.no-pq-kex"));
     // The held target gives one error with its own address.
     assert_eq!(results.errors.len(), 1, "{:?}", results.errors);
-    assert!(results.errors[0].location.contains("127.0.0.2"));
+    assert!(results.errors[0]
+        .location
+        .contains(&format!("127.0.0.1:{held_port}")));
     let log = fs::read(setup.audit_log()).unwrap();
     assert_eq!(
         results.header.audit_log_hash.as_deref(),
