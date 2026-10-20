@@ -146,13 +146,13 @@ pub struct ResultsFile {
 /// The part of a results file that the tool reads first to check the schema version.
 #[derive(Deserialize)]
 struct Probe {
-    header: ProbeHeader,
+    header: Option<ProbeHeader>,
 }
 
 /// The header part that the probe reads.
 #[derive(Deserialize)]
 struct ProbeHeader {
-    schema_version: Option<u64>,
+    schema_version: Option<serde_json::Value>,
 }
 
 /// An error when the tool reads a results file.
@@ -253,7 +253,8 @@ impl ResultsFile {
             serde_json::from_slice(&json).map_err(|e| ResultsError::Parse(e.to_string()))?;
         let found = probe
             .header
-            .schema_version
+            .and_then(|header| header.schema_version)
+            .and_then(|version| version.as_u64())
             .ok_or_else(|| ResultsError::Parse(messages::NO_SCHEMA_VERSION.into()))?;
         if found > u64::from(SCHEMA_VERSION) {
             return Err(ResultsError::UnsupportedSchema {

@@ -255,3 +255,23 @@ fn max_limit_does_not_overflow() {
         sample()
     );
 }
+
+#[test]
+fn bad_schema_version_gives_the_standard_message() {
+    let cases: [&[u8]; 5] = [
+        b"{}",
+        br#"{"header":{"schema_version":"1"}}"#,
+        br#"{"header":{"schema_version":-1}}"#,
+        br#"{"header":{"schema_version":1.5}}"#,
+        br#"{"header":{"schema_version":99999999999999999999999}}"#,
+    ];
+    for case in cases {
+        let (_dir, path) = write_raw("v.pqr", case);
+        match ResultsFile::read(&path) {
+            Err(ResultsError::Parse(text)) => {
+                assert_eq!(text, pqaudit_core::messages::NO_SCHEMA_VERSION)
+            }
+            other => panic!("unexpected result: {other:?}"),
+        }
+    }
+}
