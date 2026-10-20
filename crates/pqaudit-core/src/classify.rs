@@ -1,9 +1,9 @@
 //! Rules that classify a certificate. The file scanner and the network scanner share them.
 
 use chrono::{Duration, NaiveDate};
-use pqaudit_rules::pack::{RulesPack, ThreatType};
+use pqaudit_rules::pack::{Primitive, RulesPack, ThreatType};
 
-use crate::finding::CertInfo;
+use crate::finding::{Algorithm, CertInfo};
 
 /// The ID of the rule for a key that is too small.
 pub const RULE_WEAK_KEY: &str = "cert.weak-key";
@@ -11,6 +11,11 @@ pub const RULE_WEAK_KEY: &str = "cert.weak-key";
 pub const RULE_WEAK_SIG_HASH: &str = "cert.weak-sig-hash";
 /// The ID of the rule for a key that a quantum computer can break.
 pub const RULE_CLASSICAL_KEY: &str = "cert.classical-key";
+
+/// The ID of the rule for a key file with a key that is too small.
+pub const RULE_KEY_WEAK: &str = "key.weak";
+/// The ID of the rule for a key file with a key that a quantum computer can break.
+pub const RULE_KEY_CLASSICAL: &str = "key.classical";
 
 /// The extended key usage name of code signing.
 pub const EKU_CODE_SIGNING: &str = "codeSigning";
@@ -82,4 +87,31 @@ fn is_long_lived(cert: &CertInfo) -> bool {
             .iter()
             .any(|usage| usage == EKU_CODE_SIGNING)
         || cert.not_after - cert.not_before > Duration::days(LONG_LIVED_DAYS)
+}
+
+/// Classify a key from a key file with the rules of the pack.
+///
+/// Return the rule ID and the threat type. Return `None` if no rule matches,
+/// for example for a post-quantum key.
+/// A key that is too small is `key.weak` with `ClassicalWeakNow`.
+/// A key that only agrees on a shared secret is `Hndl`.
+/// Any other quantum-vulnerable key is `ForgeryShortLived`.
+pub fn classify_key(algorithm: &Algorithm, pack: &RulesPack) -> Option<(String, ThreatType)> {
+    let fact = pack.algorithm(&algorithm.name)?;
+    let weak = fact.weak_always
+        || match (algorithm.key_bits, fact.weak_below_bits) {
+            (Some(bits), Some(minimum)) => bits < minimum,
+            _ => false,
+        };
+    if weak {
+        return Some((RULE_KEY_WEAK.to_string(), ThreatType::ClassicalWeakNow));
+    }
+    if !fact.quantum_vulnerable {
+        return None;
+    }
+    let threat = match fact.primitive {
+        Primitive::KeyAgree | Primitive::Kem => ThreatType::Hndl,
+        _ => ThreatType::ForgeryShortLived,
+    };
+    Some((RULE_KEY_CLASSICAL.to_string(), threat))
 }

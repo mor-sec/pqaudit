@@ -10,14 +10,10 @@ use sha2::{Digest, Sha256};
 use x509_parser::prelude::*;
 use x509_parser::public_key::{PublicKey, RSAPublicKey};
 
+use crate::algorithm::{self, is_slh_dsa, Parts};
 use crate::messages;
 
-/// The start of every PEM block.
-const PEM_ANY_BEGIN: &[u8] = b"-----BEGIN ";
-/// The end of a PEM label.
-const PEM_DASHES: &[u8] = b"-----";
-/// The PEM labels that hold an X.509 certificate.
-const CERT_LABELS: [&[u8]; 3] = [b"CERTIFICATE", b"TRUSTED CERTIFICATE", b"X509 CERTIFICATE"];
+use crate::pem::{find, BEGIN as PEM_ANY_BEGIN, CERT_LABELS, DASHES as PEM_DASHES};
 /// The longest subject or issuer text that the tool keeps, in characters.
 const MAX_NAME_CHARS: usize = 512;
 
@@ -43,26 +39,9 @@ pub struct PemResult {
     pub first_problem: Option<String>,
 }
 
-/// Return true if the data has the start line of a certificate block.
-pub fn has_pem_certificate(data: &[u8]) -> bool {
-    CERT_LABELS.iter().any(|label| {
-        let mut marker = PEM_ANY_BEGIN.to_vec();
-        marker.extend_from_slice(label);
-        marker.extend_from_slice(PEM_DASHES);
-        find(data, &marker, 0).is_some()
-    })
-}
-
 /// Return true if the data has the start line of any PEM block.
 pub fn has_any_pem(data: &[u8]) -> bool {
     find(data, PEM_ANY_BEGIN, 0).is_some()
-}
-
-fn find(data: &[u8], needle: &[u8], from: usize) -> Option<usize> {
-    data.get(from..)?
-        .windows(needle.len())
-        .position(|window| window == needle)
-        .map(|index| index + from)
 }
 
 /// Read all certificate blocks of PEM data.
@@ -256,74 +235,22 @@ fn ext_key_usage(cert: &X509Certificate<'_>) -> Vec<String> {
 /// Return the algorithm of the public key.
 fn public_key_algorithm(spki: &SubjectPublicKeyInfo<'_>) -> Result<Algorithm, CertError> {
     let oid = spki.algorithm.algorithm.to_id_string();
-    let plain = |name: &str, key_bits: Option<u32>| Algorithm {
-        name: name.to_string(),
-        key_bits,
-        curve: None,
+    let rsa = RSAPublicKey::from_der(&spki.subject_public_key.data).ok();
+    let dsa = match spki.parsed() {
+        Ok(PublicKey::DSA(y)) => Some(y),
+        _ => None,
     };
-    Ok(match oid.as_str() {
-        // The key of an RSA-PSS certificate has the same format as an RSA key.
-        "1.2.840.113549.1.1.1" | "1.2.840.113549.1.1.10" => {
-            let bits = RSAPublicKey::from_der(&spki.subject_public_key.data)
-                .ok()
-                .and_then(|(_, rsa)| bit_length(rsa.modulus));
-            plain("RSA", bits)
-        }
-        "1.2.840.10040.4.1" => {
-            let bits = match spki.parsed() {
-                Ok(PublicKey::DSA(y)) => bit_length(y),
-                _ => None,
-            };
-            plain("DSA", bits)
-        }
-        "1.2.840.10045.2.1" => {
-            let curve_oid = spki
-                .algorithm
-                .parameters
-                .as_ref()
-                .and_then(|parameters| parameters.as_oid().ok())
-                .map(|oid| oid.to_id_string());
-            let (curve, bits) = match curve_oid.as_deref() {
-                Some("1.2.840.10045.3.1.1") => (Some("P-192"), Some(192)),
-                Some("1.3.132.0.33") => (Some("P-224"), Some(224)),
-                Some("1.2.840.10045.3.1.7") => (Some("P-256"), Some(256)),
-                Some("1.3.132.0.34") => (Some("P-384"), Some(384)),
-                Some("1.3.132.0.35") => (Some("P-521"), Some(521)),
-                Some("1.3.132.0.10") => (Some("secp256k1"), Some(256)),
-                _ => (None, None),
-            };
-            Algorithm {
-                name: "ECDSA".to_string(),
-                key_bits: bits,
-                curve: curve.map(str::to_string).or(curve_oid),
-            }
-        }
-        "1.3.101.112" => plain("Ed25519", Some(256)),
-        "1.3.101.113" => plain("Ed448", Some(456)),
-        "1.3.101.110" => plain("X25519", Some(256)),
-        "1.3.101.111" => plain("X448", Some(448)),
-        "2.16.840.1.101.3.4.3.17" => plain("ML-DSA-44", None),
-        "2.16.840.1.101.3.4.3.18" => plain("ML-DSA-65", None),
-        "2.16.840.1.101.3.4.3.19" => plain("ML-DSA-87", None),
-        other if is_slh_dsa(other) => plain("SLH-DSA", None),
-        other => return Err(CertError::UnknownKey(other.to_string())),
-    })
-}
-
-/// SLH-DSA has 12 parameter sets. Their last OID numbers are 20 to 31.
-fn is_slh_dsa(oid: &str) -> bool {
-    oid.strip_prefix("2.16.840.1.101.3.4.3.")
-        .and_then(|last| last.parse::<u8>().ok())
-        .is_some_and(|last| (20..=31).contains(&last))
-}
-
-/// Return the number of bits of a big-endian number without leading zero bits.
-fn bit_length(bytes: &[u8]) -> Option<u32> {
-    let skip = bytes.iter().take_while(|byte| **byte == 0).count();
-    let rest = &bytes[skip..];
-    let first = *rest.first()?;
-    let bits = rest.len() * 8 - first.leading_zeros() as usize;
-    u32::try_from(bits).ok()
+    let parts = Parts {
+        curve_oid: spki
+            .algorithm
+            .parameters
+            .as_ref()
+            .and_then(|parameters| parameters.as_oid().ok())
+            .map(|oid| oid.to_id_string()),
+        rsa_modulus: rsa.as_ref().map(|(_, key)| key.modulus),
+        dsa_number: dsa,
+    };
+    algorithm::from_oid(&oid, &parts).map_err(CertError::UnknownKey)
 }
 
 /// Return the name of a signature algorithm. Use the OID text if the name is not known.

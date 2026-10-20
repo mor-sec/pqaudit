@@ -53,8 +53,8 @@ openssl req -x509 -newkey rsa-pss -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_pss
 # The OpenSSL trusted form of a certificate. It has trust data after the certificate.
 openssl x509 -in "$out/rsa2048-leaf.pem" -trustout -addtrust serverAuth -out "$out/trusted.pem"
 
-# A PEM file with no certificate. This block has no key data. It only has a test label.
-printf -- '-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n' >"$out/other-block.pem"
+# A PEM file with no certificate. This block has an unknown label.
+printf -- '-----BEGIN TEST DATA-----\nAAAA\n-----END TEST DATA-----\n' >"$out/other-block.pem"
 
 # A DER certificate.
 openssl x509 -in "$out/rsa2048-leaf.pem" -outform DER -out "$out/rsa2048-leaf.der"

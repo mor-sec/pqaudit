@@ -4,14 +4,15 @@ mod support;
 
 use std::fs;
 
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine;
 use pqaudit_core::KeyKind;
 use pqaudit_rules::embedded::default_pack;
 use pqaudit_scan_files::jks::{scan_jks, JksEntry};
 use pqaudit_scan_files::pkcs12::{scan_p12, StoreError};
 use pqaudit_scan_files::{scan, ScanOptions, ScanOutput};
-use support::{fixture, pem_to_der, pseudo_random, write_store, Entry, JCEKS_MAGIC, JKS_MAGIC};
+use support::{
+    assert_no_window, fixture, hex, pem_to_der, pseudo_random, write_store, Entry, JCEKS_MAGIC,
+    JKS_MAGIC,
+};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -239,30 +240,6 @@ fn truncated_jks_is_error() {
     let mut bad = JKS_MAGIC.to_vec();
     bad.extend_from_slice(&[0, 0, 0, 2, 0xFF, 0xFF, 0xFF, 0xFF]);
     assert!(scan_jks(&bad).is_err());
-}
-
-/// Every 16-byte window of the secret, as hex or base64, must be missing from the text.
-fn assert_no_window(text: &str, secret: &[u8], what: &str) {
-    for window in secret.windows(16) {
-        let lower = hex(window);
-        assert!(!text.contains(&lower), "{what}: hex window found");
-        assert!(
-            !text.contains(&lower.to_uppercase()),
-            "{what}: hex window found"
-        );
-    }
-    // A window has at least 21 full base64 characters in one of 3 alignments.
-    for shift in 0..3 {
-        let encoded = STANDARD.encode(&secret[shift..]);
-        for window in encoded.as_bytes().windows(21) {
-            let window = std::str::from_utf8(window).unwrap();
-            assert!(!text.contains(window), "{what}: base64 window found");
-        }
-    }
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[test]

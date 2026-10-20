@@ -14,6 +14,7 @@ p12-keystore = "0.4.1"
 pqaudit-core = { version = "0.1.0", path = "../pqaudit-core" }
 pqaudit-rules = { version = "0.1.0", path = "../pqaudit-rules" }
 serde = { version = "1.0.229", features = ["derive"] }
+sha1 = "0.11.0"
 sha2 = "0.11.1"
 uuid = { version = "1.28.0", features = ["v4"] }
 walkdir = "2.5.0"

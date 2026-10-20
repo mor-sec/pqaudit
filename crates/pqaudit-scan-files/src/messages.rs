@@ -61,6 +61,55 @@ pub const JCEKS_ENTRY_UNSUPPORTED: &str = "The tool cannot read the JCEKS key en
 pub const ENCRYPTED_NOT_INSPECTED: &str =
     "Encrypted — not inspected. No password that the tool has opens this file.";
 
+/// The error for a GnuPG key box file.
+pub const KBX_UNSUPPORTED: &str = "Unsupported format. The file is a GnuPG key box. Export the keys with the command gpg --export. Then scan the export file.";
+
+/// The reason for key data that is not valid.
+pub const KEY_DATA_INVALID: &str = "The key data is not valid.";
+
+/// The reason for a key with an algorithm that the tool does not know. The tool fills in {oid}.
+pub const KEY_UNKNOWN_ALGORITHM: &str =
+    "The key has an algorithm that the tool does not know. The OID is {oid}.";
+
+/// The reason for a key with a type or a version that the tool does not read.
+pub const KEY_UNSUPPORTED: &str = "The key has a type or a version that the tool does not read.";
+
+/// The error for a file with bad key entries. The tool fills in {bad}, {total}, and {reason}.
+pub const KEY_ENTRIES_INVALID: &str =
+    "{bad} of {total} key entries are not valid. The first problem: {reason}";
+
+/// The error for a file with bad key lines. The tool fills in {bad}, {total}, and {line}.
+pub const KEY_LINES_INVALID: &str =
+    "{bad} of {total} lines are not valid SSH public keys. The first bad line is line {line}.";
+
+/// The note for an encrypted private key. The tool does not read it.
+pub const ENCRYPTED_KEY_NOT_INSPECTED: &str =
+    "Encrypted private key. Not inspected. The tool does not decrypt keys.";
+
+/// The evidence for an SSH public key.
+pub const EVIDENCE_SSH_PUBLIC: &str = "SSH public key.";
+
+/// The evidence for an OpenSSH private key file. The tool reads the public part only.
+pub const EVIDENCE_OPENSSH_PRIVATE: &str =
+    "OpenSSH private key file. The tool read the public part only.";
+
+/// The evidence for an OpenSSH private key file with an encrypted private part.
+pub const EVIDENCE_OPENSSH_ENCRYPTED: &str =
+    "OpenSSH private key file with an encrypted private part. The tool read the public part only.";
+
+/// The evidence for a private key in a PEM file.
+pub const EVIDENCE_PRIVATE_KEY: &str =
+    "Private key. The tool read the algorithm and the key size only.";
+
+/// The evidence for a public key in a PEM file.
+pub const EVIDENCE_PUBLIC_KEY: &str = "Public key.";
+
+/// The evidence for an OpenPGP public key.
+pub const EVIDENCE_PGP_PUBLIC: &str = "OpenPGP public key.";
+
+/// The evidence for an OpenPGP secret key. The tool reads the public part only.
+pub const EVIDENCE_PGP_SECRET: &str = "OpenPGP secret key. The tool read the public part only.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("CANNOT_READ", CANNOT_READ),
@@ -81,4 +130,18 @@ pub const ALL: &[(&str, &str)] = &[
     ("KEYSTORE_UNSUPPORTED", KEYSTORE_UNSUPPORTED),
     ("JCEKS_ENTRY_UNSUPPORTED", JCEKS_ENTRY_UNSUPPORTED),
     ("ENCRYPTED_NOT_INSPECTED", ENCRYPTED_NOT_INSPECTED),
+    ("KBX_UNSUPPORTED", KBX_UNSUPPORTED),
+    ("KEY_DATA_INVALID", KEY_DATA_INVALID),
+    ("KEY_UNKNOWN_ALGORITHM", KEY_UNKNOWN_ALGORITHM),
+    ("KEY_UNSUPPORTED", KEY_UNSUPPORTED),
+    ("KEY_ENTRIES_INVALID", KEY_ENTRIES_INVALID),
+    ("KEY_LINES_INVALID", KEY_LINES_INVALID),
+    ("ENCRYPTED_KEY_NOT_INSPECTED", ENCRYPTED_KEY_NOT_INSPECTED),
+    ("EVIDENCE_SSH_PUBLIC", EVIDENCE_SSH_PUBLIC),
+    ("EVIDENCE_OPENSSH_PRIVATE", EVIDENCE_OPENSSH_PRIVATE),
+    ("EVIDENCE_OPENSSH_ENCRYPTED", EVIDENCE_OPENSSH_ENCRYPTED),
+    ("EVIDENCE_PRIVATE_KEY", EVIDENCE_PRIVATE_KEY),
+    ("EVIDENCE_PUBLIC_KEY", EVIDENCE_PUBLIC_KEY),
+    ("EVIDENCE_PGP_PUBLIC", EVIDENCE_PGP_PUBLIC),
+    ("EVIDENCE_PGP_SECRET", EVIDENCE_PGP_SECRET),
 ];

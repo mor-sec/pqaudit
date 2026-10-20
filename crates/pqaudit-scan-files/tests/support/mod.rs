@@ -145,3 +145,97 @@ pub fn pseudo_random(seed: u64, length: usize) -> Vec<u8> {
         })
         .collect()
 }
+
+/// Every 16-byte window of the secret, as hex or base64, must be missing from the text.
+pub fn assert_no_window(text: &str, secret: &[u8], what: &str) {
+    for window in secret.windows(16) {
+        let lower = hex(window);
+        assert!(!text.contains(&lower), "{what}: hex window found");
+        assert!(
+            !text.contains(&lower.to_uppercase()),
+            "{what}: hex window found"
+        );
+    }
+    // A window has at least 21 full base64 characters in one of 3 alignments.
+    for shift in 0..3 {
+        let encoded = STANDARD.encode(&secret[shift..]);
+        for window in encoded.as_bytes().windows(21) {
+            let window = std::str::from_utf8(window).unwrap();
+            assert!(!text.contains(window), "{what}: base64 window found");
+        }
+    }
+    // The text can hold the bytes as they are.
+    for window in secret.windows(16) {
+        if let Ok(raw) = std::str::from_utf8(window) {
+            assert!(
+                !text.contains(raw),
+                "{what}: raw window found: {raw:?} in {text}"
+            );
+        }
+    }
+}
+
+/// Write bytes as lower case hex.
+pub fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// Return the path of a key fixture.
+pub fn key_fixture(name: &str) -> PathBuf {
+    fixture("keys").join(name)
+}
+
+/// Decode the first PEM or armor block of a file. Return the bytes between the lines.
+pub fn decode_block(path: &Path) -> Vec<u8> {
+    let text = std::fs::read_to_string(path).unwrap();
+    let mut body = String::new();
+    let mut inside = false;
+    for line in text.lines() {
+        if line.starts_with("-----BEGIN") {
+            inside = true;
+        } else if line.starts_with("-----END") {
+            break;
+        } else if inside && !line.contains(':') && !line.starts_with('=') {
+            body.push_str(line.trim());
+        }
+    }
+    STANDARD.decode(body).unwrap()
+}
+
+/// Return the bytes of all secret key packets (tag 5 and 7) of binary OpenPGP data.
+/// A new-format packet with a one-byte or two-byte length is enough for the test keys.
+pub fn secret_key_packets(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at < data.len() {
+        let first = data[at];
+        assert!(first & 0x80 != 0);
+        let (tag, length, header) = if first & 0x40 != 0 {
+            let l = data[at + 1] as usize;
+            if l < 192 {
+                (first & 0x3f, l, 2)
+            } else {
+                (
+                    first & 0x3f,
+                    ((l - 192) << 8) + data[at + 2] as usize + 192,
+                    3,
+                )
+            }
+        } else {
+            match first & 3 {
+                0 => ((first >> 2) & 15, data[at + 1] as usize, 2),
+                1 => (
+                    (first >> 2) & 15,
+                    u16::from_be_bytes([data[at + 1], data[at + 2]]) as usize,
+                    3,
+                ),
+                _ => panic!("unsupported length in the test helper"),
+            }
+        };
+        if tag == 5 || tag == 7 {
+            out.extend_from_slice(&data[at + header..at + header + length]);
+        }
+        at += header + length;
+    }
+    out
+}
