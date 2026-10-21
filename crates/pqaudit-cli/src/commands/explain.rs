@@ -13,6 +13,7 @@ use crate::cli::Cli;
 use crate::commands::assessment;
 use crate::exit::ExitCode;
 use crate::messages;
+use crate::output;
 
 /// Run `explain`.
 pub fn run(cli: &Cli, finding_id: &str, results: Option<&Path>) -> ExitCode {
@@ -25,13 +26,11 @@ pub fn run(cli: &Cli, finding_id: &str, results: Option<&Path>) -> ExitCode {
         .iter()
         .find(|item| item.finding.id == finding_id)
     else {
-        eprintln!(
-            "{}",
-            messages::EXPLAIN_UNKNOWN_ID.replace("{id}", finding_id)
-        );
+        output::error(&messages::EXPLAIN_UNKNOWN_ID.replace("{id}", finding_id));
         return ExitCode::Error;
     };
-    print!("{}", render(found));
+    // The text holds paths, host names, and subjects from the results file.
+    print!("{}", output::shown(&render(found)));
     ExitCode::Success
 }
 

@@ -120,7 +120,7 @@ flowchart TB
 | S5 | The tool reads at most 1 GiB from a results file, also after decompression. | `results.rs` |
 | S6 | Redaction uses HMAC-SHA256 with a key for each engagement. The key file has mode 0600. Fingerprints and public hashes also become keyed hashes. | `merge.rs`, `assess.rs` |
 | S7 | A report needs the same rules pack as the results. A report needs results from the same engagement. | `assess.rs`, `assessment.rs` |
-| S8 | Text from peers and files loses control characters before output. | `text.rs` |
+| S8 | Text from peers and files loses control characters before output. The CLI cleans each path, host, and location that it shows. | `text.rs`, `output.rs` |
 | S9 | The file scanner has no network crate. A CI job traces it with `strace`. | `check_offline.rs`, `ci.yml` |
 | S10 | The tool never writes private key bytes to results, logs, reports, or errors. Leak tests check this. | `scan-files` tests |
 | S11 | Key files go into buffers that the tool wipes. Each file has a size limit. A PKCS#12 file has limits on key derivation work. A scan has a total limit. | `file.rs`, `pfx.rs` |
@@ -217,6 +217,8 @@ Each decision has an ID, the decision, the reason, and the consequence. The firs
 | AD-47 | A host that looks numeric but is not a canonical IP address is a scope error. | A resolver can read `10.1` or `0x0a.0.0.1` as an address. The scope check sees a name. | Write each address in its canonical form. |
 | AD-48 | Host names need `allowed_cidrs` or a CIDR target, unless `require_ip_in_cidr = false`. A name must not resolve to a loopback, link-local, multicast, or unspecified address that no IP or CIDR target names. A name with one label needs a final dot. | DNS must not move a scan to an address that the scope did not plan. A search domain must not change a name. | Scopes with only host names need a new key. Loopback scans need an IP target. |
 | AD-49 | Before the PKCS#12 library opens a file, the tool reads the structure and counts the key derivation work. It decrypts the encrypted safes itself to count the bags in them. | A hostile file can ask for scrypt, many iterations, or many bags. | No scrypt. At most 100000 iterations, 16 key derivations, and 1600000 iterations for each file. At most 5000000 iterations for each scan. |
+| AD-50 | Redaction changes each fingerprint and each hash of public material into a keyed hash. Overrides match through the same keyed function. | A plain hash can confirm a guess, and an endpoint fingerprint can show an IPv4 address. | Reports of redacted results need `redact.key` for overrides. |
+| AD-51 | One CLI output helper cleans each line before it goes to the terminal. | A file name can hold terminal control characters. | Paths with control characters show `?` in their place. |
 
 ## 5. Known limits
 

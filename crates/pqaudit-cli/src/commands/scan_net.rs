@@ -194,11 +194,10 @@ fn report(
     audit_broken: bool,
 ) -> ExitCode {
     for error in output.errors.iter().take(MAX_SHOWN_ERRORS) {
-        eprintln!(
-            "{}",
-            messages::SCAN_ERROR_LINE
+        output::error(
+            &messages::SCAN_ERROR_LINE
                 .replace("{location}", &error.location)
-                .replace("{reason}", &error.reason)
+                .replace("{reason}", &error.reason),
         );
     }
     if output.errors.len() > MAX_SHOWN_ERRORS {
@@ -220,11 +219,19 @@ fn report(
     );
     output::summary(
         cli,
-        &format!("{} {}", messages::SCAN_RESULTS, results_path.display()),
+        &format!(
+            "{} {}",
+            messages::SCAN_RESULTS,
+            output::shown_path(results_path)
+        ),
     );
     output::summary(
         cli,
-        &format!("{} {}", messages::NET_AUDIT_LOG, audit_path.display()),
+        &format!(
+            "{} {}",
+            messages::NET_AUDIT_LOG,
+            output::shown_path(audit_path)
+        ),
     );
     if audit_broken {
         eprintln!("{}", messages::AUDIT_FAILED);
@@ -237,7 +244,7 @@ fn report(
 }
 
 fn fail_text(text: &str, reason: &str) -> ExitCode {
-    eprintln!("{}", text.replace("{reason}", reason));
+    output::error(&text.replace("{reason}", reason));
     ExitCode::Error
 }
 
@@ -266,22 +273,20 @@ fn show_plan(plan: &TargetPlan) {
             Protocol::Tls => "tls",
             Protocol::Ssh => "ssh",
         };
-        println!(
-            "{}",
-            template
+        output::line(
+            &template
                 .replace("{host}", target.host.as_deref().unwrap_or_default())
                 .replace("{ip}", &target.ip.to_string())
                 .replace("{port}", &target.port.to_string())
                 .replace("{protocol}", protocol)
-                .replace("{connections}", &target.connections.to_string())
+                .replace("{connections}", &target.connections.to_string()),
         );
     }
     for refusal in &plan.refused {
-        println!(
-            "{}",
-            messages::NET_REFUSED
+        output::line(
+            &messages::NET_REFUSED
                 .replace("{target}", &refusal.target)
-                .replace("{reason}", &refusal.reason.to_string())
+                .replace("{reason}", &refusal.reason.to_string()),
         );
     }
     if plan.targets.is_empty() && !plan.is_refused() {

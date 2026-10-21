@@ -30,11 +30,10 @@ pub fn run(cli: &Cli, results: Option<&Path>, output: Option<&Path>) -> ExitCode
             fs::write(&path, text)
         });
     if let Err(error) = written {
-        eprintln!(
-            "{}",
-            messages::CBOM_WRITE
+        output::error(
+            &messages::CBOM_WRITE
                 .replace("{path}", &path.display().to_string())
-                .replace("{reason}", &error.to_string())
+                .replace("{reason}", &error.to_string()),
         );
         return ExitCode::Error;
     }

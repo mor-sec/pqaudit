@@ -36,11 +36,10 @@ pub fn run(cli: &Cli, args: MergeArgs<'_>) -> ExitCode {
         match ResultsFile::read(path) {
             Ok(file) => files.push(file),
             Err(error) => {
-                eprintln!(
-                    "{}",
-                    messages::MERGE_READ
+                output::error(
+                    &messages::MERGE_READ
                         .replace("{path}", &path.display().to_string())
-                        .replace("{reason}", &error.to_string())
+                        .replace("{reason}", &error.to_string()),
                 );
                 return ExitCode::Error;
             }
@@ -61,10 +60,7 @@ pub fn run(cli: &Cli, args: MergeArgs<'_>) -> ExitCode {
     let merged = match merge(files) {
         Ok(merged) => merged,
         Err(error) => {
-            eprintln!(
-                "{}",
-                messages::MERGE_FAILED.replace("{reason}", &error.to_string())
-            );
+            output::error(&messages::MERGE_FAILED.replace("{reason}", &error.to_string()));
             return ExitCode::Error;
         }
     };
@@ -77,11 +73,10 @@ pub fn run(cli: &Cli, args: MergeArgs<'_>) -> ExitCode {
         .map(Path::to_path_buf)
         .unwrap_or_else(|| cli.engagement.join("results").join(default_name));
     if let Err(error) = write_results(&merged, &path) {
-        eprintln!(
-            "{}",
-            messages::RESULTS_WRITE
+        output::error(
+            &messages::RESULTS_WRITE
                 .replace("{path}", &path.display().to_string())
-                .replace("{reason}", &error.to_string())
+                .replace("{reason}", &error.to_string()),
         );
         return ExitCode::Error;
     }
@@ -105,7 +100,7 @@ pub fn run(cli: &Cli, args: MergeArgs<'_>) -> ExitCode {
     }
     output::summary(
         cli,
-        &format!("{} {}", messages::SCAN_RESULTS, path.display()),
+        &format!("{} {}", messages::SCAN_RESULTS, output::shown_path(&path)),
     );
     ExitCode::Success
 }

@@ -112,11 +112,10 @@ pub fn run(cli: &Cli, args: FilesArgs<'_>) -> ExitCode {
     }
 
     for error in output.errors.iter().take(MAX_SHOWN_ERRORS) {
-        eprintln!(
-            "{}",
-            messages::SCAN_ERROR_LINE
+        output::error(
+            &messages::SCAN_ERROR_LINE
                 .replace("{location}", &error.location)
-                .replace("{reason}", &error.reason)
+                .replace("{reason}", &error.reason),
         );
     }
     if output.errors.len() > MAX_SHOWN_ERRORS {
@@ -138,7 +137,7 @@ pub fn run(cli: &Cli, args: FilesArgs<'_>) -> ExitCode {
     );
     output::summary(
         cli,
-        &format!("{} {}", messages::SCAN_RESULTS, path.display()),
+        &format!("{} {}", messages::SCAN_RESULTS, output::shown_path(&path)),
     );
     output::debug(
         &messages::LOG_FILES_SKIPPED
@@ -170,7 +169,7 @@ pub fn run(cli: &Cli, args: FilesArgs<'_>) -> ExitCode {
 }
 
 fn fail(text: &str, reason: &str) -> ExitCode {
-    eprintln!("{}", text.replace("{reason}", reason));
+    output::error(&text.replace("{reason}", reason));
     ExitCode::Error
 }
 

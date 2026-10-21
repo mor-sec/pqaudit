@@ -290,3 +290,53 @@ fn finding_ids_come_from_the_fingerprint() {
         );
     }
 }
+
+/// True if the text has a control character other than a line end or a tab.
+fn has_control(text: &str) -> bool {
+    text.chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r')
+}
+
+#[cfg(unix)]
+#[test]
+fn control_characters_in_file_names_do_not_reach_the_terminal() {
+    let setup = Setup::new();
+    let bad = "bad\u{1b}[31m\u{7}.pem";
+    let good = "good\u{1b}]0;title\u{7}.pem";
+    fs::write(setup.target().join(bad), "not a certificate").unwrap();
+    fs::copy(fixture("rsa2048-leaf.pem"), setup.target().join(good)).unwrap();
+    let assert = setup
+        .pqaudit()
+        .args(["scan", "files"])
+        .arg(setup.target())
+        .assert()
+        .code(3);
+    let out = assert.get_output();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stderr.contains("bad?[31m?.pem"), "{stderr}");
+    assert!(!has_control(&stderr), "{stderr:?}");
+    assert!(!has_control(&stdout), "{stdout:?}");
+
+    // explain shows the location of the finding.
+    let results = setup.results();
+    let file = ResultsFile::read(&results[0]).unwrap();
+    let id = file.findings[0].id.clone();
+    let merged = setup
+        .pqaudit()
+        .arg("merge")
+        .arg(&results[0])
+        .assert()
+        .code(0);
+    assert!(!has_control(&String::from_utf8_lossy(
+        &merged.get_output().stdout
+    )));
+    let explained = setup
+        .pqaudit()
+        .args(["explain", id.as_str()])
+        .assert()
+        .code(0);
+    let stdout = String::from_utf8_lossy(&explained.get_output().stdout);
+    assert!(stdout.contains("good?]0;title?.pem"), "{stdout}");
+    assert!(!has_control(&stdout), "{stdout:?}");
+}

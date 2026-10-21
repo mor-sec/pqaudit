@@ -26,7 +26,7 @@ pub struct ReportArgs<'a> {
 /// Run `report`.
 pub fn run(cli: &Cli, args: ReportArgs<'_>) -> ExitCode {
     if args.audience != Audience::Technical || args.format == ReportFormat::Pdf {
-        eprintln!("{}", messages::LATER_RELEASE);
+        output::error(messages::LATER_RELEASE);
         return ExitCode::Error;
     }
     let (format, extension) = match args.format {
@@ -34,7 +34,7 @@ pub fn run(cli: &Cli, args: ReportArgs<'_>) -> ExitCode {
         ReportFormat::Md => (Format::Md, "md"),
         ReportFormat::Json => (Format::Json, "json"),
         ReportFormat::Pdf => {
-            eprintln!("{}", messages::LATER_RELEASE);
+            output::error(messages::LATER_RELEASE);
             return ExitCode::Error;
         }
     };
@@ -45,7 +45,7 @@ pub fn run(cli: &Cli, args: ReportArgs<'_>) -> ExitCode {
     let text = match technical::render(&assessment, format) {
         Ok(text) => text,
         Err(error) => {
-            eprintln!("{error}");
+            output::error(&error.to_string());
             return ExitCode::Error;
         }
     };
@@ -60,11 +60,10 @@ pub fn run(cli: &Cli, args: ReportArgs<'_>) -> ExitCode {
     }
     .and_then(|()| fs::write(&path, text));
     if let Err(error) = written {
-        eprintln!(
-            "{}",
-            messages::REPORT_WRITE
+        output::error(
+            &messages::REPORT_WRITE
                 .replace("{path}", &path.display().to_string())
-                .replace("{reason}", &error.to_string())
+                .replace("{reason}", &error.to_string()),
         );
         return ExitCode::Error;
     }

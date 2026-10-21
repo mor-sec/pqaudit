@@ -39,19 +39,15 @@ pub fn load_with_pack(
         .map(Path::to_path_buf)
         .unwrap_or_else(|| cli.engagement.join("results").join("merged.pqr"));
     let results = ResultsFile::read(&path).map_err(|error| {
-        eprintln!(
-            "{}",
-            messages::EXPLAIN_READ
+        output::error(
+            &messages::EXPLAIN_READ
                 .replace("{path}", &path.display().to_string())
-                .replace("{reason}", &error.to_string())
+                .replace("{reason}", &error.to_string()),
         );
         ExitCode::Error
     })?;
     let engagement = Engagement::load(&cli.engagement).map_err(|error| {
-        eprintln!(
-            "{}",
-            messages::ENGAGEMENT_LOAD.replace("{reason}", &error.to_string())
-        );
+        output::error(&messages::ENGAGEMENT_LOAD.replace("{reason}", &error.to_string()));
         ExitCode::Error
     })?;
     let key = if results.header.redacted {
@@ -64,7 +60,7 @@ pub fn load_with_pack(
     let today = Local::now().date_naive();
     let assessment = assess_with_key(&results, &engagement, &active.pack, today, key.as_ref())
         .map_err(|error| {
-            eprintln!("{error}");
+            output::error(&error.to_string());
             ExitCode::Error
         })?;
     if assessment.overrides_need_key {
@@ -84,10 +80,7 @@ fn redaction_key(engagement: &Engagement) -> Result<Option<RedactKey>, ExitCode>
         return Ok(None);
     }
     RedactKey::load(&path).map(Some).map_err(|error| {
-        eprintln!(
-            "{}",
-            messages::REDACT_KEY_LOAD.replace("{reason}", &error.to_string())
-        );
+        output::error(&messages::REDACT_KEY_LOAD.replace("{reason}", &error.to_string()));
         ExitCode::Error
     })
 }
@@ -121,10 +114,10 @@ fn check_engagement(
     } else {
         messages::ENGAGEMENT_MISMATCH
     };
-    eprintln!(
-        "{}",
-        text.replace("{results}", &results.header.engagement)
-            .replace("{engagement}", &name)
+    output::error(
+        &text
+            .replace("{results}", &results.header.engagement)
+            .replace("{engagement}", &name),
     );
     Err(ExitCode::Error)
 }
