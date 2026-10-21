@@ -183,6 +183,8 @@ fn fill(mut reader: impl Read, buffer: &mut [u8]) -> std::io::Result<usize> {
 /// Why the tool did not open a path as a regular file.
 enum OpenProblem {
     /// The path is a symbolic link, and the user did not ask to follow links.
+    /// Only the Unix open call can find this.
+    #[cfg_attr(not(unix), allow(dead_code))]
     Symlink,
     /// The path is not a regular file, for example a FIFO or a device.
     NotRegular,
