@@ -81,9 +81,15 @@ jobs:
       - name: Make an engagement directory
         run: target/debug/pqaudit init ci --dir "$RUNNER_TEMP"
       - name: Trace the system calls of a file scan
+        # The fixtures hold files that the scan cannot read, so exit code 3 (partial results) is normal.
         run: |
+          code=0
           strace -f -e trace=socket,connect -o trace.txt \
-            target/debug/pqaudit --engagement "$RUNNER_TEMP/ci" scan files crates/pqaudit-scan-files/tests/fixtures
+            target/debug/pqaudit --engagement "$RUNNER_TEMP/ci" scan files crates/pqaudit-scan-files/tests/fixtures || code=$?
+          if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then
+            echo "The file scan stopped with exit code $code."
+            exit 1
+          fi
       - name: Check that the scan opened no network socket
         run: |
           if grep -E 'socket\(AF_INET|socket\(AF_INET6|connect\(' trace.txt; then

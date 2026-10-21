@@ -216,9 +216,9 @@ fn unreadable_paths_give_partial_exit_3() {
     fs::create_dir(&sub).unwrap();
     symlink("..", sub.join("up")).unwrap();
 
-    // A file name that is not valid UTF-8.
+    // A file name that is not valid UTF-8. Some file systems, for example APFS on macOS, refuse it.
     let odd = target.join(OsStr::from_bytes(b"odd-\xff.pem"));
-    fs::copy(fixture("rsa2048-leaf.pem"), odd).unwrap();
+    let has_odd = fs::copy(fixture("rsa2048-leaf.pem"), odd).is_ok();
 
     let assert = setup
         .pqaudit()
@@ -228,16 +228,21 @@ fn unreadable_paths_give_partial_exit_3() {
         .code(3);
     let stderr = String::from_utf8_lossy(&assert.get_output().stderr).into_owned();
     assert!(stderr.contains("locked.pem"), "{stderr}");
-    assert!(stderr.contains("odd-"), "{stderr}");
+    assert!(!has_odd || stderr.contains("odd-"), "{stderr}");
 
     let file = ResultsFile::read(&setup.results()[0]).unwrap();
     assert_eq!(file.findings.len(), 1);
-    assert_eq!(file.errors.len(), 3, "{:?}", file.errors);
+    assert_eq!(
+        file.errors.len(),
+        2 + usize::from(has_odd),
+        "{:?}",
+        file.errors
+    );
     assert!(file
         .errors
         .iter()
         .any(|e| e.location.ends_with("locked.pem")));
-    assert!(file.errors.iter().any(|e| e.location.contains("odd-")));
+    assert!(!has_odd || file.errors.iter().any(|e| e.location.contains("odd-")));
     assert!(file.errors.iter().any(|e| e.location.contains("up")));
 
     // Make the file readable, so that the cleanup can delete it.
