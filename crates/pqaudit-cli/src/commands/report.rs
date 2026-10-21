@@ -9,6 +9,7 @@ use crate::cli::{Audience, Cli, ReportFormat};
 use crate::commands::assessment;
 use crate::exit::ExitCode;
 use crate::messages;
+use crate::output;
 
 /// The arguments of `report`.
 pub struct ReportArgs<'a> {
@@ -67,9 +68,9 @@ pub fn run(cli: &Cli, args: ReportArgs<'_>) -> ExitCode {
         );
         return ExitCode::Error;
     }
-    println!(
-        "{}",
-        messages::REPORT_WRITTEN.replace("{path}", &path.display().to_string())
+    output::summary(
+        cli,
+        &messages::REPORT_WRITTEN.replace("{path}", &path.display().to_string()),
     );
     ExitCode::Success
 }

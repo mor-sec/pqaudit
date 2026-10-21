@@ -5,6 +5,7 @@ pub mod cbom;
 pub mod explain;
 pub mod init;
 pub mod merge;
+pub mod pack;
 pub mod profiles;
 pub mod report;
 pub mod rules;

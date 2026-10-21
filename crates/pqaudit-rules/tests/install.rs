@@ -258,3 +258,46 @@ fn rotation_chain_survives_into_the_active_pack() {
         other => panic!("wrong origin: {other:?}"),
     }
 }
+
+#[test]
+fn active_pack_reports_each_skipped_installed_pack() {
+    let fx = Fixture::new();
+    let store = fx.store();
+    // An unsigned pack.
+    let plain = fx.root.parent().unwrap().join("plain.tar.zst");
+    fs::write(&plain, archive_of("97.0.0")).unwrap();
+    store.install_unsigned(&plain).unwrap();
+    // A pack with a bad signature.
+    let (archive, sig) = fx.signed("98.0.0");
+    let other = HybridSigningKey::generate().unwrap();
+    fs::write(&sig, other.sign(&fs::read(&archive).unwrap()).to_json()).unwrap();
+    let bad_dir = fx.root.join("rules").join("98.0.0");
+    fs::create_dir_all(&bad_dir).unwrap();
+    fs::copy(&archive, bad_dir.join("rules-98.0.0.tar.zst")).unwrap();
+    fs::copy(&sig, bad_dir.join("rules-98.0.0.tar.zst.sig.json")).unwrap();
+    // A pack that the tool cannot load.
+    let junk_dir = fx.root.join("rules").join("99.0.0");
+    fs::create_dir_all(&junk_dir).unwrap();
+    fs::write(junk_dir.join("rules-99.0.0.tar.zst"), b"junk").unwrap();
+
+    let strict = store.active_pack(false).unwrap();
+    assert!(matches!(strict.origin, PackOrigin::Embedded));
+    let versions: Vec<&str> = strict.skipped.iter().map(|s| s.version.as_str()).collect();
+    assert_eq!(versions, ["97.0.0", "98.0.0", "99.0.0"]);
+    assert!(strict.skipped.iter().all(|s| !s.reason.is_empty()));
+
+    // With the flag, the tool uses the unsigned packs. It still skips the invalid pack.
+    let loose = store.active_pack(true).unwrap();
+    assert!(matches!(loose.origin, PackOrigin::Unsigned { .. }));
+    let versions: Vec<&str> = loose.skipped.iter().map(|s| s.version.as_str()).collect();
+    assert_eq!(versions, ["99.0.0"]);
+}
+
+#[test]
+fn active_pack_skips_nothing_when_all_packs_are_good() {
+    let fx = Fixture::new();
+    let (archive, sig) = fx.signed("99.0.0");
+    let store = fx.store();
+    store.install(&archive, &sig).unwrap();
+    assert!(store.active_pack(false).unwrap().skipped.is_empty());
+}

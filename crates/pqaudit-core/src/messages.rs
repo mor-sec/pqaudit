@@ -59,6 +59,9 @@ pub const MERGE_ENGAGEMENT_MISMATCH: &str =
 pub const MERGE_PACK_MISMATCH: &str =
     "The input files used different rules packs: {versions}. The merged file names the pack with the highest version.";
 
+/// The warning when an input used the chosen rules pack without a valid signature. The tool fills in {pack}.
+pub const MERGE_UNSIGNED_PACK: &str = "At least one input file used the rules pack {pack} with no valid signature. The merged file records the pack as unsigned.";
+
 /// The error when the tool cannot use the redaction key file. The tool fills in {path} and {reason}.
 pub const REDACT_KEY_IO: &str = "The tool cannot use the redaction key file {path}. {reason}";
 
@@ -216,6 +219,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("MERGE_NO_INPUTS", MERGE_NO_INPUTS),
     ("MERGE_ENGAGEMENT_MISMATCH", MERGE_ENGAGEMENT_MISMATCH),
     ("MERGE_PACK_MISMATCH", MERGE_PACK_MISMATCH),
+    ("MERGE_UNSIGNED_PACK", MERGE_UNSIGNED_PACK),
     ("UNSUPPORTED_SCHEMA", UNSUPPORTED_SCHEMA),
     ("RESULTS_PARSE", RESULTS_PARSE),
     ("RESULTS_IO", RESULTS_IO),

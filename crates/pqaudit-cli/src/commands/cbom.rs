@@ -9,6 +9,7 @@ use crate::cli::Cli;
 use crate::commands::assessment;
 use crate::exit::ExitCode;
 use crate::messages;
+use crate::output;
 
 /// Run `cbom`.
 pub fn run(cli: &Cli, results: Option<&Path>, output: Option<&Path>) -> ExitCode {
@@ -37,9 +38,9 @@ pub fn run(cli: &Cli, results: Option<&Path>, output: Option<&Path>) -> ExitCode
         );
         return ExitCode::Error;
     }
-    println!(
-        "{}",
-        messages::CBOM_WRITTEN.replace("{path}", &path.display().to_string())
+    output::summary(
+        cli,
+        &messages::CBOM_WRITTEN.replace("{path}", &path.display().to_string()),
     );
     ExitCode::Success
 }

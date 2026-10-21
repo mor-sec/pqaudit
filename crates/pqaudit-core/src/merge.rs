@@ -288,9 +288,9 @@ pub fn merge(mut inputs: Vec<ResultsFile>) -> Result<ResultsFile, MergeError> {
         finding.id = finding_id(&finding.fingerprint);
     }
 
-    let (best, warning) = choose_pack(&packs);
+    let (best, warnings) = choose_pack(&packs);
     header.rules_pack = best;
-    if let Some(reason) = warning {
+    for reason in warnings {
         add_error(
             &mut errors,
             &mut seen_errors,
@@ -410,8 +410,11 @@ fn add_item(
     old.endpoint = old.endpoint.take().or(new.endpoint);
 }
 
-/// Choose the pack with the highest version. Return a warning text if the packs differ.
-fn choose_pack(packs: &[PackRef]) -> (PackRef, Option<String>) {
+/// Choose the pack with the highest version. Return a warning text for each problem.
+///
+/// The packs can differ. Or an input can use the chosen pack without a valid signature.
+/// In that case the merged file records the pack as unsigned.
+fn choose_pack(packs: &[PackRef]) -> (PackRef, Vec<String>) {
     let rank = |p: &PackRef| {
         (
             semver::Version::parse(&p.version).ok(),
@@ -419,22 +422,36 @@ fn choose_pack(packs: &[PackRef]) -> (PackRef, Option<String>) {
             p.id.clone(),
         )
     };
-    let best = packs
+    let mut best = packs
         .iter()
         .max_by_key(|p| rank(p))
-        .expect("a merge has at least one pack");
+        .expect("a merge has at least one pack")
+        .clone();
+    let same_pack = |p: &PackRef| {
+        p.id == best.id && p.version == best.version && p.content_hash == best.content_hash
+    };
+    let mut warnings = Vec::new();
     let mut names: Vec<String> = packs
         .iter()
         .map(|p| format!("{} {}", p.id, p.version))
         .collect();
     names.sort();
     names.dedup();
-    let differs = packs.iter().any(|p| {
-        p.id != best.id || p.version != best.version || p.content_hash != best.content_hash
-    });
-    let warning =
-        differs.then(|| messages::MERGE_PACK_MISMATCH.replace("{versions}", &names.join(", ")));
-    (best.clone(), warning)
+    if packs.iter().any(|p| !same_pack(p)) {
+        warnings.push(messages::MERGE_PACK_MISMATCH.replace("{versions}", &names.join(", ")));
+    }
+    let unsigned = packs
+        .iter()
+        .filter(|p| same_pack(p))
+        .find(|p| matches!(p.origin, PackOriginRef::Unsigned { .. }));
+    if let Some(unsigned) = unsigned {
+        warnings.push(
+            messages::MERGE_UNSIGNED_PACK
+                .replace("{pack}", &format!("{} {}", best.id, best.version)),
+        );
+        best.origin = unsigned.origin.clone();
+    }
+    (best, warnings)
 }
 
 /// True if the text is `redacted:` and 12 lowercase hex digits.
@@ -450,7 +467,8 @@ fn is_redacted_shape(value: &str) -> bool {
 /// Make the redacted form of a value: `redacted:` and 12 hex digits of its keyed hash.
 ///
 /// A value that already has this exact form stays as it is.
-fn redacted(value: &str, key: &RedactKey) -> String {
+/// The engagement name in a redacted header has this form.
+pub fn redacted(value: &str, key: &RedactKey) -> String {
     if is_redacted_shape(value) {
         return value.to_string();
     }

@@ -8,17 +8,20 @@ use chrono::{Local, Utc};
 use pqaudit_core::engagement::Engagement;
 use pqaudit_core::SCHEMA_VERSION;
 use pqaudit_core::{PackRef, Protocol, ResultsFile, ResultsHeader, RunInfo, ScannerKind};
-use pqaudit_rules::install::active_pack;
 use pqaudit_scan_net::audit::{hash_file, AuditLog};
 use pqaudit_scan_net::runtime::{check_hours, run_until, NetOutput};
 use pqaudit_scan_net::scope::{build_plan, scope_hash, ScopeFile, SystemResolver, TargetPlan};
 use pqaudit_scan_net::tls::RealProbes;
 use uuid::Uuid;
 
-use super::scan_files::{engagement_name, host_name, write_results};
+use pqaudit_scan_files::local_host_name;
+
+use super::scan_files::{engagement_name, write_results};
 use crate::cli::Cli;
+use crate::commands::pack::load_active;
 use crate::exit::ExitCode;
 use crate::messages;
+use crate::output;
 
 /// The name of the audit log in the engagement directory.
 const AUDIT_LOG_FILE: &str = "audit.log";
@@ -35,6 +38,11 @@ pub fn run(cli: &Cli, dry_run: bool, output: Option<&Path>) -> ExitCode {
         Ok(plan) => plan,
         Err(error) => return fail(&error),
     };
+    output::debug(
+        &messages::NET_SUMMARY
+            .replace("{targets}", &plan.targets.len().to_string())
+            .replace("{refused}", &plan.refused.len().to_string()),
+    );
     if dry_run || plan.is_refused() {
         show_plan(&plan);
     }
@@ -69,9 +77,9 @@ fn scan(
         Ok(engagement) => engagement,
         Err(error) => return fail_text(messages::ENGAGEMENT_LOAD, &error.to_string()),
     };
-    let active = match active_pack(cli.allow_unsigned_rules) {
+    let active = match load_active(cli) {
         Ok(active) => active,
-        Err(error) => return fail_text(messages::PACK_LOAD, &error.to_string()),
+        Err(code) => return code,
     };
     let audit_path = engagement.dir.join(AUDIT_LOG_FILE);
     let audit = match AuditLog::open(&audit_path) {
@@ -119,7 +127,7 @@ fn scan(
             )
         }
     };
-    let host = host_name();
+    let host = local_host_name();
     let scope_hash = scope_hash(scope_bytes);
     let results = ResultsFile {
         header: ResultsHeader {
@@ -167,6 +175,7 @@ fn scan(
         );
     }
     report(
+        cli,
         &output,
         &path,
         &audit_path,
@@ -177,6 +186,7 @@ fn scan(
 
 /// Show the summary and choose the exit code.
 fn report(
+    cli: &Cli,
     output: &NetOutput,
     results_path: &Path,
     audit_path: &Path,
@@ -200,16 +210,22 @@ fn report(
             )
         );
     }
-    println!(
-        "{}",
-        messages::NET_SCAN_SUMMARY
+    output::summary(
+        cli,
+        &messages::NET_SCAN_SUMMARY
             .replace("{targets}", &targets.to_string())
             .replace("{findings}", &output.findings.len().to_string())
             .replace("{inventory}", &output.inventory.len().to_string())
-            .replace("{errors}", &output.errors.len().to_string())
+            .replace("{errors}", &output.errors.len().to_string()),
     );
-    println!("{} {}", messages::SCAN_RESULTS, results_path.display());
-    println!("{} {}", messages::NET_AUDIT_LOG, audit_path.display());
+    output::summary(
+        cli,
+        &format!("{} {}", messages::SCAN_RESULTS, results_path.display()),
+    );
+    output::summary(
+        cli,
+        &format!("{} {}", messages::NET_AUDIT_LOG, audit_path.display()),
+    );
     if audit_broken {
         eprintln!("{}", messages::AUDIT_FAILED);
         ExitCode::Error

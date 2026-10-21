@@ -259,6 +259,37 @@ fn pack_version_mismatch_warns() {
     assert!(warning.reason.contains("1.0.0") && warning.reason.contains("1.10.0"));
 }
 
+#[test]
+fn unsigned_origin_of_the_chosen_pack_wins_and_warns() {
+    let unsigned = PackOriginRef::Unsigned {
+        path: "/data/rules/1.0.0".into(),
+    };
+    for order in [false, true] {
+        let mut b = net_result();
+        b.header.rules_pack.origin = unsigned.clone();
+        let inputs = if order {
+            vec![files_result(), b]
+        } else {
+            vec![b, files_result()]
+        };
+        let merged = merge(inputs).unwrap();
+        assert_eq!(merged.header.rules_pack.origin, unsigned);
+        let warning = merged
+            .errors
+            .iter()
+            .find(|e| e.location == "merge")
+            .expect("a merge warning");
+        assert!(
+            warning.reason.contains("no valid signature"),
+            "{}",
+            warning.reason
+        );
+    }
+    // The same pack with the same origin in each input gives no warning.
+    let merged = merge(vec![files_result(), net_result()]).unwrap();
+    assert!(merged.errors.iter().all(|e| e.location != "merge"));
+}
+
 /// Collect each string in a JSON value, with the keys.
 fn strings(value: &serde_json::Value, out: &mut Vec<String>) {
     match value {

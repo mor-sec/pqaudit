@@ -169,13 +169,20 @@ The command is `pqaudit [OPTIONS] <COMMAND>`. The descriptions below are the sam
 Each command accepts these flags.
 
 - `--engagement <DIR>`: Use this directory as the engagement directory. The default is `.`.
-- `--quiet`: Show errors only.
-- `--verbose`: Show debug messages.
-- `--log-format <LOG_FORMAT>`: Set the format of the log output. The default is `text`.
+- `--quiet`: Do not show the summary lines on stdout. Errors and warnings still show on stderr.
+- `--verbose`: Also show diagnostic events in the log on stderr, for example the origin of the rules pack.
+- `--log-format <LOG_FORMAT>`: Set the format of the log on stderr. The log has the warnings and the diagnostic events. The default is `text`.
   - `text`: Plain text for people.
   - `json`: One JSON object for each line.
-- `--no-color`: Do not use colors in the output.
-- `--allow-unsigned-rules`: Accept a rules pack that has no correct signature. The results record this choice.
+- `--no-color`: Do not use colors in the log.
+
+The tool writes three types of output.
+
+Summary lines go to stdout. Examples are the number of findings and the path of the results file. The flag `--quiet` stops them. The output of `init`, `explain`, `rules`, `profiles`, and `scan net --dry-run` is not a summary. The flag `--quiet` does not stop it.
+
+Errors go to stderr. No flag stops them.
+
+The log goes to stderr. It has the warnings, for example a rules pack that has no valid signature. With `--verbose`, the log also has diagnostic events. These events show the origin of the active rules pack, the size of the scan plan, and the number of skipped files. With `--log-format json`, each log line is one JSON object.
 
 ### pqaudit init
 

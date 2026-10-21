@@ -39,6 +39,19 @@ pub const KIND_KEY: &str = "key";
 /// The name of an endpoint in a list.
 pub const KIND_ENDPOINT: &str = "endpoint";
 
+/// The origin of a rules pack that is part of the tool.
+pub const PACK_ORIGIN_EMBEDDED: &str = "embedded in the tool";
+
+/// The origin of an installed rules pack. The tool fills in {signer} and {chain}.
+pub const PACK_ORIGIN_INSTALLED: &str = "installed, signed by {signer}, key chain {chain}";
+
+/// The origin of an installed rules pack that has no valid signature.
+pub const PACK_ORIGIN_UNSIGNED: &str = "installed, no valid signature";
+
+/// The note in a CBOM component that has the redacted engagement name in place of the client name.
+pub const REDACTED_CLIENT: &str =
+    "The tool redacted the results. The name is the redacted engagement name, not the client name.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("TEMPLATE_FAILED", TEMPLATE_FAILED),
@@ -54,4 +67,8 @@ pub const ALL: &[(&str, &str)] = &[
     ("KIND_CERTIFICATE", KIND_CERTIFICATE),
     ("KIND_KEY", KIND_KEY),
     ("KIND_ENDPOINT", KIND_ENDPOINT),
+    ("PACK_ORIGIN_EMBEDDED", PACK_ORIGIN_EMBEDDED),
+    ("PACK_ORIGIN_INSTALLED", PACK_ORIGIN_INSTALLED),
+    ("PACK_ORIGIN_UNSIGNED", PACK_ORIGIN_UNSIGNED),
+    ("REDACTED_CLIENT", REDACTED_CLIENT),
 ];

@@ -5,14 +5,15 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use pqaudit_core::engagement::{Engagement, PasswordSource};
 use pqaudit_core::{PackRef, ResultsFile, ResultsHeader, RunInfo, ScannerKind, SCHEMA_VERSION};
-use pqaudit_rules::install::active_pack;
-use pqaudit_scan_files::{scan, ScanOptions};
+use pqaudit_scan_files::{local_host_name, scan, ScanOptions};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::cli::Cli;
+use crate::commands::pack::load_active;
 use crate::exit::ExitCode;
 use crate::messages;
+use crate::output;
 
 /// The most scan errors that the command shows on the screen.
 const MAX_SHOWN_ERRORS: usize = 50;
@@ -36,9 +37,9 @@ pub fn run(cli: &Cli, args: FilesArgs<'_>) -> ExitCode {
         Ok(engagement) => engagement,
         Err(error) => return fail(messages::ENGAGEMENT_LOAD, &error.to_string()),
     };
-    let active = match active_pack(cli.allow_unsigned_rules) {
+    let active = match load_active(cli) {
         Ok(active) => active,
-        Err(error) => return fail(messages::PACK_LOAD, &error.to_string()),
+        Err(code) => return code,
     };
     let passwords = match read_passwords(engagement.config.passwords.as_ref(), &engagement.dir) {
         Ok(passwords) => passwords,
@@ -51,7 +52,7 @@ pub fn run(cli: &Cli, args: FilesArgs<'_>) -> ExitCode {
         }
     };
 
-    let host = host_name();
+    let host = local_host_name();
     let options = ScanOptions {
         max_file_size: args.max_file_size,
         follow_symlinks: args.follow_symlinks,
@@ -126,27 +127,34 @@ pub fn run(cli: &Cli, args: FilesArgs<'_>) -> ExitCode {
             )
         );
     }
-    println!(
-        "{}",
-        messages::SCAN_SUMMARY
+    output::summary(
+        cli,
+        &messages::SCAN_SUMMARY
             .replace("{files}", &output.files_read.to_string())
             .replace("{findings}", &output.findings.len().to_string())
             .replace("{inventory}", &output.inventory.len().to_string())
-            .replace("{errors}", &output.errors.len().to_string())
+            .replace("{errors}", &output.errors.len().to_string()),
     );
-    println!("{} {}", messages::SCAN_RESULTS, path.display());
-
+    output::summary(
+        cli,
+        &format!("{} {}", messages::SCAN_RESULTS, path.display()),
+    );
+    output::debug(
+        &messages::LOG_FILES_SKIPPED
+            .replace("{symlinks}", &output.skipped_symlinks.to_string())
+            .replace("{not_read}", &output.files_not_read.to_string()),
+    );
     if output.skipped_symlinks > 0 {
-        println!(
-            "{}",
-            messages::SCAN_SYMLINKS_SKIPPED
-                .replace("{count}", &output.skipped_symlinks.to_string())
+        output::summary(
+            cli,
+            &messages::SCAN_SYMLINKS_SKIPPED
+                .replace("{count}", &output.skipped_symlinks.to_string()),
         );
     }
     if output.files_not_read > 0 {
-        println!(
-            "{}",
-            messages::SCAN_NOT_READ.replace("{count}", &output.files_not_read.to_string())
+        output::summary(
+            cli,
+            &messages::SCAN_NOT_READ.replace("{count}", &output.files_not_read.to_string()),
         );
     }
 
@@ -184,19 +192,6 @@ pub(crate) fn engagement_name(engagement: &Engagement) -> String {
                 .map(|name| name.to_string_lossy().into_owned())
         })
         .unwrap_or_else(|| engagement.config.client.clone())
-}
-
-pub(crate) fn host_name() -> String {
-    ["HOSTNAME", "COMPUTERNAME"]
-        .iter()
-        .find_map(|name| std::env::var(name).ok().filter(|value| !value.is_empty()))
-        .or_else(|| {
-            std::fs::read_to_string("/etc/hostname")
-                .ok()
-                .map(|text| text.trim().to_string())
-                .filter(|text| !text.is_empty())
-        })
-        .unwrap_or_else(|| String::from("unknown"))
 }
 
 /// Read the passwords. Return the name of the source if it does not work.

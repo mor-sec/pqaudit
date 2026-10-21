@@ -12,19 +12,19 @@ pub struct Cli {
     #[arg(long, global = true, value_name = "DIR", default_value = ".")]
     pub engagement: PathBuf,
 
-    /// Show errors only.
+    /// Do not show the summary lines on stdout. Errors and warnings still show on stderr.
     #[arg(long, global = true, conflicts_with = "verbose")]
     pub quiet: bool,
 
-    /// Show debug messages.
+    /// Also show diagnostic events in the log on stderr, for example the origin of the rules pack.
     #[arg(long, global = true)]
     pub verbose: bool,
 
-    /// Set the format of the log output.
+    /// Set the format of the log on stderr. The log has the warnings and the diagnostic events.
     #[arg(long, global = true, value_enum, default_value = "text")]
     pub log_format: LogFormat,
 
-    /// Do not use colors in the output.
+    /// Do not use colors in the log.
     #[arg(long, global = true)]
     pub no_color: bool,
 

@@ -10,11 +10,13 @@ use chrono::{DateTime, SecondsFormat};
 use pqaudit_core::assess::Assessment;
 use pqaudit_core::{
     Algorithm, CertInfo, EndpointInfo, Fingerprint, KeyInfo, KeyKind, Location, Occurrence,
-    Protocol,
+    PackOriginRef, Protocol,
 };
 use pqaudit_rules::pack::{Primitive, RulesPack};
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
+
+use crate::messages;
 
 /// The name of the property that holds a place where the tool saw an item.
 const LOCATION: &str = "pqaudit:location";
@@ -24,6 +26,12 @@ const PURPOSE: &str = "pqaudit:purpose";
 
 /// The name of the property that marks redacted results.
 const REDACTED: &str = "pqaudit:redacted";
+
+/// The name of the property that tells where the rules pack came from.
+const PACK_ORIGIN: &str = "pqaudit:rules-pack-origin";
+
+/// The name of the property that holds the key ID that signed the rules pack.
+const PACK_SIGNER: &str = "pqaudit:rules-pack-signer";
 
 /// Make the CBOM of an assessment. The result is a CycloneDX 1.6 document.
 pub fn render(a: &Assessment, pack: &RulesPack) -> Value {
@@ -65,9 +73,23 @@ pub fn render(a: &Assessment, pack: &RulesPack) -> Value {
             "name": a.engagement.client,
         },
     });
+    let mut properties = Vec::new();
     if a.header.redacted {
-        metadata["properties"] = json!([{"name": REDACTED, "value": "true"}]);
+        // Redacted results must not show the client name in clear.
+        metadata["component"]["name"] = json!(a.header.engagement);
+        metadata["component"]["description"] = json!(messages::REDACTED_CLIENT);
+        properties.push(json!({"name": REDACTED, "value": "true"}));
     }
+    let origin = match &a.pack.origin {
+        PackOriginRef::Embedded => "embedded",
+        PackOriginRef::Installed { .. } => "installed",
+        PackOriginRef::Unsigned { .. } => "unsigned",
+    };
+    properties.push(json!({"name": PACK_ORIGIN, "value": origin}));
+    if let PackOriginRef::Installed { signed_by, .. } = &a.pack.origin {
+        properties.push(json!({"name": PACK_SIGNER, "value": signed_by}));
+    }
+    metadata["properties"] = Value::Array(properties);
     let serial = serial_number(a, &components, &services, &dependencies);
     json!({
         "bomFormat": "CycloneDX",

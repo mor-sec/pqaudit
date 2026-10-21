@@ -517,3 +517,64 @@ fn unsafe_source_urls_are_not_links() {
     let text = render(&a, Format::Html).unwrap();
     assert!(!text.contains("href=\"javascript"));
 }
+
+#[test]
+fn rules_pack_line_shows_the_origin() {
+    let embedded = render(&fixture(), Format::Md).unwrap();
+    assert!(
+        embedded.contains("Origin: embedded in the tool"),
+        "{embedded}"
+    );
+    assert!(!embedded.contains("no valid signature"));
+
+    let mut a = fixture();
+    a.pack.origin = PackOriginRef::Installed {
+        path: "/data/rules/1.2.3".to_string(),
+        signed_by: "key-b".to_string(),
+        rotation_chain: vec!["key-a".to_string(), "key-b".to_string()],
+    };
+    for format in [Format::Md, Format::Html] {
+        let text = render(&a, format).unwrap();
+        assert!(text.contains("signed by key-b"), "{text}");
+        assert!(
+            text.contains("key chain key-a &gt; key-b")
+                || text.contains("key chain key-a \\> key-b"),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn unsigned_rules_pack_gives_a_notice() {
+    let mut a = fixture();
+    a.pack.origin = PackOriginRef::Unsigned {
+        path: "/data/rules/1.2.3".to_string(),
+    };
+    for format in [Format::Md, Format::Html] {
+        let text = render(&a, format).unwrap();
+        assert!(
+            text.contains("Origin: installed, no valid signature"),
+            "{text}"
+        );
+        let notice = text
+            .find("The rules pack of these results has no valid signature.")
+            .expect("no notice");
+        assert!(notice < text.find("Method").unwrap());
+    }
+}
+
+#[test]
+fn redacted_results_hide_the_client_name() {
+    let mut a = fixture();
+    a.header.redacted = true;
+    a.header.engagement = "redacted:0123456789ab".to_string();
+    for format in [Format::Md, Format::Html] {
+        let text = render(&a, format).unwrap();
+        assert!(!text.contains("Acme Corp"), "the client name is in clear");
+        assert!(
+            text.contains("Client: redacted:0123456789ab")
+                || text.contains("<dt>Client</dt><dd>redacted:0123456789ab</dd>")
+        );
+        assert!(text.contains("The client name shows as the redacted engagement name."));
+    }
+}

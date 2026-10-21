@@ -11,7 +11,7 @@ use pqaudit_core::assets::Ctx;
 use pqaudit_core::complexity::{change_type_name, size_name, test_type_name};
 use pqaudit_core::engagement::{Band, Override};
 use pqaudit_core::scoring::{exposure_name, threat_name};
-use pqaudit_core::{InventoryItem, Location, Occurrence, ThreatType};
+use pqaudit_core::{InventoryItem, Location, Occurrence, PackOriginRef, ThreatType};
 use serde::Serialize;
 
 use crate::messages;
@@ -105,6 +105,8 @@ struct View {
     pack_id: String,
     pack_version: String,
     pack_hash: String,
+    pack_origin: String,
+    pack_unsigned: bool,
     engagement: String,
     redacted: bool,
     runs: Vec<RunView>,
@@ -504,6 +506,21 @@ fn register_row(item: &AssessedFinding) -> RegisterRow {
     }
 }
 
+/// The text that tells where the rules pack came from.
+pub fn origin_text(origin: &PackOriginRef) -> String {
+    match origin {
+        PackOriginRef::Embedded => messages::PACK_ORIGIN_EMBEDDED.to_string(),
+        PackOriginRef::Installed {
+            signed_by,
+            rotation_chain,
+            ..
+        } => messages::PACK_ORIGIN_INSTALLED
+            .replace("{signer}", signed_by)
+            .replace("{chain}", &rotation_chain.join(" > ")),
+        PackOriginRef::Unsigned { .. } => messages::PACK_ORIGIN_UNSIGNED.to_string(),
+    }
+}
+
 impl View {
     fn new(a: &Assessment) -> Self {
         let mut ordered: Vec<&AssessedFinding> = a.findings.iter().collect();
@@ -541,14 +558,22 @@ impl View {
                 })
             })
             .collect();
+        // Redacted results must not show the client name in clear.
+        let client = if header.redacted {
+            header.engagement.clone()
+        } else {
+            a.engagement.client.clone()
+        };
         Self {
-            client: a.engagement.client.clone(),
+            client,
             assessor: a.engagement.assessor.clone(),
             date: a.engagement.assessment_date.to_string(),
             tool_version: header.tool_version.clone(),
             pack_id: a.pack.id.clone(),
             pack_version: a.pack.version.clone(),
             pack_hash: a.pack.content_hash.clone(),
+            pack_origin: origin_text(&a.pack.origin),
+            pack_unsigned: matches!(a.pack.origin, PackOriginRef::Unsigned { .. }),
             engagement: header.engagement.clone(),
             redacted: header.redacted,
             runs: header

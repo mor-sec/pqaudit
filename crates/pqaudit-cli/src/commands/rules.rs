@@ -8,6 +8,7 @@ use pqaudit_rules::pack::RulesPack;
 use crate::cli::RulesCommand;
 use crate::exit::ExitCode;
 use crate::messages;
+use crate::output;
 
 /// Run one `rules` command.
 pub fn run(command: &RulesCommand, allow_unsigned: bool) -> ExitCode {
@@ -112,7 +113,7 @@ fn verify(
         Err(error) if allow_unsigned => match store.load_unsigned(archive) {
             Ok(pack) => {
                 eprintln!("{error}");
-                eprintln!("{}", messages::RULES_UNSIGNED_WARNING);
+                output::warn(messages::RULES_UNSIGNED_WARNING);
                 println!("pack: {}", describe(&pack));
                 // The flag allows use of the pack. A failed check stays a failed check.
                 ExitCode::Error
@@ -136,7 +137,7 @@ fn update(store: &RulesStore, from: &Path, sig: Option<&Path>, allow_unsigned: b
         Err(error) if allow_unsigned => match store.install_unsigned(from) {
             Ok(dir) => {
                 eprintln!("{error}");
-                eprintln!("{}", messages::RULES_UNSIGNED_WARNING);
+                output::warn(messages::RULES_UNSIGNED_WARNING);
                 println!("{} {}", messages::RULES_INSTALLED, dir.display());
                 ExitCode::Success
             }

@@ -76,6 +76,19 @@ pub struct ActivePack {
     pub pack: Arc<RulesPack>,
     /// Where the pack comes from.
     pub origin: PackOrigin,
+    /// The installed packs that the program did not use because they failed the check.
+    pub skipped: Vec<SkippedPack>,
+}
+
+/// An installed pack that the program did not use because it failed the check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkippedPack {
+    /// The name of the directory. It is the version of the pack.
+    pub version: String,
+    /// The directory of the pack.
+    pub path: PathBuf,
+    /// Why the program did not use the pack.
+    pub reason: String,
 }
 
 /// The state of an installed pack after the check.
@@ -331,11 +344,14 @@ impl RulesStore {
     ///
     /// The choice is between the default pack and the installed packs that pass the check.
     /// With `allow_unsigned`, a pack without a valid signature can also win.
+    /// The result lists each installed pack that the check stopped.
     pub fn active_pack(&self, allow_unsigned: bool) -> Result<ActivePack, InstallError> {
         let mut best = ActivePack {
             pack: Arc::new(default_pack().clone()),
             origin: PackOrigin::Embedded,
+            skipped: Vec::new(),
         };
+        let mut skipped = Vec::new();
         for installed in self.list_installed() {
             let candidate = match installed.state {
                 InstalledState::Verified {
@@ -349,19 +365,29 @@ impl RulesStore {
                         signed_by,
                         rotation_chain,
                     },
+                    skipped: Vec::new(),
                 },
                 InstalledState::Unverified { pack, .. } if allow_unsigned => ActivePack {
                     pack,
                     origin: PackOrigin::Unsigned {
                         path: installed.path,
                     },
+                    skipped: Vec::new(),
                 },
-                _ => continue,
+                InstalledState::Unverified { reason, .. } | InstalledState::Invalid { reason } => {
+                    skipped.push(SkippedPack {
+                        version: installed.version,
+                        path: installed.path,
+                        reason,
+                    });
+                    continue;
+                }
             };
             if candidate.pack.version > best.pack.version {
                 best = candidate;
             }
         }
+        best.skipped = skipped;
         Ok(best)
     }
 }

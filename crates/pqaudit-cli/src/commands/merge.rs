@@ -2,13 +2,14 @@
 
 use std::path::{Path, PathBuf};
 
-use pqaudit_core::merge::{merge, redact, RedactKey, RedactKeyError};
+use pqaudit_core::merge::{merge, redact, RedactKey, RedactKeyError, MERGE_WARNING_LOCATION};
 use pqaudit_core::ResultsFile;
 
 use crate::cli::Cli;
 use crate::commands::scan_files::write_results;
 use crate::exit::ExitCode;
 use crate::messages;
+use crate::output;
 
 /// The arguments of `merge`.
 pub struct MergeArgs<'a> {
@@ -84,18 +85,28 @@ pub fn run(cli: &Cli, args: MergeArgs<'_>) -> ExitCode {
         );
         return ExitCode::Error;
     }
-    println!(
-        "{}",
-        messages::MERGE_SUMMARY
+    for warning in merged
+        .errors
+        .iter()
+        .filter(|error| error.location == MERGE_WARNING_LOCATION)
+    {
+        output::warn(&warning.reason);
+    }
+    output::summary(
+        cli,
+        &messages::MERGE_SUMMARY
             .replace("{inputs}", &inputs.len().to_string())
             .replace("{findings}", &merged.findings.len().to_string())
             .replace("{inventory}", &merged.inventory.len().to_string())
-            .replace("{errors}", &merged.errors.len().to_string())
+            .replace("{errors}", &merged.errors.len().to_string()),
     );
     if redact_output {
-        println!("{}", messages::MERGE_REDACTED);
+        output::summary(cli, messages::MERGE_REDACTED);
     }
-    println!("{} {}", messages::SCAN_RESULTS, path.display());
+    output::summary(
+        cli,
+        &format!("{} {}", messages::SCAN_RESULTS, path.display()),
+    );
     ExitCode::Success
 }
 

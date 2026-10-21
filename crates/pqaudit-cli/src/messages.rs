@@ -28,6 +28,26 @@ pub const RULES_SIGNATURE_OK: &str = "The signature is correct.";
 /// The warning when the tool uses a pack without a valid signature.
 pub const RULES_UNSIGNED_WARNING: &str = "Warning: this pack has no valid signature. The tool accepts it because you gave the flag --allow-unsigned-rules.";
 
+/// The warning for an installed pack that the tool did not use. The tool fills in {version}, {path}, and {reason}.
+pub const PACK_SKIPPED: &str =
+    "Warning: the tool did not use the installed rules pack {version} in {path}. {reason}";
+
+/// The log event that tells which pack the tool uses. The tool fills in {id}, {version}, and {origin}.
+pub const LOG_PACK_ORIGIN: &str = "The active rules pack is {id} {version}. Origin: {origin}.";
+
+/// The log event for the skipped files. The tool fills in {symlinks} and {not_read}.
+pub const LOG_FILES_SKIPPED: &str =
+    "The tool skipped {symlinks} symbolic links. It did not read {not_read} files as certificates.";
+
+/// The error when the results file belongs to a different engagement. The tool fills in {results} and {engagement}.
+pub const ENGAGEMENT_MISMATCH: &str = "The results file belongs to the engagement {results}. The engagement directory is {engagement}. Use a results file of this engagement.";
+
+/// The warning when the tool cannot check the engagement name of redacted results.
+pub const ENGAGEMENT_UNCHECKED: &str = "Warning: the tool cannot check the engagement name of the redacted results. The engagement directory has no file redact.key.";
+
+/// The error when the tool cannot read the redaction key. The tool fills in {reason}.
+pub const REDACT_KEY_LOAD: &str = "The tool cannot read the redaction key. {reason}";
+
 /// The hint when the signature check fails.
 pub const RULES_UNSIGNED_HINT: &str =
     "To accept a pack without a valid signature, use the flag --allow-unsigned-rules.";
@@ -285,6 +305,12 @@ pub const ALL: &[(&str, &str)] = &[
     ("RULES_SIGNATURE_OK", RULES_SIGNATURE_OK),
     ("RULES_UNSIGNED_WARNING", RULES_UNSIGNED_WARNING),
     ("RULES_UNSIGNED_HINT", RULES_UNSIGNED_HINT),
+    ("PACK_SKIPPED", PACK_SKIPPED),
+    ("LOG_PACK_ORIGIN", LOG_PACK_ORIGIN),
+    ("LOG_FILES_SKIPPED", LOG_FILES_SKIPPED),
+    ("ENGAGEMENT_MISMATCH", ENGAGEMENT_MISMATCH),
+    ("ENGAGEMENT_UNCHECKED", ENGAGEMENT_UNCHECKED),
+    ("REDACT_KEY_LOAD", REDACT_KEY_LOAD),
     ("RULES_INSTALLED", RULES_INSTALLED),
     ("INIT_CREATED", INIT_CREATED),
     ("INIT_NEXT", INIT_NEXT),

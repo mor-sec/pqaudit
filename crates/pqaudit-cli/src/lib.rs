@@ -6,6 +6,9 @@ pub mod cli;
 pub mod commands;
 pub mod exit;
 pub mod messages;
+pub mod output;
+
+use std::io::IsTerminal;
 
 use clap::Parser;
 
@@ -36,21 +39,29 @@ where
 }
 
 /// Set up the log output from the global flags.
+///
+/// The log goes to stderr. It shows warnings and errors.
+/// The flag --verbose adds diagnostic events. The flag --quiet does not stop warnings.
 fn init_logging(cli: &Cli) {
-    let level = if cli.quiet {
-        tracing::Level::ERROR
-    } else if cli.verbose {
+    let level = if cli.verbose {
         tracing::Level::DEBUG
+    } else if cli.quiet {
+        tracing::Level::WARN
     } else {
         tracing::Level::INFO
     };
     let builder = tracing_subscriber::fmt()
         .with_max_level(level)
         .with_writer(std::io::stderr)
-        .with_ansi(!cli.no_color);
+        .with_ansi(!cli.no_color && std::io::stderr().is_terminal());
     // A second call fails when a subscriber exists. This is safe to ignore.
     let _ = match cli.log_format {
-        LogFormat::Text => builder.try_init(),
+        // Plain text shows only the message. With --verbose, it also shows the level.
+        LogFormat::Text => builder
+            .without_time()
+            .with_target(false)
+            .with_level(cli.verbose)
+            .try_init(),
         LogFormat::Json => builder.json().try_init(),
     };
 }

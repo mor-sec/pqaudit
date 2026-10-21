@@ -109,3 +109,38 @@ pub fn classical_ssh_server() -> SocketAddr {
     });
     address
 }
+
+/// Install the repository rules pack as version 99.0.0, without a signature.
+///
+/// The pack goes into `<data>/rules/99.0.0`, the place that `rules update` uses.
+pub fn install_unsigned_pack(data: &std::path::Path) {
+    fn collect(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<(String, Vec<u8>)>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path
+                .strip_prefix(base)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            if path.is_dir() {
+                if name != "trust" {
+                    collect(&path, base, out);
+                }
+            } else if name == "pack.toml" {
+                out.push((
+                    name,
+                    b"id = \"pqaudit-default\"\nversion = \"99.0.0\"\n".to_vec(),
+                ));
+            } else {
+                out.push((name, std::fs::read(&path).unwrap()));
+            }
+        }
+    }
+    let rules = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../rules");
+    let mut files = Vec::new();
+    collect(&rules, &rules, &mut files);
+    let archive = pqaudit_rules::archive::build_archive(files).unwrap();
+    let dir = data.join("rules").join("99.0.0");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("rules-99.0.0.tar.zst"), archive).unwrap();
+}

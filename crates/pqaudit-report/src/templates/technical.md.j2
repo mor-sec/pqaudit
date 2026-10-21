@@ -5,10 +5,14 @@
 - Date: {{ date }}
 - Engagement: {{ engagement }}
 - Tool version: {{ tool_version }}
-- Rules pack: {{ pack_id }} {{ pack_version }} (hash {{ pack_hash }})
+- Rules pack: {{ pack_id }} {{ pack_version }} (hash {{ pack_hash }}). Origin: {{ pack_origin }}.
 
 {% if redacted %}
-This report uses redacted results. The tool replaced host names and paths with hashes. The tool cannot match assets to the findings. All context fields show as Unassessed.
+This report uses redacted results. The tool replaced host names and paths with hashes. The tool cannot match assets to the findings. All context fields show as Unassessed. The client name shows as the redacted engagement name.
+
+{% endif %}
+{% if pack_unsigned %}
+The rules pack of these results has no valid signature. The operator accepted it with the flag --allow-unsigned-rules. Examine the rules pack before you use this report.
 
 {% endif %}
 ## Method

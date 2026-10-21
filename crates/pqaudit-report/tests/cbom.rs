@@ -367,14 +367,73 @@ fn top_level_fields() {
     assert_eq!(value["metadata"]["component"]["name"], "Acme Corp");
 }
 
+fn property<'a>(bom: &'a Value, name: &str) -> Option<&'a Value> {
+    bom["metadata"]["properties"]
+        .as_array()?
+        .iter()
+        .find(|p| p["name"] == name)
+        .map(|p| &p["value"])
+}
+
 #[test]
 fn redacted_results_set_a_property() {
     let plain = bom();
-    assert!(plain["metadata"]["properties"].is_null());
+    assert!(property(&plain, "pqaudit:redacted").is_none());
     let redacted = render(&assessment(true), default_pack());
     assert_eq!(
-        redacted["metadata"]["properties"],
-        json!([{"name": "pqaudit:redacted", "value": "true"}])
+        property(&redacted, "pqaudit:redacted"),
+        Some(&json!("true"))
+    );
+}
+
+#[test]
+fn redacted_results_hide_the_client_name() {
+    let mut a = assessment(true);
+    a.header.engagement = "redacted:0123456789ab".to_string();
+    let value = render(&a, default_pack());
+    let text = value.to_string();
+    assert!(!text.contains("Acme Corp"), "the client name is in clear");
+    assert_eq!(
+        value["metadata"]["component"]["name"],
+        "redacted:0123456789ab"
+    );
+    assert!(value["metadata"]["component"]["description"]
+        .as_str()
+        .unwrap()
+        .contains("redacted"));
+}
+
+#[test]
+fn rules_pack_origin_is_a_property() {
+    assert_eq!(
+        property(&bom(), "pqaudit:rules-pack-origin"),
+        Some(&json!("embedded"))
+    );
+    assert!(property(&bom(), "pqaudit:rules-pack-signer").is_none());
+
+    let mut a = assessment(false);
+    a.pack.origin = PackOriginRef::Installed {
+        path: "/data/rules/1.0.0".to_string(),
+        signed_by: "key-b".to_string(),
+        rotation_chain: vec!["key-a".to_string(), "key-b".to_string()],
+    };
+    let installed = render(&a, default_pack());
+    assert_eq!(
+        property(&installed, "pqaudit:rules-pack-origin"),
+        Some(&json!("installed"))
+    );
+    assert_eq!(
+        property(&installed, "pqaudit:rules-pack-signer"),
+        Some(&json!("key-b"))
+    );
+
+    a.pack.origin = PackOriginRef::Unsigned {
+        path: "/data/rules/1.0.0".to_string(),
+    };
+    let unsigned = render(&a, default_pack());
+    assert_eq!(
+        property(&unsigned, "pqaudit:rules-pack-origin"),
+        Some(&json!("unsigned"))
     );
 }
 
