@@ -1,6 +1,6 @@
 //! Turn the probe results into findings, inventory items, and scan errors.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, SocketAddr};
 
 use chrono::Utc;
@@ -51,6 +51,8 @@ struct Builder<'a> {
     run_id: Uuid,
     output: NetOutput,
     certs: BTreeMap<String, SeenCert>,
+    /// The place of each finding in the output, by fingerprint.
+    seen: HashMap<Fingerprint, usize>,
 }
 
 /// Make the output of a scan from the results of the probes.
@@ -65,6 +67,7 @@ pub(crate) fn build(
         run_id,
         output: NetOutput::default(),
         certs: BTreeMap::new(),
+        seen: HashMap::new(),
     };
     for (target, result) in targets.iter().zip(results) {
         match result {
@@ -113,6 +116,21 @@ impl Builder<'_> {
             },
             evidence,
             run_id: self.run_id,
+        }
+    }
+
+    /// Add a finding. A finding with the same fingerprint gets the new occurrences.
+    /// One host name with many addresses gives one finding.
+    fn add_finding(&mut self, finding: Finding) {
+        match self.seen.get(&finding.fingerprint) {
+            Some(&index) => self.output.findings[index]
+                .occurrences
+                .extend(finding.occurrences),
+            None => {
+                self.seen
+                    .insert(finding.fingerprint.clone(), self.output.findings.len());
+                self.output.findings.push(finding);
+            }
         }
     }
 
@@ -173,7 +191,7 @@ impl Builder<'_> {
                 key: None,
                 endpoint: Some(endpoint.clone()),
             };
-            self.output.findings.push(finding);
+            self.add_finding(finding);
         }
         if let Some(versions) = obs.legacy_versions.as_ref().filter(|v| !v.is_empty()) {
             let evidence = messages::EVIDENCE_LEGACY.replace("{versions}", &versions.join(", "));
@@ -193,7 +211,7 @@ impl Builder<'_> {
                 key: None,
                 endpoint: Some(endpoint.clone()),
             };
-            self.output.findings.push(finding);
+            self.add_finding(finding);
         }
         if obs.pq_hybrid_supported == Some(true) {
             let occurrence = self.occurrence(t, messages::EVIDENCE_PQ_READY.to_string());
@@ -340,7 +358,7 @@ impl Builder<'_> {
             key: None,
             endpoint: Some(endpoint.clone()),
         };
-        self.output.findings.push(finding);
+        self.add_finding(finding);
     }
 
     /// Classify the certificates. A certificate that many endpoints share is one item.
@@ -384,5 +402,51 @@ impl Builder<'_> {
             }
         }
         self.output
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime::TlsObservationWithCerts;
+    use pqaudit_rules::embedded::default_pack;
+
+    fn target(ip: &str) -> PlannedTarget {
+        PlannedTarget {
+            host: Some(String::from("example.test")),
+            ip: ip.parse().unwrap(),
+            port: 443,
+            protocol: Protocol::Tls,
+            connections: 1,
+        }
+    }
+
+    fn classical_server() -> Option<TargetResult> {
+        Some(TargetResult::Tls(TlsObservationWithCerts {
+            obs: TlsObservation {
+                pq_hybrid_supported: Some(false),
+                negotiated_version: Some(String::from("TLS1.3")),
+                negotiated_group: Some(String::from("x25519")),
+                cipher_suite: None,
+                legacy_versions: None,
+                errors: Vec::new(),
+            },
+            chain: Vec::new(),
+            failures: Vec::new(),
+        }))
+    }
+
+    #[test]
+    fn one_host_name_with_two_addresses_gives_one_finding() {
+        let targets = [target("192.0.2.1"), target("192.0.2.2")];
+        let output = build(
+            &targets,
+            vec![classical_server(), classical_server()],
+            Uuid::new_v4(),
+            default_pack(),
+        );
+        assert_eq!(output.findings.len(), 1);
+        assert_eq!(output.findings[0].occurrences.len(), 2);
+        assert!(output.findings[0].id.starts_with("F-"));
     }
 }
