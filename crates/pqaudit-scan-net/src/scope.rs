@@ -211,6 +211,10 @@ impl Host {
             return Ok(Self::Ip(ip.to_canonical()));
         }
         let name = text.strip_suffix('.').unwrap_or(text).to_ascii_lowercase();
+        // A host name can have one final dot only.
+        if name.ends_with('.') {
+            return Err(messages::HOST_INVALID.to_string());
+        }
         // A resolver can read these forms as an IP address. The scope must not hide an address.
         if looks_numeric(&name) {
             return Err(messages::HOST_NUMERIC.to_string());

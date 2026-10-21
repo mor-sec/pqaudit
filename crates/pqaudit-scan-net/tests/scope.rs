@@ -7,6 +7,7 @@ use std::net::IpAddr;
 use std::time::Duration;
 
 use pqaudit_core::Protocol;
+use pqaudit_scan_net::messages;
 use pqaudit_scan_net::scope::{
     build_plan, scope_hash, HoursWindow, Limits, LimitsToml, RefusalReason, Resolver, ScopeError,
     ScopeFile, TargetPlan,
@@ -850,4 +851,26 @@ fn canonical_addresses_and_names_still_parse() {
         ScopeFile::parse(&host_target(host), "scope.toml")
             .unwrap_or_else(|error| panic!("{host}: {error}"));
     }
+}
+
+#[test]
+fn names_with_more_than_one_final_dot_are_parse_errors() {
+    for host in ["127.0.0.1..", "10.1..", "a.example..", "printer.."] {
+        let error = ScopeFile::parse(&host_target(host), "scope.toml").unwrap_err();
+        assert!(
+            matches!(error, ScopeError::Parse { .. }),
+            "{host}: {error:?}"
+        );
+        assert!(
+            error.to_string().contains(messages::HOST_INVALID),
+            "{host}: {error}"
+        );
+        let exclude = format!("[[exclude]]\nhost = \"{host}\"\n");
+        let error = ScopeFile::parse(&exclude, "scope.toml").unwrap_err();
+        assert!(
+            error.to_string().contains(messages::HOST_INVALID),
+            "exclude {host}: {error}"
+        );
+    }
+    ScopeFile::parse(&host_target("a.example."), "scope.toml").unwrap();
 }
