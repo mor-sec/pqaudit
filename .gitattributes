@@ -1,0 +1,2 @@
+# Check out text files with LF on every system. Tests compare text files byte for byte.
+* text=auto eol=lf
