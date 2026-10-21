@@ -8,19 +8,20 @@ use ml_dsa::pkcs8::spki::der::pem::LineEnding;
 use ml_dsa::MlDsa65;
 use serde::Serialize;
 
+use crate::messages;
 use crate::verify::{HybridPublicKey, SigFile, ROTATION_FORMAT, SIG_FORMAT};
 
 /// An error when the program makes a key or a signature.
 #[derive(Debug, thiserror::Error)]
 pub enum SigningError {
     /// The system has no random bytes.
-    #[error("The system cannot give random bytes: {0}")]
+    #[error("{}", messages::SIGN_RANDOM.replace("{reason}", .0))]
     Random(String),
     /// The program cannot read or write a key.
-    #[error("A key is not valid: {0}")]
+    #[error("{}", messages::SIGN_KEY.replace("{reason}", .0))]
     Key(String),
     /// The date is not valid.
-    #[error("The date {0:?} is not valid. Use YYYY-MM-DD.")]
+    #[error("{}", messages::SIGN_DATE.replace("{date}", .0))]
     Date(String),
 }
 

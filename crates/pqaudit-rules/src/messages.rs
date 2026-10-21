@@ -81,6 +81,15 @@ pub const PACK_MISPLACED: &str =
 /// The error for an ID that two rules use. The tool fills in {id}.
 pub const PACK_DUPLICATE_ID: &str = "The ID {id} is in the pack more than one time.";
 
+/// The error when the system has no random bytes. The tool fills in {reason}.
+pub const SIGN_RANDOM: &str = "The system cannot give random bytes. {reason}";
+
+/// The error when a key is not valid. The tool fills in {reason}.
+pub const SIGN_KEY: &str = "A key is not valid. {reason}";
+
+/// The error when a date is not valid. The tool fills in {date}.
+pub const SIGN_DATE: &str = "The date {date} is not valid. Use YYYY-MM-DD.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("TEST_TRUST_WARNING", TEST_TRUST_WARNING),
@@ -109,4 +118,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("PACK_MISSING", PACK_MISSING),
     ("PACK_MISPLACED", PACK_MISPLACED),
     ("PACK_DUPLICATE_ID", PACK_DUPLICATE_ID),
+    ("SIGN_RANDOM", SIGN_RANDOM),
+    ("SIGN_KEY", SIGN_KEY),
+    ("SIGN_DATE", SIGN_DATE),
 ];
