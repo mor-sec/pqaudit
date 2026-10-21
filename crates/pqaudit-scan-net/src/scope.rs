@@ -208,6 +208,10 @@ impl Host {
             return Ok(Self::Ip(ip.to_canonical()));
         }
         let name = text.strip_suffix('.').unwrap_or(text).to_ascii_lowercase();
+        // A resolver can read these forms as an IP address. The scope must not hide an address.
+        if looks_numeric(&name) {
+            return Err(messages::HOST_NUMERIC.to_string());
+        }
         let valid = !name.is_empty()
             && name.len() <= 253
             && name
@@ -221,6 +225,15 @@ impl Host {
             Err(messages::HOST_INVALID.to_string())
         }
     }
+}
+
+/// True if a resolver can read the name as an IP address in a form that is not canonical.
+///
+/// Examples are `10.1`, `167772161`, `010.020.030.040`, and labels that start with `0x`.
+fn looks_numeric(name: &str) -> bool {
+    let labels = || name.split('.');
+    labels().all(|label| !label.is_empty() && label.bytes().all(|b| b.is_ascii_digit()))
+        || labels().any(|label| label.starts_with("0x"))
 }
 
 /// What a target or an exclude names: a host or a CIDR range.

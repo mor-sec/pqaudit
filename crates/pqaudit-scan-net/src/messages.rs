@@ -42,6 +42,10 @@ pub const PORT_ZERO: &str = "A port must be from 1 to 65535.";
 pub const HOST_INVALID: &str =
     "A host must be a host name or an IP address. It must not have a port, a path, or spaces.";
 
+/// The reason when a host name looks like a number but is not a canonical IP address.
+pub const HOST_NUMERIC: &str =
+    "The host looks like a number, but it is not a canonical IP address. Write a canonical IP address, for example 10.0.0.1.";
+
 /// The reason when allowed_hours is not valid.
 pub const HOURS_INVALID: &str =
     "The value of allowed_hours must have the form HH:MM-HH:MM. The two times must differ.";
@@ -191,6 +195,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("PORTS_EMPTY", PORTS_EMPTY),
     ("PORT_ZERO", PORT_ZERO),
     ("HOST_INVALID", HOST_INVALID),
+    ("HOST_NUMERIC", HOST_NUMERIC),
     ("HOURS_INVALID", HOURS_INVALID),
     ("REFUSE_RESOLVE", REFUSE_RESOLVE),
     ("REFUSE_NO_ADDRESSES", REFUSE_NO_ADDRESSES),

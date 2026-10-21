@@ -681,3 +681,53 @@ fn legacy_check_with_too_few_handshakes_is_a_configuration_error() {
     let ok = "legacy_tls_check = true\n[limits]\ntls_handshakes = 3\n[[target]]\nhost = \"192.0.2.1\"\nports = [443]\nprotocol = \"tls\"\n";
     assert_eq!(plan(ok, &FakeResolver::default()).targets[0].connections, 3);
 }
+
+/// Make a scope text with one TLS target for the host.
+fn host_target(host: &str) -> String {
+    format!("allowed_cidrs = [\"10.0.0.0/8\"]\n[[target]]\nhost = \"{host}\"\nports = [443]\nprotocol = \"tls\"\n")
+}
+
+#[test]
+fn numeric_host_names_are_parse_errors() {
+    for host in [
+        "010.020.030.040",
+        "10.1",
+        "10.0.1",
+        "167772161",
+        "0x0a.0.0.1",
+        "0X0A000001",
+        "10.0.0.0x1",
+        "127.1.",
+        "1.2.3.4.5",
+    ] {
+        let error = ScopeFile::parse(&host_target(host), "scope.toml").unwrap_err();
+        assert!(
+            matches!(error, ScopeError::Parse { .. }),
+            "{host}: {error:?}"
+        );
+        assert!(
+            error.to_string().contains("canonical IP address"),
+            "{host}: {error}"
+        );
+        let exclude = format!("[[exclude]]\nhost = \"{host}\"\n");
+        let error = ScopeFile::parse(&exclude, "scope.toml").unwrap_err();
+        assert!(
+            error.to_string().contains("canonical IP address"),
+            "exclude {host}: {error}"
+        );
+    }
+}
+
+#[test]
+fn canonical_addresses_and_names_still_parse() {
+    for host in [
+        "10.0.0.1",
+        "::1",
+        "pay.example",
+        "a1.example",
+        "123.example",
+    ] {
+        ScopeFile::parse(&host_target(host), "scope.toml")
+            .unwrap_or_else(|error| panic!("{host}: {error}"));
+    }
+}
