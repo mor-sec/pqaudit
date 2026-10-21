@@ -53,6 +53,8 @@ struct Builder<'a> {
     certs: BTreeMap<String, SeenCert>,
     /// The place of each finding in the output, by fingerprint.
     seen: HashMap<Fingerprint, usize>,
+    /// The place of each endpoint inventory item in the output, by fingerprint.
+    seen_items: HashMap<Fingerprint, usize>,
 }
 
 /// Make the output of a scan from the results of the probes.
@@ -68,6 +70,7 @@ pub(crate) fn build(
         output: NetOutput::default(),
         certs: BTreeMap::new(),
         seen: HashMap::new(),
+        seen_items: HashMap::new(),
     };
     for (target, result) in targets.iter().zip(results) {
         match result {
@@ -130,6 +133,20 @@ impl Builder<'_> {
                 self.seen
                     .insert(finding.fingerprint.clone(), self.output.findings.len());
                 self.output.findings.push(finding);
+            }
+        }
+    }
+
+    /// Add an endpoint item. An item with the same fingerprint gets the new occurrences.
+    fn add_item(&mut self, item: InventoryItem) {
+        match self.seen_items.get(&item.fingerprint) {
+            Some(&index) => self.output.inventory[index]
+                .occurrences
+                .extend(item.occurrences),
+            None => {
+                self.seen_items
+                    .insert(item.fingerprint.clone(), self.output.inventory.len());
+                self.output.inventory.push(item);
             }
         }
     }
@@ -215,7 +232,7 @@ impl Builder<'_> {
         }
         if obs.pq_hybrid_supported == Some(true) {
             let occurrence = self.occurrence(t, messages::EVIDENCE_PQ_READY.to_string());
-            self.output.inventory.push(InventoryItem {
+            self.add_item(InventoryItem {
                 kind: InventoryKind::Endpoint,
                 fingerprint: Fingerprint::endpoint(&host, t.port, "tls"),
                 pq_ready: true,
@@ -324,7 +341,7 @@ impl Builder<'_> {
         if !pq_names.is_empty() {
             let evidence = messages::EVIDENCE_SSH_PQ_READY.replace("{names}", &pq_names.join(", "));
             let occurrence = self.occurrence(t, evidence);
-            self.output.inventory.push(InventoryItem {
+            self.add_item(InventoryItem {
                 kind: InventoryKind::Endpoint,
                 fingerprint: Fingerprint::endpoint(&host, t.port, "ssh"),
                 pq_ready: true,
@@ -434,6 +451,27 @@ mod tests {
             chain: Vec::new(),
             failures: Vec::new(),
         }))
+    }
+
+    fn pq_server() -> Option<TargetResult> {
+        let Some(TargetResult::Tls(mut result)) = classical_server() else {
+            unreachable!()
+        };
+        result.obs.pq_hybrid_supported = Some(true);
+        Some(TargetResult::Tls(result))
+    }
+
+    #[test]
+    fn one_host_name_with_two_addresses_gives_one_inventory_item() {
+        let targets = [target("192.0.2.1"), target("192.0.2.2")];
+        let output = build(
+            &targets,
+            vec![pq_server(), pq_server()],
+            Uuid::new_v4(),
+            default_pack(),
+        );
+        assert_eq!(output.inventory.len(), 1);
+        assert_eq!(output.inventory[0].occurrences.len(), 2);
     }
 
     #[test]
