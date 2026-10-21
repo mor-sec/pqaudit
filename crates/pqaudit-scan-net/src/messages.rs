@@ -19,6 +19,13 @@ pub const LIMIT_BELOW_DEFAULT: &str = "The limit {name} is {requested}. The defa
 /// The error for a limit that is zero. The tool fills in {name}.
 pub const LIMIT_ZERO: &str = "The limit {name} must be 1 or more.";
 
+/// The scan error when the tool could not write each connection to the audit log.
+pub const AUDIT_INCOMPLETE: &str =
+    "The audit log is not complete. The tool could not write each connection to it.";
+
+/// The error when the legacy TLS check needs more handshakes. The tool fills in {handshakes} and {needed}.
+pub const LEGACY_NEEDS_HANDSHAKES: &str = "The setting legacy_tls_check = true needs {needed} TLS handshakes, but the limit tls_handshakes is {handshakes}. Set tls_handshakes to {needed}, or set legacy_tls_check to false.";
+
 /// The reason when a target has neither a host nor a CIDR, or both.
 pub const TARGET_KIND: &str = "A target needs one host or one cidr key, not both.";
 
@@ -38,10 +45,6 @@ pub const HOST_INVALID: &str =
 /// The reason when allowed_hours is not valid.
 pub const HOURS_INVALID: &str =
     "The value of allowed_hours must have the form HH:MM-HH:MM. The two times must differ.";
-
-/// The reason when an IPv6 range is wider than the IPv4-mapped range and holds it.
-pub const MAPPED_RANGE_WIDE: &str =
-    "This IPv6 range holds the IPv4-mapped range ::ffff:0:0/96. Use a smaller range or an IPv4 range.";
 
 /// The reason when a host name does not resolve. The tool fills in {reason}.
 pub const REFUSE_RESOLVE: &str = "The host name does not resolve. {reason}";
@@ -181,13 +184,14 @@ pub const ALL: &[(&str, &str)] = &[
     ("LIMIT_ABOVE_DEFAULT", LIMIT_ABOVE_DEFAULT),
     ("LIMIT_BELOW_DEFAULT", LIMIT_BELOW_DEFAULT),
     ("LIMIT_ZERO", LIMIT_ZERO),
+    ("LEGACY_NEEDS_HANDSHAKES", LEGACY_NEEDS_HANDSHAKES),
+    ("AUDIT_INCOMPLETE", AUDIT_INCOMPLETE),
     ("TARGET_KIND", TARGET_KIND),
     ("EXCLUDE_KIND", EXCLUDE_KIND),
     ("PORTS_EMPTY", PORTS_EMPTY),
     ("PORT_ZERO", PORT_ZERO),
     ("HOST_INVALID", HOST_INVALID),
     ("HOURS_INVALID", HOURS_INVALID),
-    ("MAPPED_RANGE_WIDE", MAPPED_RANGE_WIDE),
     ("REFUSE_RESOLVE", REFUSE_RESOLVE),
     ("REFUSE_NO_ADDRESSES", REFUSE_NO_ADDRESSES),
     ("REFUSE_OUTSIDE", REFUSE_OUTSIDE),

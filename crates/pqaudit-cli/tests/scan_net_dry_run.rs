@@ -104,3 +104,13 @@ fn dry_run_of_the_init_template_has_no_targets() {
         .code(0)
         .stdout(predicate::str::contains("no targets"));
 }
+
+#[test]
+fn legacy_check_with_too_few_handshakes_exits_1() {
+    let dir = engagement(
+        "legacy_tls_check = true\n[limits]\ntls_handshakes = 1\n[[target]]\nhost = \"192.0.2.1\"\nports = [443]\nprotocol = \"tls\"\n",
+    );
+    dry_run(&dir)
+        .code(1)
+        .stderr(predicates::str::contains("tls_handshakes"));
+}

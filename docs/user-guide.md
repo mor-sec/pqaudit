@@ -75,7 +75,7 @@ The file `scope.toml` is the only source of network targets. The template has no
 | `allowed_cidrs` | The address ranges that host names can resolve to. These ranges are not targets. The CIDR ranges of the targets are also allowed |
 | `allowed_hours` | The local-time window in which the tool can start, for example `"09:00-17:00"`. The window can cross midnight, for example `"22:00-06:00"` |
 | `override_limits` | If the value is `true`, you can set limits past their defaults. The default is `false` |
-| `legacy_tls_check` | If the value is `true`, the tool makes one more TLS connection for each port. That connection checks for old protocol versions. The default is `false` |
+| `legacy_tls_check` | If the value is `true`, the tool makes one more TLS connection for each port. That connection checks for old protocol versions. The check needs `tls_handshakes` of 3. A lower limit stops the scan with exit code 1. The default is `false` |
 | `[limits]` | The network limits. Refer to the table below |
 | `[[target]]` | A target. Refer to the keys below |
 | `[[exclude]]` | An exclusion. It has a `host` key or a `cidr` key |

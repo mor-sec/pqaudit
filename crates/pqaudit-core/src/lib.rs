@@ -10,6 +10,7 @@ pub mod finding;
 pub mod fingerprint;
 pub mod merge;
 pub mod messages;
+pub mod net;
 pub mod results;
 pub mod scoring;
 pub mod text;

@@ -99,3 +99,22 @@ fn ipv4_mapped_ipv6_matches_ipv4_cidr() {
     assert!(match_asset(&assets, &endpoint("x", "::ffff:10.1.2.3")).is_some());
     assert!(match_asset(&assets, &endpoint("x", "::ffff:10.2.2.3")).is_none());
 }
+
+#[test]
+fn mapped_ipv6_cidr_matches_an_ipv4_address() {
+    let assets = vec![asset("Mapped", &[], &["::ffff:10.0.0.0/104"], &[])];
+    assert_eq!(
+        assets[0].matcher.cidrs,
+        vec!["10.0.0.0/8".parse::<ipnet::IpNet>().unwrap()]
+    );
+    let found = match_asset(&assets, &endpoint("x", "10.1.2.3"));
+    assert_eq!(found.map(|a| a.name.as_str()), Some("Mapped"));
+    let found = match_asset(&assets, &endpoint("x", "::ffff:10.1.2.3"));
+    assert_eq!(found.map(|a| a.name.as_str()), Some("Mapped"));
+}
+
+#[test]
+fn ipv6_cidr_that_holds_the_mapped_range_is_an_error() {
+    let text = "[[asset]]\nname = \"Wide\"\nmatch = { cidrs = [\"::/0\"] }\n";
+    assert!(toml::from_str::<AssetsFile>(text).is_err());
+}

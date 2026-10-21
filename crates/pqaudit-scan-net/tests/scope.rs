@@ -484,10 +484,10 @@ fn tls_connections_count_is_2_or_3() {
 
 #[test]
 fn tls_handshake_limit_caps_connections() {
+    // The legacy check needs 3 handshakes. Without it, a TLS target needs 2.
     let text = r#"
-        legacy_tls_check = true
         [limits]
-        tls_handshakes = 2
+        tls_handshakes = 1
         [[target]]
         host = "10.0.0.5"
         ports = [443]
@@ -495,7 +495,7 @@ fn tls_handshake_limit_caps_connections() {
     "#;
     assert_eq!(
         plan(text, &FakeResolver::default()).targets[0].connections,
-        2
+        1
     );
 }
 
@@ -661,4 +661,23 @@ fn template_loads() {
         &FakeResolver::with("pay.acme.example", &["10.0.0.5"]),
     )
     .unwrap();
+}
+
+#[test]
+fn legacy_check_with_too_few_handshakes_is_a_configuration_error() {
+    let text = "legacy_tls_check = true\n[limits]\ntls_handshakes = 2\n[[target]]\nhost = \"192.0.2.1\"\nports = [443]\nprotocol = \"tls\"\n";
+    let error = build_plan(&scope(text), &FakeResolver::default()).unwrap_err();
+    assert!(matches!(
+        error,
+        ScopeError::LegacyCheckNeedsHandshakes { .. }
+    ));
+    assert!(!error.is_refusal(), "a configuration error gives exit 1");
+    let text = error.to_string();
+    assert!(
+        text.contains("tls_handshakes") && text.contains("legacy_tls_check"),
+        "{text}"
+    );
+    // Three handshakes are enough.
+    let ok = "legacy_tls_check = true\n[limits]\ntls_handshakes = 3\n[[target]]\nhost = \"192.0.2.1\"\nports = [443]\nprotocol = \"tls\"\n";
+    assert_eq!(plan(ok, &FakeResolver::default()).targets[0].connections, 3);
 }

@@ -361,6 +361,9 @@ pub async fn run(
     run_until(plan, probes, audit, run_id, pack, std::future::pending()).await
 }
 
+/// The location of the scan error for an audit log that is not complete.
+pub const AUDIT_LOCATION: &str = "audit.log";
+
 /// Probe the targets like `run`, but stop when the `stop` future finishes.
 ///
 /// On a stop, the tool drops the probes that are not done. Each open connection then writes
@@ -402,7 +405,15 @@ pub async fn run_until(
         .into_iter()
         .map(|slot| slot.into_inner().unwrap_or_else(PoisonError::into_inner))
         .collect();
-    findings::build(&plan.targets, results, run_id, pack)
+    let mut output = findings::build(&plan.targets, results, run_id, pack);
+    // The results must tell when the log does not have each connection.
+    if audit.is_broken() {
+        output.errors.push(ScanError {
+            location: String::from(AUDIT_LOCATION),
+            reason: messages::AUDIT_INCOMPLETE.to_string(),
+        });
+    }
+    output
 }
 
 /// Check the window `allowed_hours` as text. `None` means no window.

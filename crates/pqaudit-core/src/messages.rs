@@ -179,6 +179,10 @@ pub const RULE_BANDS: &str =
 /// The rule for a migration time.
 pub const RULE_MIGRATION: &str = "Each migration time must be a finite number of more than 0.";
 
+/// The error for an IPv6 range that holds the IPv4-mapped range.
+pub const MAPPED_RANGE_WIDE: &str =
+    "This IPv6 range holds the IPv4-mapped range ::ffff:0:0/96. Use a smaller range or an IPv4 range.";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("SCORING_INVALID", SCORING_INVALID),
@@ -220,6 +224,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("MERGE_ENGAGEMENT_MISMATCH", MERGE_ENGAGEMENT_MISMATCH),
     ("MERGE_PACK_MISMATCH", MERGE_PACK_MISMATCH),
     ("MERGE_UNSIGNED_PACK", MERGE_UNSIGNED_PACK),
+    ("MAPPED_RANGE_WIDE", MAPPED_RANGE_WIDE),
     ("UNSUPPORTED_SCHEMA", UNSUPPORTED_SCHEMA),
     ("RESULTS_PARSE", RESULTS_PARSE),
     ("RESULTS_IO", RESULTS_IO),

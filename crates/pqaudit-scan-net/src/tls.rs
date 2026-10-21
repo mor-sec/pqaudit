@@ -321,7 +321,7 @@ fn adopt(obs: &mut TlsObservation, shake: &Shake) {
 /// Probe a TLS target. The plan sets the number of connections.
 ///
 /// The order is: hybrid, classical, and legacy. The count of connections cuts the list.
-/// With one connection, the tool does the classical handshake only.
+/// With one connection, the tool does the hybrid handshake only.
 /// After a timeout or a failed connect, the tool makes no more connections to the target.
 async fn probe_tls(
     legacy_tls_check: bool,

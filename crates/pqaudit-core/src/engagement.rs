@@ -167,8 +167,8 @@ pub struct AssetMatch {
     /// Host names.
     #[serde(default)]
     pub hosts: Vec<String>,
-    /// Address ranges.
-    #[serde(default)]
+    /// Address ranges. A mapped IPv6 range becomes an IPv4 range.
+    #[serde(default, deserialize_with = "crate::net::canonical_nets")]
     pub cidrs: Vec<IpNet>,
     /// Path globs.
     #[serde(default)]

@@ -506,3 +506,36 @@ async fn stopped_run_keeps_finished_results_and_reports_the_rest() {
     let outcomes: Vec<String> = read_entries(&dir).into_iter().map(|e| e.outcome).collect();
     assert_eq!(outcomes, ["aborted"]);
 }
+
+#[tokio::test(start_paused = true)]
+async fn broken_audit_log_adds_a_scan_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let audit = audit_in(&dir);
+    let targets = vec![target(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 443)];
+    let fake = Fake::default();
+    let good = run(
+        &plan(targets.clone(), Limits::DEFAULT),
+        &fake,
+        &audit,
+        Uuid::new_v4(),
+        default_pack(),
+    )
+    .await;
+    assert!(good.errors.is_empty(), "errors: {:?}", good.errors);
+    audit.mark_broken();
+    let out = run(
+        &plan(targets, Limits::DEFAULT),
+        &fake,
+        &audit,
+        Uuid::new_v4(),
+        default_pack(),
+    )
+    .await;
+    assert!(
+        out.errors
+            .iter()
+            .any(|e| e.reason.contains("The audit log is not complete")),
+        "errors: {:?}",
+        out.errors
+    );
+}
