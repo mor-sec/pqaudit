@@ -182,6 +182,23 @@ fn redacted_results_check_the_engagement_with_the_key() {
     let cbom = fs::read_to_string(dir.path().join("eng/reports/cbom.cdx.json")).unwrap();
     assert!(!cbom.contains(CLIENT), "the client name is in clear");
 
+    let json_path = dir.path().join("eng/reports/technical.json");
+    pqaudit(dir.path())
+        .args(["report", "--format", "json", "--results"])
+        .arg(&redacted)
+        .assert()
+        .code(0);
+    let json = fs::read_to_string(&json_path).unwrap();
+    assert!(!json.contains(CLIENT), "the client name is in the JSON");
+    let md_path = dir.path().join("eng/reports/technical.md");
+    pqaudit(dir.path())
+        .args(["report", "--format", "md", "--results"])
+        .arg(&redacted)
+        .assert()
+        .code(0);
+    let md = fs::read_to_string(&md_path).unwrap();
+    assert!(!md.contains(CLIENT), "the client name is in the Markdown");
+
     // A redacted name from a different key does not match.
     let mut file = pqaudit_core::ResultsFile::read(&redacted).unwrap();
     let good = file.header.engagement.clone();

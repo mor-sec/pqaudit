@@ -250,7 +250,12 @@ pub fn assess(
 
     Ok(Assessment {
         engagement: EngagementSummary {
-            client: config.client.clone(),
+            client: if results.header.redacted {
+                // The clear name must not reach any report. The header has the redacted name.
+                results.header.engagement.clone()
+            } else {
+                config.client.clone()
+            },
             assessor: config.assessor.clone(),
             assessment_date: today,
             profiles: config.deadlines.profiles.clone(),
