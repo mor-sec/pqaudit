@@ -61,7 +61,6 @@ pub struct Block<'a> {
     pub line: u32,
 }
 
-/// The blocks of a text.
 impl std::fmt::Debug for Block<'_> {
     /// Show the label and the size of the body. Never show the body: it can be a private key.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -74,6 +73,7 @@ impl std::fmt::Debug for Block<'_> {
     }
 }
 
+/// The blocks of a text.
 #[derive(Debug, Default)]
 pub struct Blocks<'a> {
     /// The blocks with an end line.
