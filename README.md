@@ -27,7 +27,7 @@ Security consultants and security teams use it in an engagement. A scan finds ce
 2. Check the file. The steps are in [docs/verifying.md](docs/verifying.md).
 3. Put the `pqaudit` file in a directory in your path.
 
-The release files are for Linux (x86_64 and aarch64), macOS (universal), and Windows (x86_64). The tool is one file. It does not need an installer or a service.
+The release files are for Linux (x86_64 and aarch64), macOS (universal), and Windows (x86_64 and arm64). The tool is one file. It does not need an installer or a service.
 
 ## Quick start
 

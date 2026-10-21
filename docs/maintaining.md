@@ -131,7 +131,7 @@ Do the release steps in this order:
 7. Wait for the release workflow. It makes a draft release.
 8. Approve the `release-signing` environment in GitHub. The macOS and Windows signing jobs then run.
 9. Download the draft release files to the computer that holds the release key.
-10. Sign the checksums: `cargo xtask sign-release --keys <release-key-dir> --dir <download-dir> --repo mor-sec/pqaudit`.
+10. Sign the checksums: `cargo xtask sign-release --keys <release-key-dir> --dir <download-dir> --repo mor-sec/pqaudit --tag v<version>`. The task accepts only bundles from the workflow run of that tag.
 11. Sign the rules archive: `cargo xtask sign --keys <pack-key-dir> <rules-archive>`.
 12. Upload all the new signature files to the draft release.
 13. Do all the checks in `docs/verifying.md` on the downloaded files.

@@ -67,10 +67,43 @@ fn sbom(names: &[&str]) -> String {
         .to_string()
 }
 
+/// Put a fake `cargo` first in a new directory. It logs its arguments.
+/// The file `cargo-mode` in `dir` sets what it does: `empty` (default), `error`, or `output`.
+#[cfg(unix)]
+fn fake_cargo(dir: &Path) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = dir.join("cargo-bin");
+    fs::create_dir_all(&bin).unwrap();
+    let script = bin.join("cargo");
+    fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\necho \"$@\" >> {0}/cargo.log\ncase \"$(cat {0}/cargo-mode 2>/dev/null)\" in\n  error) echo boom >&2; exit 101;;\n  output) echo 'ring v0.17.14'; exit 0;;\nesac\nexit 0\n",
+            dir.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    bin
+}
+
+#[cfg(not(unix))]
+fn fake_cargo(dir: &Path) -> PathBuf {
+    dir.to_path_buf()
+}
+
 fn self_cbom(dir: &Path, names: &[&str], declaration: &str) -> Output {
     fs::write(dir.join("sbom.json"), sbom(names)).unwrap();
     fs::write(dir.join("self-crypto.toml"), declaration).unwrap();
+    let path = format!(
+        "{}{}{}",
+        fake_cargo(dir).display(),
+        if cfg!(windows) { ";" } else { ":" },
+        std::env::var("PATH").unwrap()
+    );
     Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .env("PATH", path)
+        .env_remove("CARGO")
         .arg("self-cbom")
         .arg("--root")
         .arg(workspace_root())
@@ -148,10 +181,16 @@ mod sign_release {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
-    fn run(keys: &Path, release: &Path, bin: &Path) -> Output {
+    const TAG: &str = "v0.1.0";
+
+    fn identity(tag: &str) -> String {
+        format!("https://github.com/mor-sec/pqaudit/.github/workflows/release.yml@refs/tags/{tag}")
+    }
+
+    fn run_with_tag(keys: &Path, release: &Path, bin: &Path, tag: &str) -> Output {
         let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
         Command::new(env!("CARGO_BIN_EXE_xtask"))
-            .args(["sign-release", "--repo", "mor-sec/pqaudit"])
+            .args(["sign-release", "--repo", "mor-sec/pqaudit", "--tag", tag])
             .arg("--keys")
             .arg(keys)
             .arg("--dir")
@@ -161,7 +200,12 @@ mod sign_release {
             .unwrap()
     }
 
-    /// A fake `cosign` in a new directory. It records its arguments. It fails for a file named `bad`.
+    fn run(keys: &Path, release: &Path, bin: &Path) -> Output {
+        run_with_tag(keys, release, bin, TAG)
+    }
+
+    /// A fake `cosign` in a new directory. It logs its arguments.
+    /// It passes only if the identity argument equals the text in the bundle file.
     fn fake_cosign(dir: &Path) -> PathBuf {
         let bin = dir.join("bin");
         fs::create_dir_all(&bin).unwrap();
@@ -169,13 +213,19 @@ mod sign_release {
         fs::write(
             &script,
             format!(
-                "#!/bin/sh\necho \"$@\" >> {}/cosign.log\ncase \"$2\" in *bad) exit 1;; esac\n",
+                "#!/bin/sh\necho \"$@\" >> {}/cosign.log\n[ \"$3\" = --bundle ] && [ \"$5\" = --certificate-identity ] && [ \"$(cat \"$4\")\" = \"$6\" ]\n",
                 dir.display()
             ),
         )
         .unwrap();
         fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
         bin
+    }
+
+    /// Add a release file and a bundle that names the workflow run of `tag`.
+    fn add_file(release: &Path, name: &str, tag: &str) {
+        fs::write(release.join(name), b"x").unwrap();
+        fs::write(release.join(format!("{name}.sigstore.json")), identity(tag)).unwrap();
     }
 
     fn setup() -> (tempfile::TempDir, PathBuf, PathBuf) {
@@ -189,8 +239,12 @@ mod sign_release {
         assert!(status.success());
         let release = dir.path().join("release");
         fs::create_dir_all(&release).unwrap();
-        fs::write(release.join("pqaudit-linux"), b"binary").unwrap();
-        fs::write(release.join("pqaudit-linux.sigstore.json"), b"{}").unwrap();
+        fs::write(release.join("pqaudit-v0.1.0-linux"), b"binary").unwrap();
+        fs::write(
+            release.join("pqaudit-v0.1.0-linux.sigstore.json"),
+            identity(TAG),
+        )
+        .unwrap();
         (dir, keys, release)
     }
 
@@ -205,7 +259,10 @@ mod sign_release {
             String::from_utf8_lossy(&output.stderr)
         );
         let sums = fs::read_to_string(release.join("SHA256SUMS")).unwrap();
-        assert_eq!(sums, format!("{}  pqaudit-linux\n", sha256_of(b"binary")));
+        assert_eq!(
+            sums,
+            format!("{}  pqaudit-v0.1.0-linux\n", sha256_of(b"binary"))
+        );
         assert!(release.join("SHA3-256SUMS").is_file());
         for file in ["SHA256SUMS", "SHA3-256SUMS"] {
             for suffix in [".sig.json", ".ed25519.sig", ".mldsa65.sig"] {
@@ -214,7 +271,8 @@ mod sign_release {
         }
         let log = fs::read_to_string(dir.path().join("cosign.log")).unwrap();
         assert!(log.contains("verify-blob"));
-        assert!(log.contains("--certificate-identity-regexp ^https://github.com/mor-sec/pqaudit/"));
+        assert!(log.contains(&format!("--certificate-identity {}", identity(TAG))));
+        assert!(!log.contains("regexp"));
     }
 
     fn sha256_of(data: &[u8]) -> String {
@@ -230,7 +288,7 @@ mod sign_release {
         let (dir, keys, release) = setup();
         fs::write(
             release.join("SHA256SUMS"),
-            format!("{}  pqaudit-linux\n", "0".repeat(64)),
+            format!("{}  pqaudit-v0.1.0-linux\n", "0".repeat(64)),
         )
         .unwrap();
         let output = run(&keys, &release, &fake_cosign(dir.path()));
@@ -256,24 +314,102 @@ mod sign_release {
     #[test]
     fn missing_bundle_fails() {
         let (dir, keys, release) = setup();
-        fs::write(release.join("extra.txt"), b"x").unwrap();
+        fs::write(release.join("extra-v0.1.0.txt"), b"x").unwrap();
         let output = run(&keys, &release, &fake_cosign(dir.path()));
         assert!(!output.status.success());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("extra.txt"));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("extra-v0.1.0.txt"));
         assert!(!release.join("SHA256SUMS").exists());
     }
 
     #[test]
-    fn failed_cosign_check_fails() {
+    fn bundle_of_another_tag_fails() {
+        // An old binary with its own valid bundle, renamed to match the new tag.
         let (dir, keys, release) = setup();
-        fs::write(release.join("bad"), b"x").unwrap();
-        fs::write(release.join("bad.sigstore.json"), b"{}").unwrap();
+        add_file(&release, "pqaudit-v0.1.0-old", "v0.0.9");
         let output = run(&keys, &release, &fake_cosign(dir.path()));
         assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("pqaudit-v0.1.0-old"));
         assert!(!release.join("SHA256SUMS").exists());
+        assert!(!release.join("SHA256SUMS.sig.json").exists());
+    }
+
+    #[test]
+    fn file_name_without_the_tag_fails() {
+        let (dir, keys, release) = setup();
+        add_file(&release, "pqaudit-old-binary", TAG);
+        let output = run(&keys, &release, &fake_cosign(dir.path()));
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("pqaudit-old-binary"));
+        assert!(!release.join("SHA256SUMS").exists());
+    }
+
+    #[test]
+    fn rules_archive_needs_no_tag_in_its_name() {
+        let (dir, keys, release) = setup();
+        add_file(&release, "rules-0.1.0.tar.zst", TAG);
+        let output = run(&keys, &release, &fake_cosign(dir.path()));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn different_tag_argument_fails() {
+        let (dir, keys, release) = setup();
+        let output = run_with_tag(&keys, &release, &fake_cosign(dir.path()), "v0.2.0");
+        assert!(!output.status.success());
     }
 }
 
+#[cfg(unix)]
+mod not_linked {
+    use super::*;
+
+    const WITH_RING: &str = "\n[[not-linked]]\ncrate = \"ring\"\nreason = \"A dev-dependency.\"\n";
+
+    fn run_mode(mode: &str) -> (tempfile::TempDir, Output) {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("cargo-mode"), mode).unwrap();
+        let mut names = ALL.to_vec();
+        names.push("ring");
+        let output = self_cbom(dir.path(), &names, &format!("{DECLARATION}{WITH_RING}"));
+        (dir, output)
+    }
+
+    #[test]
+    fn empty_tree_output_passes() {
+        let (dir, output) = run_mode("empty");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let log = fs::read_to_string(dir.path().join("cargo.log")).unwrap();
+        assert!(log.contains("tree --locked"), "{log}");
+        assert!(log.contains("-i ring"), "{log}");
+        assert!(log.contains("--target all"), "{log}");
+        assert!(log.contains("-e normal,build"), "{log}");
+    }
+
+    #[test]
+    fn linked_crate_fails() {
+        let (dir, output) = run_mode("output");
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("ring"));
+        assert!(!dir.path().join("cbom.json").exists());
+    }
+
+    #[test]
+    fn cargo_error_fails() {
+        let (dir, output) = run_mode("error");
+        assert!(!output.status.success());
+        assert!(!dir.path().join("cbom.json").exists());
+    }
+}
+
+#[cfg(unix)]
 #[test]
 fn not_linked_crate_is_allowed_and_must_be_in_the_sbom() {
     let dir = tempfile::tempdir().unwrap();
@@ -295,6 +431,7 @@ fn not_linked_crate_is_allowed_and_must_be_in_the_sbom() {
     assert!(!output.status.success());
 }
 
+#[cfg(unix)]
 #[test]
 fn repository_declaration_makes_a_valid_cbom() {
     let dir = tempfile::tempdir().unwrap();

@@ -149,6 +149,7 @@ pub fn run(root: &Path, sbom: &Path, declaration: &Path, out: &Path) -> Result<(
                 .collect(),
         })
         .collect();
+    check_not_linked(root, &declared.not_linked)?;
     let cbom = render_tool(
         "pqaudit",
         env!("CARGO_PKG_VERSION"),
@@ -157,5 +158,38 @@ pub fn run(root: &Path, sbom: &Path, declaration: &Path, out: &Path) -> Result<(
         &pack,
     );
     fs::write(out, serde_json::to_string_pretty(&cbom)? + "\n")?;
+    Ok(())
+}
+
+/// Check that the build links none of the `not-linked` crates.
+///
+/// For each crate, run `cargo tree --locked` for all targets. The task fails if cargo fails.
+/// It also fails if cargo prints anything: the output is a path to the crate.
+fn check_not_linked(root: &Path, crates: &[NotLinked]) -> Result<()> {
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    for item in crates {
+        let output = Command::new(&cargo)
+            .current_dir(root)
+            .args(["tree", "--locked", "-p", "pqaudit-cli", "-i"])
+            .arg(&item.name)
+            .args(["--target", "all", "-e", "normal,build"])
+            .output()
+            .map_err(|error| format!("Cannot run cargo tree: {error}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "The check of the not-linked crate {} failed: {}",
+                item.name,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )
+            .into());
+        }
+        if !output.stdout.iter().all(u8::is_ascii_whitespace) {
+            return Err(format!(
+                "The crate {} is linked into pqaudit. Remove it from not-linked in the declaration.",
+                item.name
+            )
+            .into());
+        }
+    }
     Ok(())
 }

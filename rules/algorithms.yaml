@@ -275,3 +275,25 @@ crypto_crates:
   - p384
   - x25519-dalek
   - ml-kem
+  - aes
+  - aes-gcm
+  - cbc
+  - ctr
+  - des
+  - rc2
+  - ghash
+  - polyval
+  - hmac
+  - pbkdf2
+  - scrypt
+  - salsa20
+  - chacha20
+  - sha3
+  - keccak
+  - shake
+  - sha1_smol
+  - curve25519-dalek
+  - rustls-webpki
+  - x509-cert
+  - cms
+  - p12-keystore

@@ -64,6 +64,9 @@ enum Task {
         /// The GitHub repository that built the release, as `owner/name`.
         #[arg(long)]
         repo: String,
+        /// The release tag, for example `v0.1.0`. Only bundles from the run of this tag pass.
+        #[arg(long)]
+        tag: String,
     },
     /// Make the archive of the rules pack.
     PackRules {
@@ -112,7 +115,12 @@ fn main() -> ExitCode {
             let declaration = declaration.unwrap_or_else(|| root.join("docs/self-crypto.toml"));
             finish(self_cbom::run(&root, &sbom, &declaration, &out))
         }
-        Task::SignRelease { keys, dir, repo } => finish(sign_release::run(&keys, &dir, &repo)),
+        Task::SignRelease {
+            keys,
+            dir,
+            repo,
+            tag,
+        } => finish(sign_release::run(&keys, &dir, &repo, &tag)),
         Task::PackRules { out, root } => finish(pack_rules::run(&root, &out)),
         Task::Strings { out, root, commits } => match strings::run(&root, &out, commits.as_deref())
         {

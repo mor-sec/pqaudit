@@ -4,7 +4,7 @@
 
 This document tells how to check a pqaudit release before you use it. Each check is separate. Do all of them if you can. Most checks do not need pqaudit. Only section 8 uses it.
 
-In the commands below, `<file>` is the release file that you check. Use the name of the file as it appears in the release. The GitHub repository is `mor-sec/pqaudit`.
+In the commands below, `<file>` is the release file that you check, and `<tag>` is the tag of the release, for example `v0.1.0`. Use the name of the file as it appears in the release. The GitHub repository is `mor-sec/pqaudit`.
 
 ## What a release contains
 
@@ -24,10 +24,10 @@ The workflow `.github/workflows/release.yml` in the repository `mor-sec/pqaudit`
 This check needs a network connection and the `gh` tool.
 
 ```text
-gh attestation verify <file> --repo mor-sec/pqaudit
+gh attestation verify <file> --repo mor-sec/pqaudit --source-ref refs/tags/<tag>
 ```
 
-The command checks that the GitHub Actions workflow of this repository built the file. If the command fails, do not use the file.
+The command checks that the GitHub Actions workflow of this repository built the file from the tag `<tag>`. The workflow attests each release file except the checksum files and their signatures. The hybrid signature in section 4 covers the checksum files. If the command fails, do not use the file.
 
 ## 2. Check the Sigstore bundle with cosign
 
@@ -36,11 +36,11 @@ This check also needs a network connection. It uses the bundle `<file>.sigstore.
 ```text
 cosign verify-blob <file> \
   --bundle <file>.sigstore.json \
-  --certificate-identity-regexp '^https://github.com/mor-sec/pqaudit/.github/workflows/release.yml@refs/tags/v' \
+  --certificate-identity 'https://github.com/mor-sec/pqaudit/.github/workflows/release.yml@refs/tags/<tag>' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-The certificate identity must be the path of the release workflow. The issuer must be the GitHub Actions issuer. The command prints `Verified OK` when the check passes.
+The certificate identity must be the workflow path with the exact tag of your release. Do not use a pattern for the tag: an old release would then pass. The issuer must be the GitHub Actions issuer. The command prints `Verified OK` when the check passes.
 
 ## 3. Check without a network connection
 
@@ -59,7 +59,7 @@ Then run the check on the offline computer:
 cosign verify-blob <file> \
   --bundle <file>.sigstore.json \
   --trusted-root trusted_root.json \
-  --certificate-identity-regexp '^https://github.com/mor-sec/pqaudit/.github/workflows/release.yml@refs/tags/v' \
+  --certificate-identity 'https://github.com/mor-sec/pqaudit/.github/workflows/release.yml@refs/tags/<tag>' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
@@ -118,7 +118,9 @@ The binary holds its own list of dependencies, from `cargo auditable`. To read i
 rust-audit-info ./pqaudit
 ```
 
-Compare the list with the SBOM. The crate names and versions must be the same. A difference is a reason to ask the maintainers.
+Compare the list with the SBOM. The two lists are not always the same. The SBOM covers all targets and lists the dev-dependencies of dependencies. Thus it can hold crates that the binary does not link. An example is `ring`.
+
+The file `docs/self-crypto.toml` names the known cases of cryptography crates in the entries `[[not-linked]]`. The release process checks each one with `cargo tree`. A crate in the binary list must be in the SBOM. A crate in the SBOM only is acceptable if it is a known `not-linked` crate or has no cryptography. Any other difference is a reason to ask the maintainers.
 
 ## 7. Find the CBOM of the tool
 
@@ -147,7 +149,7 @@ The CI builds the release and makes a draft. The maintainers sign the release of
 3. Run the signing task. It checks each Sigstore bundle with `cosign verify-blob`. It stops if a bundle is missing.
 
    ```text
-   cargo xtask sign-release --keys <keys-dir> --dir <release-dir> --repo mor-sec/pqaudit
+   cargo xtask sign-release --keys <keys-dir> --dir <release-dir> --repo mor-sec/pqaudit --tag <tag>
    ```
 
    The task computes `SHA256SUMS` and `SHA3-256SUMS` from the checked files. It writes them if they are not there. If one is there and is different, the task stops and signs nothing. Then it signs both files.

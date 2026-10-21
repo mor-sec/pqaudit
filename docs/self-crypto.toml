@@ -6,7 +6,7 @@
 [[use]]
 purpose = "tls-probe"
 algorithms = ["X25519MLKEM768", "X25519", "P-256", "P-384", "RSA", "ECDSA", "Ed25519"]
-crates = ["aws-lc-rs", "aws-lc-sys", "rustls"]
+crates = ["aws-lc-rs", "aws-lc-sys", "rustls", "rustls-webpki"]
 
 [[use]]
 purpose = "rules-pack-verify"
@@ -22,13 +22,49 @@ crates = ["sha2"]
 [[use]]
 purpose = "key-file-inspection"
 algorithms = ["Ed25519", "X25519", "ML-DSA-44", "ML-DSA-65", "ML-DSA-87", "ML-KEM-512", "ML-KEM-768", "ML-KEM-1024"]
-crates = ["ed25519-dalek", "ml-dsa", "ml-kem"]
+crates = ["ed25519-dalek", "ml-dsa", "ml-kem", "curve25519-dalek"]
 
 # The file scan computes the SHA-1 fingerprint of a GPG key. This is a name, not a security function.
 [[use]]
 purpose = "gpg-fingerprints"
 algorithms = ["SHA-1"]
 crates = ["sha1"]
+
+# The ML-KEM and ML-DSA crates hash with SHA-3 and SHAKE.
+[[use]]
+purpose = "pqc-internal-hashing"
+algorithms = ["SHA3-256", "SHAKE128", "SHAKE256"]
+crates = ["sha3", "keccak", "shake"]
+
+# The PKCS#12 reader (p12-keystore) uses these crates for the MAC and for the encryption of a store.
+[[use]]
+purpose = "keystore-reading"
+algorithms = ["PBKDF2", "scrypt", "HMAC", "AES", "3DES", "RC2", "SHA-1", "SHA-256"]
+crates = ["p12-keystore", "cms", "x509-cert", "pbkdf2", "scrypt", "salsa20", "hmac", "aes", "cbc", "des", "rc2", "sha1", "sha2"]
+
+# The pkcs5 crate brings these crates in. They handle AES-GCM in encrypted PKCS#8 keys.
+[[use]]
+purpose = "encrypted-key-reading"
+algorithms = ["AES-GCM"]
+crates = ["aes-gcm", "ctr", "ghash", "polyval", "aes"]
+
+# The merge step makes a keyed hash of each finding, so that a result file does not show the raw value.
+[[use]]
+purpose = "result-fingerprints"
+algorithms = ["HMAC", "SHA-256"]
+crates = ["hmac", "sha2"]
+
+# The random number generator of the rand crate uses ChaCha20.
+[[use]]
+purpose = "random-numbers"
+algorithms = ["ChaCha20"]
+crates = ["chacha20"]
+
+# The uuid crate makes version 5 identifiers with SHA-1.
+[[use]]
+purpose = "report-identifiers"
+algorithms = ["SHA-1"]
+crates = ["sha1_smol"]
 
 # The SBOM tool lists dev-dependencies of dependencies. The build does not link these crates.
 # The release workflow checks each claim: `cargo tree -i <crate>` must print nothing.

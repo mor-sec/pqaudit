@@ -25,20 +25,23 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// The certificate identity of the release workflow in `repo` (`owner/name`), as a regular expression.
-fn identity_regexp(repo: &str) -> String {
-    format!(
-        "^https://github.com/{}/.github/workflows/release.yml@refs/tags/v",
-        repo.replace('.', "\\.")
-    )
+/// The exact certificate identity of the release workflow run for `tag` in `repo` (`owner/name`).
+fn identity(repo: &str, tag: &str) -> String {
+    format!("https://github.com/{repo}/.github/workflows/release.yml@refs/tags/{tag}")
+}
+
+/// True for a rules pack archive. Its version is the pack version, not the release tag.
+fn is_pack_archive(name: &str) -> bool {
+    name.starts_with("rules-") && name.ends_with(".tar.zst")
 }
 
 /// Check the Sigstore bundles of all files in `dir`. Compute the checksum files from those files.
 /// Write them if they are missing. Fail if a checksum file is there and is different.
 /// Sign both checksum files with the keys in `keys`.
 ///
-/// The task runs `cosign verify-blob` from the PATH. It fails if a bundle is missing or wrong.
-pub fn run(keys: &Path, dir: &Path, repo: &str) -> Result<()> {
+/// The task runs `cosign verify-blob` from the PATH with the exact identity of the workflow run for `tag`.
+/// It fails if a bundle is missing or wrong, or if a file name does not hold the tag.
+pub fn run(keys: &Path, dir: &Path, repo: &str, tag: &str) -> Result<()> {
     let mut names = Vec::new();
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -52,6 +55,11 @@ pub fn run(keys: &Path, dir: &Path, repo: &str) -> Result<()> {
         return Err("The release directory has no files.".into());
     }
     for name in &names {
+        if !name.contains(tag) && !is_pack_archive(name) {
+            return Err(format!("The name of {name} does not contain the tag {tag}.").into());
+        }
+    }
+    for name in &names {
         let bundle = dir.join(format!("{name}.sigstore.json"));
         if !bundle.is_file() {
             return Err(format!("The Sigstore bundle of {name} is missing.").into());
@@ -61,8 +69,8 @@ pub fn run(keys: &Path, dir: &Path, repo: &str) -> Result<()> {
             .arg(dir.join(name))
             .arg("--bundle")
             .arg(&bundle)
-            .arg("--certificate-identity-regexp")
-            .arg(identity_regexp(repo))
+            .arg("--certificate-identity")
+            .arg(identity(repo, tag))
             .arg("--certificate-oidc-issuer")
             .arg(OIDC_ISSUER)
             .status()
