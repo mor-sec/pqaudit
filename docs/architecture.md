@@ -123,7 +123,7 @@ flowchart TB
 | S8 | Text from peers and files loses control characters before output. The CLI cleans each path, host, and location that it shows. | `text.rs`, `output.rs` |
 | S9 | The file scanner has no network crate. A CI job traces it with `strace`. | `check_offline.rs`, `ci.yml` |
 | S10 | The tool never writes private key bytes to results, logs, reports, or errors. Leak tests check this. | `scan-files` tests |
-| S11 | Key files go into buffers that the tool wipes. Each file has a size limit. A PKCS#12 file has limits on key derivation work. A scan has a total limit. | `file.rs`, `pfx.rs` |
+| S11 | Key files go into buffers that the tool wipes. Each file has a size limit. On Unix, the open call refuses links and special files. A PKCS#12 file has limits on key derivation work. A scan has a total limit. | `file.rs`, `pfx.rs` |
 | S12 | The plan resolves each name one time. An address outside the scope refuses the full scan. Host names need an allowed range. A name must not lead to a special address that no target names. Numeric names are errors. | `scope.rs` |
 | S13 | Only one function opens sockets. It writes a "started" line and a final line to the audit log. | `runtime.rs` |
 | S14 | Limits apply to each IP address. A timeout covers each full attempt. | `runtime.rs`, `tls.rs` |
@@ -219,6 +219,7 @@ Each decision has an ID, the decision, the reason, and the consequence. The firs
 | AD-49 | Before the PKCS#12 library opens a file, the tool reads the structure and counts the key derivation work. It decrypts the encrypted safes itself to count the bags in them. | A hostile file can ask for scrypt, many iterations, or many bags. | No scrypt. At most 100000 iterations, 16 key derivations, and 1600000 iterations for each file. At most 5000000 iterations for each scan. |
 | AD-50 | Redaction changes each fingerprint and each hash of public material into a keyed hash. Overrides match through the same keyed function. | A plain hash can confirm a guess, and an endpoint fingerprint can show an IPv4 address. | Reports of redacted results need `redact.key` for overrides. |
 | AD-51 | One CLI output helper cleans each line before it goes to the terminal. | A file name can hold terminal control characters. | Paths with control characters show `?` in their place. |
+| AD-52 | On Unix, the file scan opens each path with `O_NOFOLLOW` and `O_NONBLOCK`. Then it checks the type on the open handle. | A path can change after the walk. A FIFO can stop the scan, and a new link can lead outside the scan. | A changed path gives a scan error. Other systems keep the type check on the handle only. |
 
 ## 5. Known limits
 
@@ -227,6 +228,8 @@ Each decision has an ID, the decision, the reason, and the consequence. The firs
 - The PKCS#12 library keeps decrypted keys in memory that the tool cannot wipe. The tool drops them at once.
 - The file scan does not read `.kbx` key boxes or JCEKS private-key entries.
 - The tool does not read RSA public exponents of more than 4 bytes.
+- On Windows, the file scan opens a path without `O_NOFOLLOW`.
+- On Windows, a path that changes to a link after the walk can lead to another file.
 - Only a real CI run can confirm the cross-builds, the platform signing, and the attestation steps.
 
 ## 6. Open decisions

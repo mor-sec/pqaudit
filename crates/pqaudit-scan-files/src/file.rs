@@ -180,6 +180,73 @@ fn fill(mut reader: impl Read, buffer: &mut [u8]) -> std::io::Result<usize> {
     Ok(filled)
 }
 
+/// Why the tool did not open a path as a regular file.
+enum OpenProblem {
+    /// The path is a symbolic link, and the user did not ask to follow links.
+    Symlink,
+    /// The path is not a regular file, for example a FIFO or a device.
+    NotRegular,
+    /// The open call or the `fstat` call failed.
+    Io(std::io::Error),
+}
+
+/// Open a regular file. Check the type on the open handle.
+///
+/// The path can change after the walk. The check stops a FIFO, a device, or a link.
+///
+/// On Unix, the open call uses `O_NONBLOCK`, so that a FIFO cannot stop the scan.
+/// Without `follow_symlinks`, it also uses `O_NOFOLLOW`. After the type check, the code
+/// removes `O_NONBLOCK` again.
+#[cfg(unix)]
+fn open_regular(path: &Path, follow_symlinks: bool) -> Result<File, OpenProblem> {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut flags = libc::O_NONBLOCK;
+    if !follow_symlinks {
+        flags |= libc::O_NOFOLLOW;
+    }
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(flags)
+        .open(path)
+        .map_err(|error| {
+            if !follow_symlinks && error.raw_os_error() == Some(libc::ELOOP) {
+                OpenProblem::Symlink
+            } else {
+                OpenProblem::Io(error)
+            }
+        })?;
+    let metadata = file.metadata().map_err(OpenProblem::Io)?;
+    if !metadata.is_file() {
+        return Err(OpenProblem::NotRegular);
+    }
+    let fd = file.as_raw_fd();
+    // SAFETY: `fd` is the open descriptor of `file`. F_GETFL and F_SETFL change only its flags.
+    let cleared = unsafe {
+        let current = libc::fcntl(fd, libc::F_GETFL);
+        current >= 0 && libc::fcntl(fd, libc::F_SETFL, current & !libc::O_NONBLOCK) >= 0
+    };
+    if !cleared {
+        return Err(OpenProblem::Io(std::io::Error::last_os_error()));
+    }
+    Ok(file)
+}
+
+/// Open a regular file. Check the type on the open handle.
+///
+/// On other systems than Unix, the open call has no `O_NOFOLLOW` or `O_NONBLOCK`.
+/// The walk skips links and special files, but the path can change after the walk.
+#[cfg(not(unix))]
+fn open_regular(path: &Path, _follow_symlinks: bool) -> Result<File, OpenProblem> {
+    let file = File::open(path).map_err(OpenProblem::Io)?;
+    let metadata = file.metadata().map_err(OpenProblem::Io)?;
+    if !metadata.is_file() {
+        return Err(OpenProblem::NotRegular);
+    }
+    Ok(file)
+}
+
 /// Make a buffer of zeros that wipes itself on drop. The file can hold private keys.
 fn wiped_buffer(size: u64) -> Zeroizing<Vec<u8>> {
     Zeroizing::new(vec![0u8; usize::try_from(size).unwrap_or(0)])
@@ -212,10 +279,20 @@ pub(crate) fn scan_file(
     // The tool reads a file with a known name in full. It reads the start of other files first.
     let read_all = named.is_some_and(|format| format != Format::Kbx);
 
-    let mut file = match File::open(path) {
+    let mut file = match open_regular(path, opts.follow_symlinks) {
         Ok(file) => file,
-        Err(error) => {
-            errors.push(cannot_read(error));
+        Err(problem) => {
+            errors.push(match problem {
+                OpenProblem::Symlink => ScanError {
+                    location: location.clone(),
+                    reason: messages::SYMLINK_NOW.to_string(),
+                },
+                OpenProblem::NotRegular => ScanError {
+                    location: location.clone(),
+                    reason: messages::NOT_REGULAR_NOW.to_string(),
+                },
+                OpenProblem::Io(error) => cannot_read(error),
+            });
             return Outcome::Failed;
         }
     };
@@ -518,4 +595,75 @@ fn scan_pgp(
     }
     collector.add_keys(scan.found, ctx);
     Outcome::Read
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    fn fixture(name: &str) -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures")
+            .join(name)
+    }
+
+    /// Scan one path. Return the outcome, the errors, and the number of certificates.
+    fn run(path: &Path, follow: bool) -> (Outcome, Vec<ScanError>, usize) {
+        let opts = ScanOptions {
+            follow_symlinks: follow,
+            ..ScanOptions::default()
+        };
+        let mut collector = Collector::default();
+        let mut errors = Vec::new();
+        let outcome = scan_file(path, &opts, Uuid::nil(), &mut collector, &mut errors);
+        (outcome, errors, collector.certs.len())
+    }
+
+    #[test]
+    fn fifo_at_the_path_does_not_hang() {
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("swapped.pem");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let (tx, rx) = mpsc::channel();
+        let path = fifo.clone();
+        std::thread::spawn(move || {
+            let (outcome, errors, _) = run(&path, false);
+            let _ = tx.send((matches!(outcome, Outcome::Failed), errors));
+        });
+        let (failed, errors) = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the scan of a FIFO must not wait for a writer");
+        assert!(failed);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].reason, messages::NOT_REGULAR_NOW);
+    }
+
+    #[test]
+    fn symlink_is_not_followed_when_follow_is_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let link = dir.path().join("swapped.pem");
+        std::os::unix::fs::symlink(fixture("rsa2048-leaf.pem"), &link).unwrap();
+        let (outcome, errors, certs) = run(&link, false);
+        assert!(matches!(outcome, Outcome::Failed));
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].reason, messages::SYMLINK_NOW);
+        assert_eq!(certs, 0);
+        // With --follow-symlinks, the tool reads the target.
+        let (outcome, errors, certs) = run(&link, true);
+        assert!(matches!(outcome, Outcome::Read), "{errors:?}");
+        assert_eq!(certs, 1);
+    }
+
+    #[test]
+    fn regular_file_still_reads() {
+        let (outcome, errors, certs) = run(&fixture("rsa2048-leaf.pem"), false);
+        assert!(matches!(outcome, Outcome::Read), "{errors:?}");
+        assert_eq!(certs, 1);
+    }
 }

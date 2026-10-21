@@ -13,6 +13,12 @@ pub const TOO_LARGE: &str =
 /// The error for a file that changes while the tool reads it.
 pub const FILE_CHANGED: &str = "The file changed while the tool read it. The tool skips the file.";
 
+/// The error for a path that is not a regular file when the tool opens it.
+pub const NOT_REGULAR_NOW: &str = "The path is not a regular file now. The tool did not read it.";
+
+/// The error for a path that is a symbolic link when the tool opens it.
+pub const SYMLINK_NOW: &str = "The path is a symbolic link now. The tool did not follow it.";
+
 /// The note for a file name that is not valid UTF-8.
 pub const NAME_NOT_UTF8: &str =
     "The file name is not valid UTF-8. The results show a changed name. The tool scans the file.";
@@ -116,6 +122,8 @@ pub const LOCATION_SYMLINKS: &str = "symbolic links";
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("CANNOT_READ", CANNOT_READ),
+    ("NOT_REGULAR_NOW", NOT_REGULAR_NOW),
+    ("SYMLINK_NOW", SYMLINK_NOW),
     ("SYMLINK_LOOP", SYMLINK_LOOP),
     ("TOO_LARGE", TOO_LARGE),
     ("FILE_CHANGED", FILE_CHANGED),

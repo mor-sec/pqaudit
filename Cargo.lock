@@ -1634,6 +1634,7 @@ dependencies = [
  "des",
  "ed25519-dalek",
  "gethostname",
+ "libc",
  "ml-dsa",
  "ml-kem",
  "p12-keystore",
