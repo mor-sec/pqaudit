@@ -32,14 +32,14 @@ pub fn run(cli: &Cli, results: Option<&Path>, output: Option<&Path>) -> ExitCode
     if let Err(error) = written {
         output::error(
             &messages::CBOM_WRITE
-                .replace("{path}", &path.display().to_string())
+                .replace("{path}", &output::shown_path(&path))
                 .replace("{reason}", &error.to_string()),
         );
         return ExitCode::Error;
     }
     output::summary(
         cli,
-        &messages::CBOM_WRITTEN.replace("{path}", &path.display().to_string()),
+        &messages::CBOM_WRITTEN.replace("{path}", &output::shown_path(&path)),
     );
     ExitCode::Success
 }

@@ -38,8 +38,8 @@ pub fn run(cli: &Cli, args: MergeArgs<'_>) -> ExitCode {
             Err(error) => {
                 output::error(
                     &messages::MERGE_READ
-                        .replace("{path}", &path.display().to_string())
-                        .replace("{reason}", &error.to_string()),
+                        .replace("{path}", &output::shown_path(path))
+                        .replace("{reason}", &output::value(&error.to_string())),
                 );
                 return ExitCode::Error;
             }
@@ -49,7 +49,7 @@ pub fn run(cli: &Cli, args: MergeArgs<'_>) -> ExitCode {
         let key = match load_key(cli, key_file) {
             Ok(key) => key,
             Err(error) => {
-                eprintln!("{error}");
+                output::error(&output::value(&error.to_string()));
                 return ExitCode::Error;
             }
         };
@@ -60,7 +60,9 @@ pub fn run(cli: &Cli, args: MergeArgs<'_>) -> ExitCode {
     let merged = match merge(files) {
         Ok(merged) => merged,
         Err(error) => {
-            output::error(&messages::MERGE_FAILED.replace("{reason}", &error.to_string()));
+            output::error(
+                &messages::MERGE_FAILED.replace("{reason}", &output::value(&error.to_string())),
+            );
             return ExitCode::Error;
         }
     };
@@ -75,7 +77,7 @@ pub fn run(cli: &Cli, args: MergeArgs<'_>) -> ExitCode {
     if let Err(error) = write_results(&merged, &path) {
         output::error(
             &messages::RESULTS_WRITE
-                .replace("{path}", &path.display().to_string())
+                .replace("{path}", &output::shown_path(&path))
                 .replace("{reason}", &error.to_string()),
         );
         return ExitCode::Error;
@@ -85,7 +87,7 @@ pub fn run(cli: &Cli, args: MergeArgs<'_>) -> ExitCode {
         .iter()
         .filter(|error| error.location == MERGE_WARNING_LOCATION)
     {
-        output::warn(&warning.reason);
+        output::warn(&output::value(&warning.reason));
     }
     output::summary(
         cli,

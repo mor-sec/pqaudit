@@ -26,10 +26,11 @@ pub fn run(cli: &Cli, finding_id: &str, results: Option<&Path>) -> ExitCode {
         .iter()
         .find(|item| item.finding.id == finding_id)
     else {
-        output::error(&messages::EXPLAIN_UNKNOWN_ID.replace("{id}", finding_id));
+        output::error(&messages::EXPLAIN_UNKNOWN_ID.replace("{id}", &output::value(finding_id)));
         return ExitCode::Error;
     };
-    // The text holds paths, host names, and subjects from the results file.
+    // The function render cleans each value from the results file and the engagement files.
+    // The line breaks that stay are the line breaks of the tool and of the rules pack.
     print!("{}", output::shown(&render(found)));
     ExitCode::Success
 }
@@ -43,15 +44,17 @@ fn band_name(band: Band) -> &'static str {
     }
 }
 
+/// The location as one clean line. A path or a host name can hold a line break.
 fn location_text(location: &Location) -> String {
-    match location {
+    let text = match location {
         Location::File {
             path,
             line: Some(line),
         } => format!("{path}:{line}"),
         Location::File { path, line: None } => path.clone(),
         Location::Endpoint { host, ip, port, .. } => format!("{host} ({ip}):{port}"),
-    }
+    };
+    output::value(&text)
 }
 
 /// Show a context value, or the text for an unassessed value.
@@ -64,7 +67,7 @@ fn show<T>(value: &Ctx<T>, text: impl Fn(&T) -> String) -> String {
 fn context_line(name: &str, value: String) -> String {
     messages::EXPLAIN_CONTEXT_LINE
         .replace("{name}", name)
-        .replace("{value}", &value)
+        .replace("{value}", &output::value(&value))
 }
 
 /// Build the text of the explanation.
@@ -74,9 +77,9 @@ fn render(item: &AssessedFinding) -> String {
     let ctx = &item.context;
     let mut lines = vec![
         messages::EXPLAIN_TITLE
-            .replace("{id}", &finding.id)
-            .replace("{title}", &rule.title),
-        messages::EXPLAIN_RULE.replace("{rule}", &rule.id),
+            .replace("{id}", &output::value(&finding.id))
+            .replace("{title}", &output::value(&rule.title)),
+        messages::EXPLAIN_RULE.replace("{rule}", &output::value(&rule.id)),
         messages::EXPLAIN_DESCRIPTION.replace("{text}", rule.description.trim()),
         messages::EXPLAIN_THREAT.replace("{threat}", threat_name(finding.threat_type)),
         messages::EXPLAIN_OCCURRENCES.replace("{count}", &finding.occurrences.len().to_string()),
@@ -85,14 +88,14 @@ fn render(item: &AssessedFinding) -> String {
         lines.push(
             messages::EXPLAIN_OCCURRENCE
                 .replace("{location}", &location_text(&occurrence.location))
-                .replace("{evidence}", &occurrence.evidence),
+                .replace("{evidence}", &output::value(&occurrence.evidence)),
         );
     }
 
     lines.push(messages::EXPLAIN_CONTEXT.to_string());
     lines.push(messages::EXPLAIN_ASSET.replace(
         "{asset}",
-        item.asset.as_deref().unwrap_or(messages::EXPLAIN_NO_ASSET),
+        &output::value(item.asset.as_deref().unwrap_or(messages::EXPLAIN_NO_ASSET)),
     ));
     lines.push(context_line(
         "classification",
@@ -129,22 +132,24 @@ fn render(item: &AssessedFinding) -> String {
             lines.push(
                 messages::EXPLAIN_DEADLINE
                     .replace("{date}", &deadline.date.to_string())
-                    .replace("{profile}", &deadline.profile_id),
+                    .replace("{profile}", &output::value(&deadline.profile_id)),
             );
             lines.push(
                 messages::EXPLAIN_DEADLINE_SOURCE
-                    .replace("{title}", &deadline.source_title)
-                    .replace("{url}", &deadline.source_url)
-                    .replace("{description}", &deadline.description),
+                    .replace("{title}", &output::value(&deadline.source_title))
+                    .replace("{url}", &output::value(&deadline.source_url))
+                    .replace("{description}", &output::value(&deadline.description)),
             );
         }
         None => lines.push(messages::EXPLAIN_DEADLINE_NONE.to_string()),
     }
     if !rule.cwe.is_empty() {
-        lines.push(messages::EXPLAIN_CWE.replace("{ids}", &rule.cwe.join(", ")));
+        lines.push(messages::EXPLAIN_CWE.replace("{ids}", &output::value(&rule.cwe.join(", "))));
     }
     if !rule.attack.is_empty() {
-        lines.push(messages::EXPLAIN_ATTACK.replace("{ids}", &rule.attack.join(", ")));
+        lines.push(
+            messages::EXPLAIN_ATTACK.replace("{ids}", &output::value(&rule.attack.join(", "))),
+        );
     }
 
     lines.push(messages::EXPLAIN_SCORE.to_string());
@@ -155,7 +160,7 @@ fn render(item: &AssessedFinding) -> String {
                 .replace("{value}", &format!("{:.2}", factor.value))
                 .replace("{weight}", &format!("{:.2}", factor.weight))
                 .replace("{contribution}", &format!("{:.2}", factor.contribution))
-                .replace("{note}", &factor.note),
+                .replace("{note}", &output::value(&factor.note)),
         );
     }
     lines.push(
@@ -166,8 +171,8 @@ fn render(item: &AssessedFinding) -> String {
     lines.push(match &item.override_ {
         Some(over) => messages::EXPLAIN_OVERRIDE
             .replace("{band}", band_name(over.priority))
-            .replace("{reason}", &over.reason)
-            .replace("{by}", &over.by)
+            .replace("{reason}", &output::value(&over.reason))
+            .replace("{by}", &output::value(&over.by))
             .replace("{date}", &over.date.to_string()),
         None => messages::EXPLAIN_NO_OVERRIDE.to_string(),
     });
@@ -180,7 +185,7 @@ fn render(item: &AssessedFinding) -> String {
             .replace("{years}", &complexity.migration_years.to_string()),
     );
     for reason in &complexity.reasons {
-        lines.push(messages::EXPLAIN_REASON.replace("{reason}", reason));
+        lines.push(messages::EXPLAIN_REASON.replace("{reason}", &output::value(reason)));
     }
     let tests: Vec<&str> = item.testing.iter().map(|t| test_type_name(*t)).collect();
     lines.push(messages::EXPLAIN_TESTS.replace("{tests}", &tests.join(", ")));

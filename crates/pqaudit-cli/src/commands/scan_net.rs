@@ -86,7 +86,7 @@ fn scan(
         Ok(audit) => audit,
         Err(error) => {
             return fail_text(
-                &messages::AUDIT_OPEN.replace("{path}", &audit_path.display().to_string()),
+                &messages::AUDIT_OPEN.replace("{path}", &output::shown_path(&audit_path)),
                 &error.to_string(),
             )
         }
@@ -122,7 +122,7 @@ fn scan(
         Ok(hash) => hash,
         Err(error) => {
             return fail_text(
-                &messages::AUDIT_HASH.replace("{path}", &audit_path.display().to_string()),
+                &messages::AUDIT_HASH.replace("{path}", &output::shown_path(&audit_path)),
                 &error.to_string(),
             )
         }
@@ -170,7 +170,7 @@ fn scan(
     };
     if let Err(error) = write_results(&results, &path) {
         return fail_text(
-            &messages::RESULTS_WRITE.replace("{path}", &path.display().to_string()),
+            &messages::RESULTS_WRITE.replace("{path}", &output::shown_path(&path)),
             &error.to_string(),
         );
     }
@@ -196,8 +196,8 @@ fn report(
     for error in output.errors.iter().take(MAX_SHOWN_ERRORS) {
         output::error(
             &messages::SCAN_ERROR_LINE
-                .replace("{location}", &error.location)
-                .replace("{reason}", &error.reason),
+                .replace("{location}", &output::value(&error.location))
+                .replace("{reason}", &output::value(&error.reason)),
         );
     }
     if output.errors.len() > MAX_SHOWN_ERRORS {
@@ -250,10 +250,8 @@ fn fail_text(text: &str, reason: &str) -> ExitCode {
 
 /// Show the error. A limit error is a refusal. Other errors are failures.
 fn fail(error: &pqaudit_scan_net::scope::ScopeError) -> ExitCode {
-    eprintln!(
-        "{}",
-        messages::SCOPE_LOAD.replace("{reason}", &error.to_string())
-    );
+    // A TOML error of the scope file has more than one line. Each line is clean.
+    output::error(&messages::SCOPE_LOAD.replace("{reason}", &error.to_string()));
     if error.is_refusal() {
         ExitCode::Refused
     } else {
@@ -275,7 +273,10 @@ fn show_plan(plan: &TargetPlan) {
         };
         output::line(
             &template
-                .replace("{host}", target.host.as_deref().unwrap_or_default())
+                .replace(
+                    "{host}",
+                    &output::value(target.host.as_deref().unwrap_or_default()),
+                )
                 .replace("{ip}", &target.ip.to_string())
                 .replace("{port}", &target.port.to_string())
                 .replace("{protocol}", protocol)
@@ -285,8 +286,8 @@ fn show_plan(plan: &TargetPlan) {
     for refusal in &plan.refused {
         output::line(
             &messages::NET_REFUSED
-                .replace("{target}", &refusal.target)
-                .replace("{reason}", &refusal.reason.to_string()),
+                .replace("{target}", &output::value(&refusal.target))
+                .replace("{reason}", &output::value(&refusal.reason.to_string())),
         );
     }
     if plan.targets.is_empty() && !plan.is_refused() {

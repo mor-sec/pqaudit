@@ -46,7 +46,7 @@ pub fn run(cli: &Cli, args: FilesArgs<'_>) -> ExitCode {
         Err(source) => {
             eprintln!(
                 "{}",
-                messages::PASSWORDS_UNAVAILABLE.replace("{source}", &source)
+                messages::PASSWORDS_UNAVAILABLE.replace("{source}", &output::value(&source))
             );
             return ExitCode::Error;
         }
@@ -106,7 +106,7 @@ pub fn run(cli: &Cli, args: FilesArgs<'_>) -> ExitCode {
     };
     if let Err(error) = write_results(&results, &path) {
         return fail(
-            &messages::RESULTS_WRITE.replace("{path}", &path.display().to_string()),
+            &messages::RESULTS_WRITE.replace("{path}", &output::shown_path(&path)),
             &error.to_string(),
         );
     }
@@ -114,8 +114,8 @@ pub fn run(cli: &Cli, args: FilesArgs<'_>) -> ExitCode {
     for error in output.errors.iter().take(MAX_SHOWN_ERRORS) {
         output::error(
             &messages::SCAN_ERROR_LINE
-                .replace("{location}", &error.location)
-                .replace("{reason}", &error.reason),
+                .replace("{location}", &output::value(&error.location))
+                .replace("{reason}", &output::value(&error.reason)),
         );
     }
     if output.errors.len() > MAX_SHOWN_ERRORS {

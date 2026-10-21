@@ -16,18 +16,15 @@ use crate::output;
 /// On an error, it prints an error message and returns the exit code.
 pub fn load_active(cli: &Cli) -> Result<ActivePack, ExitCode> {
     let active = active_pack(cli.allow_unsigned_rules).map_err(|error| {
-        eprintln!(
-            "{}",
-            messages::PACK_LOAD.replace("{reason}", &error.to_string())
-        );
+        output::error(&messages::PACK_LOAD.replace("{reason}", &output::value(&error.to_string())));
         ExitCode::Error
     })?;
     for skipped in &active.skipped {
         output::warn(
             &messages::PACK_SKIPPED
-                .replace("{version}", &skipped.version)
-                .replace("{path}", &skipped.path.display().to_string())
-                .replace("{reason}", &skipped.reason),
+                .replace("{version}", &output::value(&skipped.version))
+                .replace("{path}", &output::shown_path(&skipped.path))
+                .replace("{reason}", &output::value(&skipped.reason)),
         );
     }
     if matches!(active.origin, PackOrigin::Unsigned { .. }) {

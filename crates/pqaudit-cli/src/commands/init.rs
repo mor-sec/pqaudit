@@ -5,6 +5,7 @@ use std::path::Path;
 
 use crate::exit::ExitCode;
 use crate::messages;
+use crate::output;
 
 /// The template files. Each entry is a file name and its text.
 const TEMPLATES: [(&str, &str); 5] = [
@@ -26,14 +27,14 @@ pub fn run(name: &str, parent: &Path) -> ExitCode {
     let dir = parent.join(name);
     match make(&dir) {
         Ok(()) => {
-            println!("{} {}", messages::INIT_CREATED, dir.display());
+            println!("{} {}", messages::INIT_CREATED, output::shown_path(&dir));
             println!("{}", messages::INIT_NEXT);
             ExitCode::Success
         }
         Err(Failure::NotEmpty) => {
             eprintln!(
                 "{}",
-                messages::INIT_NOT_EMPTY.replace("{dir}", &dir.display().to_string())
+                messages::INIT_NOT_EMPTY.replace("{dir}", &output::shown_path(&dir))
             );
             ExitCode::Error
         }
@@ -41,8 +42,8 @@ pub fn run(name: &str, parent: &Path) -> ExitCode {
             eprintln!(
                 "{}",
                 messages::INIT_IO
-                    .replace("{dir}", &dir.display().to_string())
-                    .replace("{reason}", &error.to_string())
+                    .replace("{dir}", &output::shown_path(&dir))
+                    .replace("{reason}", &output::value(&error.to_string()))
             );
             ExitCode::Error
         }

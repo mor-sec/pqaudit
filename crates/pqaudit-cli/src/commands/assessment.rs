@@ -41,8 +41,8 @@ pub fn load_with_pack(
     let results = ResultsFile::read(&path).map_err(|error| {
         output::error(
             &messages::EXPLAIN_READ
-                .replace("{path}", &path.display().to_string())
-                .replace("{reason}", &error.to_string()),
+                .replace("{path}", &output::shown_path(&path))
+                .replace("{reason}", &output::value(&error.to_string())),
         );
         ExitCode::Error
     })?;
@@ -116,8 +116,8 @@ fn check_engagement(
     };
     output::error(
         &text
-            .replace("{results}", &results.header.engagement)
-            .replace("{engagement}", &name),
+            .replace("{results}", &output::value(&results.header.engagement))
+            .replace("{engagement}", &output::value(&name)),
     );
     Err(ExitCode::Error)
 }

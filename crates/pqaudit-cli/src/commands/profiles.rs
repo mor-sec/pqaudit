@@ -8,6 +8,7 @@ use pqaudit_rules::pack::{AppliesTo, DeadlineProfile, MilestoneKind, ThreatType,
 use crate::cli::ProfilesCommand;
 use crate::exit::ExitCode;
 use crate::messages;
+use crate::output;
 
 /// Run one `profiles` command.
 pub fn run(command: &ProfilesCommand) -> ExitCode {
@@ -27,7 +28,7 @@ pub fn run(command: &ProfilesCommand) -> ExitCode {
         ProfilesCommand::Show { id } => match pack.profile(id) {
             Some(profile) => out.push_str(&show(profile)),
             None => {
-                eprintln!("{} {id}", messages::UNKNOWN_PROFILE);
+                eprintln!("{} {}", messages::UNKNOWN_PROFILE, output::value(id));
                 return ExitCode::Error;
             }
         },

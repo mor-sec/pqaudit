@@ -26,7 +26,7 @@ pub fn run(command: &RulesCommand, allow_unsigned: bool) -> ExitCode {
 }
 
 fn fail(error: &InstallError) -> ExitCode {
-    eprintln!("{error}");
+    eprintln!("{}", output::value(&error.to_string()));
     ExitCode::Error
 }
 
@@ -43,7 +43,7 @@ fn sig_path(archive: &Path, sig: Option<&Path>) -> PathBuf {
 }
 
 fn describe(pack: &RulesPack) -> String {
-    format!("{} {}", pack.id, pack.version)
+    output::value(&format!("{} {}", pack.id, pack.version))
 }
 
 fn list(store: &RulesStore, allow_unsigned: bool) -> ExitCode {
@@ -81,18 +81,24 @@ fn list(store: &RulesStore, allow_unsigned: bool) -> ExitCode {
                 pack.content_hash
             ),
             InstalledState::Unverified { pack, reason } => println!(
-                "installed  {}  unsigned: {reason}  {}",
+                "installed  {}  unsigned: {}  {}",
                 describe(&pack),
+                output::value(&reason.to_string()),
                 pack.content_hash
             ),
             InstalledState::SignatureFailed { reason } => {
                 println!(
-                    "installed  {}  signature failed: {reason}",
-                    installed.version
+                    "installed  {}  signature failed: {}",
+                    output::value(&installed.version),
+                    output::value(&reason.to_string())
                 );
             }
             InstalledState::Invalid { reason } => {
-                println!("installed  {}  invalid: {reason}", installed.version);
+                println!(
+                    "installed  {}  invalid: {}",
+                    output::value(&installed.version),
+                    output::value(&reason.to_string())
+                );
             }
         }
     }
@@ -118,7 +124,7 @@ fn verify(
         }
         Err(error) if allow_unsigned => match store.load_unsigned(archive) {
             Ok(pack) => {
-                eprintln!("{error}");
+                eprintln!("{}", output::value(&error.to_string()));
                 output::warn(messages::RULES_UNSIGNED_WARNING);
                 println!("pack: {}", describe(&pack));
                 // The flag allows use of the pack. A failed check stays a failed check.
@@ -127,7 +133,7 @@ fn verify(
             Err(_) => fail(&error),
         },
         Err(error) => {
-            eprintln!("{error}");
+            eprintln!("{}", output::value(&error.to_string()));
             eprintln!("{}", messages::RULES_UNSIGNED_HINT);
             ExitCode::Error
         }
@@ -137,20 +143,20 @@ fn verify(
 fn update(store: &RulesStore, from: &Path, sig: Option<&Path>, allow_unsigned: bool) -> ExitCode {
     match store.install(from, &sig_path(from, sig)) {
         Ok(dir) => {
-            println!("{} {}", messages::RULES_INSTALLED, dir.display());
+            println!("{} {}", messages::RULES_INSTALLED, output::shown_path(&dir));
             ExitCode::Success
         }
         Err(error) if allow_unsigned => match store.install_unsigned(from) {
             Ok(dir) => {
-                eprintln!("{error}");
+                eprintln!("{}", output::value(&error.to_string()));
                 output::warn(messages::RULES_UNSIGNED_WARNING);
-                println!("{} {}", messages::RULES_INSTALLED, dir.display());
+                println!("{} {}", messages::RULES_INSTALLED, output::shown_path(&dir));
                 ExitCode::Success
             }
             Err(_) => fail(&error),
         },
         Err(error) => {
-            eprintln!("{error}");
+            eprintln!("{}", output::value(&error.to_string()));
             eprintln!("{}", messages::RULES_UNSIGNED_HINT);
             ExitCode::Error
         }

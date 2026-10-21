@@ -62,14 +62,14 @@ pub fn run(cli: &Cli, args: ReportArgs<'_>) -> ExitCode {
     if let Err(error) = written {
         output::error(
             &messages::REPORT_WRITE
-                .replace("{path}", &path.display().to_string())
+                .replace("{path}", &output::shown_path(&path))
                 .replace("{reason}", &error.to_string()),
         );
         return ExitCode::Error;
     }
     output::summary(
         cli,
-        &messages::REPORT_WRITTEN.replace("{path}", &path.display().to_string()),
+        &messages::REPORT_WRITTEN.replace("{path}", &output::shown_path(&path)),
     );
     ExitCode::Success
 }

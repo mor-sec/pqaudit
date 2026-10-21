@@ -6,6 +6,8 @@
 //!
 //! Paths, host names, and locations can hold control characters. A control character can
 //! change the terminal or add a false line. Thus each helper here cleans its text first.
+//! A line break in a value from outside the tool can also add a false line. Thus the
+//! callers clean each such value with [`value`] before it goes into a message.
 
 use std::path::Path;
 
@@ -14,11 +16,22 @@ use pqaudit_core::text::clean;
 use crate::cli::Cli;
 
 /// Clean each line of a text for the terminal. The line ends stay.
+///
+/// Use this function only for the line breaks that the tool writes itself.
+/// Clean each value from outside the tool with [`value`] first.
 pub fn shown(text: &str) -> String {
     text.split('\n').map(clean).collect::<Vec<_>>().join("\n")
 }
 
-/// Clean a path for the terminal.
+/// Clean one value from outside the tool before it goes into a message.
+///
+/// Examples are a location, a host name, a subject, an alias, or a comment.
+/// The function also replaces each line break, so the value cannot add a false line.
+pub fn value(text: &str) -> String {
+    clean(text)
+}
+
+/// Clean a path for the terminal. A line break in the path becomes `?`.
 pub fn shown_path(path: &Path) -> String {
     clean(&path.display().to_string())
 }

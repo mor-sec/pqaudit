@@ -340,3 +340,55 @@ fn control_characters_in_file_names_do_not_reach_the_terminal() {
     assert!(stdout.contains("good?]0;title?.pem"), "{stdout}");
     assert!(!has_control(&stdout), "{stdout:?}");
 }
+
+/// True if a line of the text starts with the prefix, after the spaces at the start.
+fn has_line(text: &str, prefix: &str) -> bool {
+    text.lines()
+        .any(|line| line.trim_start().starts_with(prefix))
+}
+
+#[cfg(unix)]
+#[test]
+fn line_breaks_in_file_names_add_no_false_lines() {
+    let setup = Setup::new();
+    let bad = "bad\nWrote the results to: FAKE.pem";
+    let good = "good\nOccurrences (9): FAKE-LINE.pem";
+    fs::write(setup.target().join(bad), "not a certificate").unwrap();
+    fs::copy(fixture("rsa2048-leaf.pem"), setup.target().join(good)).unwrap();
+    let assert = setup
+        .pqaudit()
+        .args(["scan", "files"])
+        .arg(setup.target())
+        .assert()
+        .code(3);
+    let out = assert.get_output();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stderr.contains("bad?Wrote the results to: FAKE.pem"),
+        "{stderr}"
+    );
+    assert!(!has_line(&stderr, "Wrote the results to: FAKE"), "{stderr}");
+    assert!(!has_line(&stdout, "Wrote the results to: FAKE"), "{stdout}");
+
+    let results = setup.results();
+    let file = ResultsFile::read(&results[0]).unwrap();
+    let id = file.findings[0].id.clone();
+    setup
+        .pqaudit()
+        .arg("merge")
+        .arg(&results[0])
+        .assert()
+        .code(0);
+    let explained = setup
+        .pqaudit()
+        .args(["explain", id.as_str()])
+        .assert()
+        .code(0);
+    let stdout = String::from_utf8_lossy(&explained.get_output().stdout);
+    assert!(
+        stdout.contains("good?Occurrences (9): FAKE-LINE.pem"),
+        "{stdout}"
+    );
+    assert!(!has_line(&stdout, "Occurrences (9)"), "{stdout}");
+}
