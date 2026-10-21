@@ -46,7 +46,7 @@ flowchart TB
     subgraph MAINT["Maintainer computer, offline"]
         PK["Pack key pair<br/>Ed25519 + ML-DSA-65"]
         RK["Release key pair<br/>Ed25519 + ML-DSA-65"]
-        SIGN["xtask sign / sign-release<br/>C6: checks Sigstore bundle for the exact tag<br/>C7: recomputes and checks the checksums"]
+        SIGN["xtask sign / sign-release<br/>C6: checks Sigstore bundle for the exact tag and commit<br/>C7: recomputes and checks the checksums"]
     end
 
     subgraph GH["GitHub mor-sec/pqaudit"]
@@ -58,7 +58,7 @@ flowchart TB
             BUILD["build: cargo auditable, 5 targets<br/>no secrets, contents read<br/>C4: fails on DEVELOPMENT KEY or test-trust string"]
             SGN["sign-macos / sign-windows<br/>C8: environment release-signing, approval<br/>no cargo, secrets in one step"]
             META["metadata, rules archive<br/>C9: SBOM of all targets, cargo auditable<br/>C10: CBOM of the tool, not-linked check"]
-            PUB["release: attest-build-provenance, attest-sbom<br/>cosign bundles, draft release<br/>C5: only job with write and id-token"]
+            PUB["release: attest-build-provenance, attest-sbom<br/>cosign bundles, draft release<br/>C5: only job with write and id-token<br/>C11: environment release, tag on main"]
         end
     end
 
@@ -139,11 +139,12 @@ flowchart TB
 | C3 | Each build uses `--locked` and the committed `Cargo.lock`. | `ci.yml`, `release.yml` |
 | C4 | The release stops if the trust list holds the development key. It also stops if a binary holds the test trust override. | `release.yml` |
 | C5 | Only the `release` job can write to the repository or get an OIDC token. It runs no cargo. | `release.yml` |
-| C6 | `sign-release` checks each Sigstore bundle against the exact workflow identity of the tag. | `sign_release.rs` |
+| C6 | `sign-release` checks each Sigstore bundle against the exact workflow identity of the tag and against the commit of the tag. | `sign_release.rs` |
 | C7 | `sign-release` computes the checksums. It refuses a checksum file that does not agree. | `sign_release.rs` |
 | C8 | Signing secrets are only in the signing jobs. These jobs need approval and never build code. | `release.yml` |
 | C9 | The SBOM covers all targets. `cargo auditable` puts the dependency list in each binary. | `release.yml` |
 | C10 | The CBOM of the tool comes from a declaration. CI compares it with the SBOM and with `cargo tree`. | `self_cbom.rs`, `docs/self-crypto.toml` |
+| C11 | The `release` job needs approval in the `release` environment, which allows only tags `v*`. The job stops if the commit of the tag is not on `main`. | `release.yml`, `docs/maintaining.md` |
 
 ## 4. Architecture decisions
 
@@ -221,6 +222,7 @@ Each decision has an ID, the decision, the reason, and the consequence. The firs
 | AD-51 | One CLI output helper cleans each line before it goes to the terminal. | A file name can hold terminal control characters. | Paths with control characters show `?` in their place. |
 | AD-52 | On Unix, the file scan opens each path with `O_NOFOLLOW` and `O_NONBLOCK`. Then it checks the type on the open handle. | A path can change after the walk. A FIFO can stop the scan, and a new link can lead outside the scan. | A changed path gives a scan error. Other systems keep the type check on the handle only. |
 | AD-53 | At most 1 SSH connection for each IP address and port. | Several host names can share one address, like for TLS in AD-34. | Extra host names get a scan error. |
+| AD-54 | `sign-release` needs `--commit` and gives it to cosign. The `release` job runs in an approved environment and only for a commit on `main`. Customers check the signer workflow and the commit. | A tag on another branch, or a bundle from another commit, must not pass. | The maintainer gives the commit of the tag. Key fingerprints are also on the project site and in the signed tag. |
 
 ## 5. Known limits
 

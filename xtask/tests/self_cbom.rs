@@ -191,6 +191,7 @@ mod sign_release {
         let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
         Command::new(env!("CARGO_BIN_EXE_xtask"))
             .args(["sign-release", "--repo", "mor-sec/pqaudit", "--tag", tag])
+            .args(["--commit", "0123456789abcdef0123456789abcdef01234567"])
             .arg("--keys")
             .arg(keys)
             .arg("--dir")

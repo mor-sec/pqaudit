@@ -40,8 +40,19 @@ fn is_pack_archive(name: &str) -> bool {
 /// Sign both checksum files with the keys in `keys`.
 ///
 /// The task runs `cosign verify-blob` from the PATH with the exact identity of the workflow run for `tag`.
+/// The bundle must also come from a run on `commit`, the full commit SHA of the tag.
 /// It fails if a bundle is missing or wrong, or if a file name does not hold the tag.
-pub fn run(keys: &Path, dir: &Path, repo: &str, tag: &str) -> Result<()> {
+pub fn run(keys: &Path, dir: &Path, repo: &str, tag: &str, commit: &str) -> Result<()> {
+    let full_sha = commit.len() == 40
+        && commit
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    if !full_sha {
+        return Err(format!(
+            "The commit {commit} is not a full commit SHA. Give 40 lower case hex digits."
+        )
+        .into());
+    }
     let mut names = Vec::new();
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -73,6 +84,8 @@ pub fn run(keys: &Path, dir: &Path, repo: &str, tag: &str) -> Result<()> {
             .arg(identity(repo, tag))
             .arg("--certificate-oidc-issuer")
             .arg(OIDC_ISSUER)
+            .arg("--certificate-github-workflow-sha")
+            .arg(commit)
             .status()
             .map_err(|error| format!("Cannot run cosign: {error}"))?;
         if !status.success() {

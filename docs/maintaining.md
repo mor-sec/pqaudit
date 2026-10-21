@@ -122,22 +122,49 @@ The tool version is `version` in the workspace `Cargo.toml`. The pack version is
 
 Before the first tag, replace the development key. The file `rules/trust/keys.toml` starts with the text `DEVELOPMENT KEY`. Make the real pack key with `cargo --locked xtask keygen --out <dir>` on the offline computer. Put its public key in `rules/trust/keys.toml` and remove the development key. The release workflow stops if the file still has the text `DEVELOPMENT KEY`.
 
+Before the first release, make two environments in the GitHub settings of the repository:
+
+- `release-signing`: add the reviewers that must approve a run. Add the signing secrets that `release.yml` names.
+- Only the jobs `sign-macos` and `sign-windows` use `release-signing`.
+- `release`: add the reviewers that must approve a run.
+- For `release`, set the deployment rule to selected branches and tags. Add only the tag pattern `v*`.
+- Only the job `release` uses `release`. This job can write to the repository and get an OIDC token.
+
+Also protect the tags `v*` with a ruleset. Then only the maintainers can make or move a release tag. The job `release` also stops if the commit of the tag is not on `main`.
+
 Do the release steps in this order:
 
 1. Make sure that `main` passes all CI jobs.
 2. Change `version` in the workspace `Cargo.toml`. Run `cargo build --locked` to update `Cargo.lock`.
 3. Write the release notes from `.github/release-notes-template.md`.
 4. Commit and merge these changes through a pull request.
-5. Make a signed tag on `main`: `git tag -s v<version> -m "Release v<version>"`.
+5. Make a signed tag on `main`: `git tag -s v<version>`. Write the release key fingerprints in the tag message.
 6. Push the tag: `git push origin v<version>`.
-7. Wait for the release workflow. It makes a draft release.
-8. Approve the `release-signing` environment in GitHub. The macOS and Windows signing jobs then run.
+7. Wait for the release workflow.
+8. Approve the `release-signing` environment in GitHub. Then approve the `release` environment. That job makes a draft release.
 9. Download the draft release files to the computer that holds the release key.
-10. Sign the checksums: `cargo --locked xtask sign-release --keys <release-key-dir> --dir <download-dir> --repo mor-sec/pqaudit --tag v<version>`. The task accepts only bundles from the workflow run of that tag.
+10. Sign the checksums with `xtask sign-release`. Give the commit of the tag with `--commit`.
 11. Sign the rules archive: `cargo --locked xtask sign --keys <pack-key-dir> <rules-archive>`.
 12. Upload all the new signature files to the draft release.
 13. Do all the checks in `docs/verifying.md` on the downloaded files.
 14. Publish the release.
+
+For step 5, get the SHA-256 fingerprint of each release public key:
+
+```text
+openssl pkey -pubin -in release-keys/release-ed25519.pub.pem -outform DER | sha256sum
+openssl pkey -pubin -in release-keys/release-mldsa65.pub.pem -outform DER | sha256sum
+```
+
+Also put the fingerprints on the project site. Customers compare them with the keys in the repository.
+
+For step 10, run this command:
+
+```text
+cargo --locked xtask sign-release --keys <release-key-dir> --dir <download-dir> --repo mor-sec/pqaudit --tag v<version> --commit <commit>
+```
+
+Get `<commit>` with `git rev-parse 'v<version>^{commit}'`. The task accepts only bundles from the workflow run of that tag on that commit.
 
 If a check in step 13 fails, do not publish. Delete the draft and the tag. Fix the problem and start again with a new version number.
 

@@ -67,6 +67,9 @@ enum Task {
         /// The release tag, for example `v0.1.0`. Only bundles from the run of this tag pass.
         #[arg(long)]
         tag: String,
+        /// The full commit SHA of the tag, in 40 lower case hex digits. Only bundles from a run on this commit pass.
+        #[arg(long)]
+        commit: String,
     },
     /// Make the archive of the rules pack.
     PackRules {
@@ -120,7 +123,8 @@ fn main() -> ExitCode {
             dir,
             repo,
             tag,
-        } => finish(sign_release::run(&keys, &dir, &repo, &tag)),
+            commit,
+        } => finish(sign_release::run(&keys, &dir, &repo, &tag, &commit)),
         Task::PackRules { out, root } => finish(pack_rules::run(&root, &out)),
         Task::Strings { out, root, commits } => match strings::run(&root, &out, commits.as_deref())
         {

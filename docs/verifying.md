@@ -4,7 +4,18 @@
 
 This document tells how to check a pqaudit release before you use it. Each check is separate. Do all of them if you can. Most checks do not need pqaudit. Only section 8 uses it.
 
-In the commands below, `<file>` is the release file that you check, and `<tag>` is the tag of the release, for example `v0.1.0`. Use the name of the file as it appears in the release. The GitHub repository is `mor-sec/pqaudit`.
+In the commands below, `<file>` is the release file that you check, and `<tag>` is the tag of the release, for example `v0.1.0`. `<commit>` is the full commit SHA of the tag, with 40 hex digits. Use the name of the file as it appears in the release. The GitHub repository is `mor-sec/pqaudit`.
+
+To find `<commit>`, get the signed tag and check its signature:
+
+```text
+git clone https://github.com/mor-sec/pqaudit
+cd pqaudit
+git tag -v <tag>
+git rev-parse '<tag>^{commit}'
+```
+
+The command `git tag -v` must show a good signature of a maintainer. The tag message also holds the fingerprints of the release keys. Section 4 uses them.
 
 ## What a release contains
 
@@ -24,10 +35,12 @@ The workflow `.github/workflows/release.yml` in the repository `mor-sec/pqaudit`
 This check needs a network connection and the `gh` tool.
 
 ```text
-gh attestation verify <file> --repo mor-sec/pqaudit --source-ref refs/tags/<tag>
+gh attestation verify <file> --repo mor-sec/pqaudit \
+  --signer-workflow mor-sec/pqaudit/.github/workflows/release.yml \
+  --source-ref refs/tags/<tag> --source-digest <commit>
 ```
 
-The command checks that the GitHub Actions workflow of this repository built the file from the tag `<tag>`. The workflow attests each release file except the checksum files and their signatures. The hybrid signature in section 4 covers the checksum files. If the command fails, do not use the file.
+The command checks that the release workflow of this repository built the file from the tag `<tag>` and the commit `<commit>`. Another workflow of the repository cannot make an attestation that passes. The workflow attests each release file except the checksum files and their signatures. The hybrid signature in section 4 covers the checksum files. If the command fails, do not use the file.
 
 ## 2. Check the Sigstore bundle with cosign
 
@@ -37,10 +50,11 @@ This check also needs a network connection. It uses the bundle `<file>.sigstore.
 cosign verify-blob <file> \
   --bundle <file>.sigstore.json \
   --certificate-identity 'https://github.com/mor-sec/pqaudit/.github/workflows/release.yml@refs/tags/<tag>' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-sha <commit>
 ```
 
-The certificate identity must be the workflow path with the exact tag of your release. Do not use a pattern for the tag: an old release would then pass. The issuer must be the GitHub Actions issuer. The command prints `Verified OK` when the check passes.
+The certificate identity must be the workflow path with the exact tag of your release. The workflow commit must be the commit of the signed tag. Do not use a pattern for the tag: an old release would then pass. The issuer must be the GitHub Actions issuer. The command prints `Verified OK` when the check passes.
 
 ## 3. Check without a network connection
 
@@ -60,7 +74,8 @@ cosign verify-blob <file> \
   --bundle <file>.sigstore.json \
   --trusted-root trusted_root.json \
   --certificate-identity 'https://github.com/mor-sec/pqaudit/.github/workflows/release.yml@refs/tags/<tag>' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-sha <commit>
 ```
 
 If the check fails and the file is correct, the `trusted_root.json` can be too old. Get a new copy and try again.
@@ -69,7 +84,15 @@ If the check fails and the file is correct, the `trusted_root.json` can be too o
 
 The maintainers sign the checksum files with two keys: Ed25519 and ML-DSA-65. They keep the keys offline. Both signatures must be correct. You need OpenSSL 3.5 or later. Run `openssl version` to see your version.
 
-First get the public keys. They are in the folder `release-keys/` of the repository, on the website of the project, and in the release notes. Compare the three copies before you trust a key. Name the files `release-ed25519.pub.pem` and `release-mldsa65.pub.pem`.
+First get the public keys. They are in the folder `release-keys/` of the repository, on the website of the project, and in the release notes. Name the files `release-ed25519.pub.pem` and `release-mldsa65.pub.pem`.
+
+A person who can change the repository can change `release-keys/` and the release notes. Thus compare the key fingerprints with a copy from outside the repository. The maintainers publish the fingerprints on the project site and in the message of the signed tag. To get the fingerprint of a key, run this command:
+
+```text
+openssl pkey -pubin -in release-ed25519.pub.pem -outform DER | sha256sum
+```
+
+Do the same for `release-mldsa65.pub.pem`. If a fingerprint is different, do not trust the key.
 
 Then run both commands:
 
@@ -149,8 +172,10 @@ The CI builds the release and makes a draft. The maintainers sign the release of
 3. Run the signing task. It checks each Sigstore bundle with `cosign verify-blob`. It stops if a bundle is missing.
 
    ```text
-   cargo --locked xtask sign-release --keys <keys-dir> --dir <release-dir> --repo mor-sec/pqaudit --tag <tag>
+   cargo --locked xtask sign-release --keys <keys-dir> --dir <release-dir> --repo mor-sec/pqaudit --tag <tag> --commit <commit>
    ```
+
+   The task also gives `<commit>` to cosign. A bundle from a run on another commit does not pass.
 
    The task computes `SHA256SUMS` and `SHA3-256SUMS` from the checked files. It writes them if they are not there. If one is there and is different, the task stops and signs nothing. Then it signs both files.
 
