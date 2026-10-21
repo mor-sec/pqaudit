@@ -226,6 +226,34 @@ mod sign_release {
     }
 
     #[test]
+    fn tampered_checksum_file_is_not_signed() {
+        let (dir, keys, release) = setup();
+        fs::write(
+            release.join("SHA256SUMS"),
+            format!("{}  pqaudit-linux\n", "0".repeat(64)),
+        )
+        .unwrap();
+        let output = run(&keys, &release, &fake_cosign(dir.path()));
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("SHA256SUMS"));
+        for name in ["SHA256SUMS", "SHA3-256SUMS"] {
+            for suffix in [".sig.json", ".ed25519.sig", ".mldsa65.sig"] {
+                assert!(!release.join(format!("{name}{suffix}")).exists());
+            }
+        }
+        assert!(!release.join("SHA3-256SUMS").exists());
+    }
+
+    #[test]
+    fn matching_checksum_file_is_signed() {
+        let (dir, keys, release) = setup();
+        let bin = fake_cosign(dir.path());
+        assert!(run(&keys, &release, &bin).status.success());
+        // A second run sees the files it wrote and signs again.
+        assert!(run(&keys, &release, &bin).status.success());
+    }
+
+    #[test]
     fn missing_bundle_fails() {
         let (dir, keys, release) = setup();
         fs::write(release.join("extra.txt"), b"x").unwrap();

@@ -33,7 +33,8 @@ fn identity_regexp(repo: &str) -> String {
     )
 }
 
-/// Check the Sigstore bundles of all files in `dir`. Write the checksum files if they are missing.
+/// Check the Sigstore bundles of all files in `dir`. Compute the checksum files from those files.
+/// Write them if they are missing. Fail if a checksum file is there and is different.
 /// Sign both checksum files with the keys in `keys`.
 ///
 /// The task runs `cosign verify-blob` from the PATH. It fails if a bundle is missing or wrong.
@@ -78,7 +79,18 @@ pub fn run(keys: &Path, dir: &Path, repo: &str) -> Result<()> {
         sha256 += &format!("{}  {name}\n", hex(&Sha256::digest(&data)));
         sha3 += &format!("{}  {name}\n", hex(&Sha3_256::digest(&data)));
     }
-    for (file, text) in [("SHA256SUMS", sha256), ("SHA3-256SUMS", sha3)] {
+    // Check both files before the task signs one. Never sign a file that the task did not compute.
+    let sums = [("SHA256SUMS", sha256), ("SHA3-256SUMS", sha3)];
+    for (file, text) in &sums {
+        let path = dir.join(file);
+        if path.exists() && fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
+            return Err(format!(
+                "{file} is in the release directory and does not match the verified files. Remove it and run the task again."
+            )
+            .into());
+        }
+    }
+    for (file, text) in &sums {
         let path = dir.join(file);
         if !path.exists() {
             fs::write(&path, text)?;

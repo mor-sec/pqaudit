@@ -150,7 +150,7 @@ The CI builds the release and makes a draft. The maintainers sign the release of
    cargo xtask sign-release --keys <keys-dir> --dir <release-dir> --repo mor-sec/pqaudit
    ```
 
-   The task writes `SHA256SUMS` and `SHA3-256SUMS` if they are not there. Then it signs both files.
+   The task computes `SHA256SUMS` and `SHA3-256SUMS` from the checked files. It writes them if they are not there. If one is there and is different, the task stops and signs nothing. Then it signs both files.
 
 4. Sign the rules pack archive with the key pair for packs:
 
