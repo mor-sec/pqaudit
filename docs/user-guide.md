@@ -306,6 +306,16 @@ For a key, the tool records the type, the size or curve, and the public parts. I
 
 If a key store has encryption and the tool has no correct password, it records "encrypted - not inspected". To give passwords, use the table `[passwords]` in `engagement.toml`.
 
+A PKCS#12 file sets its own key derivation work. A hostile file can ask for so much work that the scan stops for a long time. Thus the tool checks the work before it opens the file:
+
+- It never runs scrypt.
+- It accepts at most 100000 iterations for one key derivation.
+- It accepts at most 16 key derivations in one file. The MAC, each encrypted safe, and each encrypted bag count.
+- It accepts at most 1600000 iterations for one file, for all passwords together.
+- It accepts at most 5000000 iterations for all PKCS#12 files of one scan.
+
+If a file is past a limit, the tool records "The key store asks for too much work" and does not open the file. The tool counts the file as not inspected.
+
 A bad file is a scan error with a reason. The scan continues and the exit code is 3.
 
 Limits of the file scan:

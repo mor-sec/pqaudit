@@ -12,6 +12,7 @@ pub mod jks;
 pub mod keys;
 pub mod messages;
 pub mod pem;
+mod pfx;
 pub mod pkcs12;
 pub mod privkey;
 mod sniff;
@@ -46,6 +47,8 @@ pub struct ScanOptions {
     /// The name of the host that the tool scans. It goes into the fingerprint of a private key
     /// that has no public part, so two hosts do not merge their keys.
     pub host: String,
+    /// The most key derivation iterations for all PKCS#12 files of the scan.
+    pub max_kdf_work: u64,
 }
 
 impl std::fmt::Debug for ScanOptions {
@@ -59,6 +62,7 @@ impl std::fmt::Debug for ScanOptions {
                 &format_args!("{} hidden", self.passwords.len()),
             )
             .field("host", &self.host)
+            .field("max_kdf_work", &self.max_kdf_work)
             .finish()
     }
 }
@@ -96,6 +100,7 @@ impl Default for ScanOptions {
             follow_symlinks: false,
             passwords: Vec::new(),
             host: local_host_name(),
+            max_kdf_work: pkcs12::MAX_SCAN_WORK,
         }
     }
 }
@@ -123,7 +128,10 @@ pub struct ScanOutput {
 /// The scan reads X.509 certificates, key stores, SSH keys, PEM keys, and OpenPGP keys.
 /// It never puts private key bytes in the output.
 pub fn scan(paths: &[PathBuf], opts: &ScanOptions, pack: &RulesPack, run_id: Uuid) -> ScanOutput {
-    let mut collector = Collector::default();
+    let mut collector = Collector {
+        kdf_budget: pkcs12::KdfBudget::new(opts.max_kdf_work),
+        ..Collector::default()
+    };
     let mut output = ScanOutput::default();
     let mut errors = Vec::new();
     let mut files_read = 0u64;
@@ -151,6 +159,7 @@ pub fn scan(paths: &[PathBuf], opts: &ScanOptions, pack: &RulesPack, run_id: Uui
         certs,
         keys,
         locked,
+        ..
     } = collector;
     output.inventory.extend(locked);
     let today = Utc::now().date_naive();

@@ -50,6 +50,10 @@ pub const KEYSTORE_TRUNCATED: &str = "The key store ends too soon. The file can 
 pub const KEYSTORE_UNSUPPORTED: &str =
     "The key store uses a version or an encryption method that the tool does not read.";
 
+/// The error for a key store that asks for more key derivation work than the limits allow.
+pub const KEYSTORE_TOO_MUCH_WORK: &str =
+    "The key store asks for too much work. The tool did not open it.";
+
 /// The error for a JCEKS key entry. The tool fills in {alias}.
 pub const JCEKS_ENTRY_UNSUPPORTED: &str = "The tool cannot read the JCEKS key entry with the alias {alias}. It reads the entries before it and stops.";
 
@@ -127,6 +131,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("KEYSTORE_INVALID", KEYSTORE_INVALID),
     ("KEYSTORE_TRUNCATED", KEYSTORE_TRUNCATED),
     ("KEYSTORE_UNSUPPORTED", KEYSTORE_UNSUPPORTED),
+    ("KEYSTORE_TOO_MUCH_WORK", KEYSTORE_TOO_MUCH_WORK),
     ("JCEKS_ENTRY_UNSUPPORTED", JCEKS_ENTRY_UNSUPPORTED),
     ("ENCRYPTED_NOT_INSPECTED", ENCRYPTED_NOT_INSPECTED),
     ("KBX_UNSUPPORTED", KBX_UNSUPPORTED),

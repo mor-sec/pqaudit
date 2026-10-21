@@ -68,7 +68,7 @@ flowchart TB
         CLI["pqaudit-cli"]
         RULES["pqaudit-rules<br/>S1: built-in trust list<br/>S2: both signatures must pass<br/>S3: rotation chain, revocation<br/>S4: bounded archive reader"]
         CORE["pqaudit-core<br/>S5: results size limit<br/>S6: keyed redaction<br/>S7: pack and engagement checks<br/>S8: text cleaning"]
-        FILES["pqaudit-scan-files<br/>S9: no sockets<br/>S10: no private key bytes in output<br/>S11: wiped buffers, size limits"]
+        FILES["pqaudit-scan-files<br/>S9: no sockets<br/>S10: no private key bytes in output<br/>S11: wiped buffers, size and work limits"]
         NET["pqaudit-scan-net<br/>S12: scope plan, refusal exits 2, no special addresses<br/>S13: one audited connect site<br/>S14: rate limits, timeouts, handshake budget"]
         REP["pqaudit-report<br/>S15: HTML and Markdown escaping<br/>S16: CBOM has no key bytes"]
         ENG[("Engagement folder<br/>scope.toml, assets.toml<br/>results, audit.log, redact.key")]
@@ -122,7 +122,7 @@ flowchart TB
 | S8 | Text from peers and files loses control characters before output. | `text.rs` |
 | S9 | The file scanner has no network crate. A CI job traces it with `strace`. | `check_offline.rs`, `ci.yml` |
 | S10 | The tool never writes private key bytes to results, logs, reports, or errors. Leak tests check this. | `scan-files` tests |
-| S11 | Key files go into buffers that the tool wipes. Each file has a size limit. | `file.rs` |
+| S11 | Key files go into buffers that the tool wipes. Each file has a size limit. A PKCS#12 file has limits on key derivation work. A scan has a total limit. | `file.rs`, `pfx.rs` |
 | S12 | The plan resolves each name one time. An address outside the scope refuses the full scan. Host names need an allowed range. A name must not lead to a special address that no target names. Numeric names are errors. | `scope.rs` |
 | S13 | Only one function opens sockets. It writes a "started" line and a final line to the audit log. | `runtime.rs` |
 | S14 | Limits apply to each IP address. A timeout covers each full attempt. | `runtime.rs`, `tls.rs` |
@@ -215,6 +215,7 @@ Each decision has an ID, the decision, the reason, and the consequence. The firs
 |---|---|---|---|
 | AD-47 | A host that looks numeric but is not a canonical IP address is a scope error. | A resolver can read `10.1` or `0x0a.0.0.1` as an address. The scope check sees a name. | Write each address in its canonical form. |
 | AD-48 | Host names need `allowed_cidrs` or a CIDR target, unless `require_ip_in_cidr = false`. A name must not resolve to a loopback, link-local, multicast, or unspecified address that no IP or CIDR target names. A name with one label needs a final dot. | DNS must not move a scan to an address that the scope did not plan. A search domain must not change a name. | Scopes with only host names need a new key. Loopback scans need an IP target. |
+| AD-49 | Before the PKCS#12 library opens a file, the tool reads the structure and counts the key derivation work. It decrypts the encrypted safes itself to count the bags in them. | A hostile file can ask for scrypt, many iterations, or many bags. | No scrypt. At most 100000 iterations, 16 key derivations, and 1600000 iterations for each file. At most 5000000 iterations for each scan. |
 
 ## 5. Known limits
 

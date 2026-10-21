@@ -49,6 +49,8 @@ pub(crate) struct Collector {
     pub keys: BTreeMap<String, SeenKey>,
     /// The key stores that no password opens.
     pub locked: Vec<InventoryItem>,
+    /// The key derivation work that is left for the PKCS#12 files of the scan.
+    pub kdf_budget: pkcs12::KdfBudget,
 }
 
 /// The facts about the file that the scan reads.
@@ -316,8 +318,10 @@ fn scan_store(
     errors: &mut Vec<ScanError>,
 ) -> Outcome {
     let result = match kind {
-        StoreKind::Pkcs12 => pkcs12::scan_p12(data, &opts.passwords)
-            .map(|scan| (into_found(scan.found), scan.errors)),
+        StoreKind::Pkcs12 => {
+            pkcs12::scan_p12_with_budget(data, &opts.passwords, &mut collector.kdf_budget)
+                .map(|scan| (into_found(scan.found), scan.errors))
+        }
         StoreKind::Java => jks::scan_jks(data).map(|scan| (jks_certs(scan.found), scan.errors)),
     };
     match result {
@@ -329,6 +333,10 @@ fn scan_store(
         Err(pkcs12::StoreError::Encrypted) => {
             errors.push(ctx.error(messages::ENCRYPTED_NOT_INSPECTED.to_string()));
             collector.locked.push(locked_item(data, ctx));
+            Outcome::NotRead
+        }
+        Err(pkcs12::StoreError::TooMuchWork) => {
+            errors.push(ctx.error(messages::KEYSTORE_TOO_MUCH_WORK.to_string()));
             Outcome::NotRead
         }
         Err(error) => {

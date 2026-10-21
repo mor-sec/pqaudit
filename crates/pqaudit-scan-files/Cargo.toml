@@ -9,15 +9,20 @@ repository.workspace = true
 
 [dependencies]
 base64 = "0.23.1"
+cbc = { version = "0.2.1", features = ["alloc", "block-padding"] }
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 curve25519-dalek = "5.0.0"
+des = "0.9.0"
 gethostname = "1.1.0"
 ed25519-dalek = { version = "3.0.0", features = ["zeroize"] }
 ml-dsa = { version = "0.1.1", features = ["zeroize"] }
 ml-kem = { version = "0.3.3", features = ["zeroize"] }
 p12-keystore = "0.4.1"
+pkcs12 = { version = "0.2.0-pre.0", default-features = false, features = ["kdf"] }
+pkcs5 = { version = "0.8.1", features = ["alloc", "pbes2"] }
 pqaudit-core = { version = "0.1.0", path = "../pqaudit-core" }
 pqaudit-rules = { version = "0.1.0", path = "../pqaudit-rules" }
+rc2 = "0.9.0"
 serde = { version = "1.0.229", features = ["derive"] }
 sha1 = "0.11.0"
 sha2 = "0.11.1"

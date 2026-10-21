@@ -58,6 +58,7 @@ pub fn run(cli: &Cli, args: FilesArgs<'_>) -> ExitCode {
         follow_symlinks: args.follow_symlinks,
         passwords,
         host: host.clone(),
+        max_kdf_work: pqaudit_scan_files::pkcs12::MAX_SCAN_WORK,
     };
     let run_id = Uuid::new_v4();
     let output = scan(args.paths, &options, &active.pack, run_id);
