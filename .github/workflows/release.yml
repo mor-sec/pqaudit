@@ -85,12 +85,26 @@ jobs:
           persist-credentials: false
 
       # A release must not trust the development pack key.
+      # The step fails if the file is missing or if grep fails. Only the grep status 1 passes.
       - name: Refuse the development pack key
         run: |
-          if grep -q 'DEVELOPMENT KEY' rules/trust/keys.toml; then
-            echo "::error::rules/trust/keys.toml has the development key. Replace it before a release."
+          trust=rules/trust/keys.toml
+          dev_id=f47d767d5e16d33dab9f576b77619b24f82ca192a56d24377c6934a82af70227
+          if ! test -f "$trust"; then
+            echo "::error::$trust is missing."
             exit 1
           fi
+          for pattern in 'DEVELOPMENT KEY' "$dev_id"; do
+            status=0
+            grep -q -F -e "$pattern" "$trust" || status=$?
+            if test "$status" -eq 0; then
+              echo "::error::$trust has the development key. Replace it before a release."
+              exit 1
+            elif test "$status" -ne 1; then
+              echo "::error::The check of $trust failed with grep status $status."
+              exit 1
+            fi
+          done
 
       - name: Install the pinned toolchain and the targets
         run: |
