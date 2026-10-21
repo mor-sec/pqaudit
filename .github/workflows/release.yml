@@ -10,7 +10,9 @@
 # Only the jobs sign-macos and sign-windows use that environment. They never run cargo.
 # The build job has no signing secrets.
 # The job release uses the environment "release". Add required reviewers to it, and allow only tags v*.
-# That job also stops if the commit of the tag is not on main.
+# Also allow only tags v* in the environment "release-signing".
+# The first job guard stops the pipeline if the commit of the tag is not on main.
+# The job release does that check again.
 #   macOS:   MACOS_CERTIFICATE (base64 .p12), MACOS_CERTIFICATE_PASSWORD, MACOS_SIGNING_IDENTITY,
 #            APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD
 #   Windows: WINDOWS_CERTIFICATE (base64 .pfx), WINDOWS_CERTIFICATE_PASSWORD
@@ -36,8 +38,29 @@ env:
   ZIG_VERSION: 0.15.1
 
 jobs:
+  # This job runs first. Only a commit on main can go to the build and the signing jobs.
+  # A tag on another branch stops here. The job release does the same check again.
+  guard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # The full history lets the next step compare the tag with main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check that the tag is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::The commit $GITHUB_SHA of the tag $GITHUB_REF_NAME is not on main."
+            exit 1
+          fi
+
   # Run the tests once. Do not set SOURCE_DATE_EPOCH here: the CBOM test needs a fixed time.
   test:
+    needs: guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,7 +69,7 @@ jobs:
       - run: cargo test --workspace --locked
 
   build:
-    needs: test
+    needs: [guard, test]
     strategy:
       fail-fast: true
       matrix:

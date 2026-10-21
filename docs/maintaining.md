@@ -125,12 +125,15 @@ Before the first tag, replace the development key. The file `rules/trust/keys.to
 Before the first release, make two environments in the GitHub settings of the repository:
 
 - `release-signing`: add the reviewers that must approve a run. Add the signing secrets that `release.yml` names.
+- For `release-signing`, set the deployment rule to selected branches and tags. Add only the tag pattern `v*`.
 - Only the jobs `sign-macos` and `sign-windows` use `release-signing`.
 - `release`: add the reviewers that must approve a run.
 - For `release`, set the deployment rule to selected branches and tags. Add only the tag pattern `v*`.
 - Only the job `release` uses `release`. This job can write to the repository and get an OIDC token.
 
-Also protect the tags `v*` with a ruleset. Then only the maintainers can make or move a release tag. The job `release` also stops if the commit of the tag is not on `main`.
+You must set these deployment rules yourself in the GitHub settings. The workflow file cannot set them.
+
+Also protect the tags `v*` with a ruleset. Then only the maintainers can make or move a release tag. The first job `guard` stops the pipeline if the commit of the tag is not on `main`. Then no build job and no signing job runs. The job `release` does the same check again.
 
 Do the release steps in this order:
 
