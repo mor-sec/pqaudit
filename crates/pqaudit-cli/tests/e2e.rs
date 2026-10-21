@@ -159,7 +159,12 @@ fn full_stage1_engagement() {
         .errors
         .iter()
         .map(|error| {
-            let name = error.location.rsplit('/').next().unwrap().to_string();
+            let name = error
+                .location
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap()
+                .to_string();
             (name, error.reason.clone())
         })
         .collect();
