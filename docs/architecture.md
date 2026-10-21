@@ -69,7 +69,7 @@ flowchart TB
         RULES["pqaudit-rules<br/>S1: built-in trust list<br/>S2: both signatures must pass<br/>S3: rotation chain, revocation<br/>S4: bounded archive reader"]
         CORE["pqaudit-core<br/>S5: results size limit<br/>S6: keyed redaction<br/>S7: pack and engagement checks<br/>S8: text cleaning"]
         FILES["pqaudit-scan-files<br/>S9: no sockets<br/>S10: no private key bytes in output<br/>S11: wiped buffers, size limits"]
-        NET["pqaudit-scan-net<br/>S12: scope plan, refusal exits 2<br/>S13: one audited connect site<br/>S14: rate limits, timeouts, handshake budget"]
+        NET["pqaudit-scan-net<br/>S12: scope plan, refusal exits 2, no special addresses<br/>S13: one audited connect site<br/>S14: rate limits, timeouts, handshake budget"]
         REP["pqaudit-report<br/>S15: HTML and Markdown escaping<br/>S16: CBOM has no key bytes"]
         ENG[("Engagement folder<br/>scope.toml, assets.toml<br/>results, audit.log, redact.key")]
     end
@@ -123,7 +123,7 @@ flowchart TB
 | S9 | The file scanner has no network crate. A CI job traces it with `strace`. | `check_offline.rs`, `ci.yml` |
 | S10 | The tool never writes private key bytes to results, logs, reports, or errors. Leak tests check this. | `scan-files` tests |
 | S11 | Key files go into buffers that the tool wipes. Each file has a size limit. | `file.rs` |
-| S12 | The plan resolves each name one time. An address outside the scope refuses the full scan. | `scope.rs` |
+| S12 | The plan resolves each name one time. An address outside the scope refuses the full scan. Host names need an allowed range. A name must not lead to a special address that no target names. Numeric names are errors. | `scope.rs` |
 | S13 | Only one function opens sockets. It writes a "started" line and a final line to the audit log. | `runtime.rs` |
 | S14 | Limits apply to each IP address. A timeout covers each full attempt. | `runtime.rs`, `tls.rs` |
 | S15 | The HTML template escapes all values. The Markdown writer escapes table and heading characters. | `technical.rs` |
@@ -146,7 +146,7 @@ flowchart TB
 
 ## 4. Architecture decisions
 
-Each decision has an ID, the decision, the reason, and the consequence. The first group comes from the requester. The second group comes from the design. The third group comes from the build.
+Each decision has an ID, the decision, the reason, and the consequence. The first group comes from the requester. The second group comes from the design. The third group comes from the build. The fourth group comes from the security review.
 
 ### 4.1 Decisions of the requester
 
@@ -208,6 +208,13 @@ Each decision has an ID, the decision, the reason, and the consequence. The firs
 | AD-44 | The SBOM is CycloneDX 1.5. | `cargo-cyclonedx` supports 1.5 at most. | The SBOM and the CBOM use different versions. |
 | AD-45 | Signing jobs run apart from build jobs. | Build scripts must not read signing secrets. | The `release-signing` environment needs approval. |
 | AD-46 | `sign-release` needs the exact tag. | An old signed binary must not pass as the new one. | The maintainer gives `--tag` for each release. |
+
+### 4.4 Decisions from the security review
+
+| ID | Decision | Reason | Consequence |
+|---|---|---|---|
+| AD-47 | A host that looks numeric but is not a canonical IP address is a scope error. | A resolver can read `10.1` or `0x0a.0.0.1` as an address. The scope check sees a name. | Write each address in its canonical form. |
+| AD-48 | Host names need `allowed_cidrs` or a CIDR target, unless `require_ip_in_cidr = false`. A name must not resolve to a loopback, link-local, multicast, or unspecified address that no IP or CIDR target names. A name with one label needs a final dot. | DNS must not move a scan to an address that the scope did not plan. A search domain must not change a name. | Scopes with only host names need a new key. Loopback scans need an IP target. |
 
 ## 5. Known limits
 

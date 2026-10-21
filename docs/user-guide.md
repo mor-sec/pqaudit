@@ -71,8 +71,8 @@ The file `scope.toml` is the only source of network targets. The template has no
 
 | Key | Meaning |
 | --- | --- |
-| `require_ip_in_cidr` | If the value is `true`, each address of a host name must be in an allowed range. The default is `true` when `allowed_cidrs` or a CIDR target exists. Otherwise it is `false` |
-| `allowed_cidrs` | The address ranges that host names can resolve to. These ranges are not targets. The CIDR ranges of the targets are also allowed |
+| `require_ip_in_cidr` | If the value is `true`, each address of a host name must be in an allowed range. The default is `true` when `allowed_cidrs` or a CIDR target exists. A scope with host names and no range is an error, unless this value is `false` |
+| `allowed_cidrs` | The address ranges that host names can resolve to. These ranges are not targets. The CIDR ranges of the targets are also allowed. A scope with host names needs this key or a CIDR target |
 | `allowed_hours` | The local-time window in which the tool can start, for example `"09:00-17:00"`. The window can cross midnight, for example `"22:00-06:00"` |
 | `override_limits` | If the value is `true`, you can set limits past their defaults. The default is `false` |
 | `legacy_tls_check` | If the value is `true`, the tool makes one more TLS connection for each port. That connection checks for old protocol versions. The check needs `tls_handshakes` of 3. A lower limit stops the scan with exit code 1. The default is `false` |
@@ -84,7 +84,7 @@ The keys of `[[target]]`:
 
 | Key | Meaning |
 | --- | --- |
-| `host` | A host name or an IP address. Use `host` or `cidr`, not both |
+| `host` | A host name or an IP address. Use `host` or `cidr`, not both. Write each IP address in its canonical form, for example `10.0.0.1`. The tool rejects forms such as `10.1`, `167772161`, `010.0.0.1`, and `0x0a.0.0.1`. A name with one label must end with a dot, for example `printer.` |
 | `cidr` | An address range. A range can have 256 addresses at most. With `override_limits`, the maximum is 65536 |
 | `ports` | The list of ports, from 1 to 65535. The list must have at least one port |
 | `protocol` | `tls` or `ssh` |
@@ -325,11 +325,16 @@ Before the first connection, the tool does these steps:
 2. It resolves each host name one time. It uses the addresses from this lookup for the full scan.
 3. It applies the exclusions.
 4. It checks each resolved address against `allowed_cidrs`, if `require_ip_in_cidr` is `true`.
-5. It checks `allowed_hours`.
+5. It checks each resolved address for a special type: loopback, link-local, multicast, or unspecified.
+6. It checks `allowed_hours`.
 
 If `require_ip_in_cidr` is `true` and any address is outside `allowed_cidrs`, the tool refuses the full scan and exits with code 2. It does not scan the other targets. The same is true for a host name that does not resolve and for a CIDR range that is too large. The same is true for a limit past its default. The option `--dry-run` shows each refusal with its reason.
 
-The default of `require_ip_in_cidr` is `true` only if `allowed_cidrs` or a CIDR target exists. A scope with only host names checks no resolved address. Set `allowed_cidrs` to pin names to known ranges.
+The default of `require_ip_in_cidr` is `true` only if `allowed_cidrs` or a CIDR target exists. A scope with host names and no range stops with exit code 1. Set `allowed_cidrs` to pin names to known ranges. To accept all addresses, set `require_ip_in_cidr = false`.
+
+A host name must not resolve to a loopback, link-local, multicast, or unspecified address. Examples are `127.0.0.1`, `::1`, `169.254.0.0/16`, and `fe80::/10`. If it does, the tool refuses the full scan and exits with code 2. This rule also applies when `require_ip_in_cidr` is `false`. An entry in `allowed_cidrs` does not change the rule. To scan such an address, add it, or a CIDR range that holds it, as a target.
+
+The tool resolves a name with one label, such as `printer.`, with the final dot. Thus the resolver adds no search domain. The TLS server name has no final dot.
 
 An exclusion does not match the NAT64 form or the 6to4 form of an IPv4 address. This is a known limit.
 

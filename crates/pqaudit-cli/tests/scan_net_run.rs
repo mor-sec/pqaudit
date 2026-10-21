@@ -120,7 +120,7 @@ fn refused_plan_exits_2_before_any_connection() {
     let (listener, port) = watched_listener();
     // The name localhost resolves to a loopback address. The allowed range is another range.
     let setup = Setup::new(&format!(
-        "allowed_cidrs = [\"10.0.0.0/16\"]\n[[target]]\nhost = \"localhost\"\nports = [{port}]\nprotocol = \"tls\"\n"
+        "allowed_cidrs = [\"10.0.0.0/16\"]\n[[target]]\nhost = \"localhost.\"\nports = [{port}]\nprotocol = \"tls\"\n"
     ));
     setup
         .scan()

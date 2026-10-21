@@ -23,6 +23,9 @@ pub const LIMIT_ZERO: &str = "The limit {name} must be 1 or more.";
 pub const AUDIT_INCOMPLETE: &str =
     "The audit log is not complete. The tool could not write each connection to it.";
 
+/// The error when the scope has host names but no allowed range.
+pub const HOSTS_NEED_ALLOWED_CIDRS: &str = "The scope has host names, but no allowed range. Set allowed_cidrs to the ranges that the host names can resolve to. To accept all addresses, set require_ip_in_cidr to false.";
+
 /// The error when the legacy TLS check needs more handshakes. The tool fills in {handshakes} and {needed}.
 pub const LEGACY_NEEDS_HANDSHAKES: &str = "The setting legacy_tls_check = true needs {needed} TLS handshakes, but the limit tls_handshakes is {handshakes}. Set tls_handshakes to {needed}, or set legacy_tls_check to false.";
 
@@ -46,6 +49,10 @@ pub const HOST_INVALID: &str =
 pub const HOST_NUMERIC: &str =
     "The host looks like a number, but it is not a canonical IP address. Write a canonical IP address, for example 10.0.0.1.";
 
+/// The reason when a host name has one label and no final dot. The tool fills in {name}.
+pub const HOST_SINGLE_LABEL: &str =
+    "A host name with one label must end with a dot, for example \"{name}.\". Without the dot, the resolver can add a search domain.";
+
 /// The reason when allowed_hours is not valid.
 pub const HOURS_INVALID: &str =
     "The value of allowed_hours must have the form HH:MM-HH:MM. The two times must differ.";
@@ -59,6 +66,9 @@ pub const REFUSE_NO_ADDRESSES: &str = "The host name has no addresses.";
 /// The reason when addresses are outside the allowed ranges. The tool fills in {ips}.
 pub const REFUSE_OUTSIDE: &str =
     "These addresses are not in an allowed CIDR range: {ips}. The tool refuses the full scan.";
+
+/// The reason when a host name resolves to a special address. The tool fills in {ips}.
+pub const REFUSE_SPECIAL: &str = "These addresses are loopback, link-local, multicast, or unspecified addresses: {ips}. To scan an address of this type, add it as an IP or CIDR target. The tool refuses the full scan.";
 
 /// The reason when a CIDR has too many addresses. The tool fills in {max}.
 pub const REFUSE_CIDR_LARGE: &str =
@@ -189,6 +199,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("LIMIT_BELOW_DEFAULT", LIMIT_BELOW_DEFAULT),
     ("LIMIT_ZERO", LIMIT_ZERO),
     ("LEGACY_NEEDS_HANDSHAKES", LEGACY_NEEDS_HANDSHAKES),
+    ("HOSTS_NEED_ALLOWED_CIDRS", HOSTS_NEED_ALLOWED_CIDRS),
     ("AUDIT_INCOMPLETE", AUDIT_INCOMPLETE),
     ("TARGET_KIND", TARGET_KIND),
     ("EXCLUDE_KIND", EXCLUDE_KIND),
@@ -196,10 +207,12 @@ pub const ALL: &[(&str, &str)] = &[
     ("PORT_ZERO", PORT_ZERO),
     ("HOST_INVALID", HOST_INVALID),
     ("HOST_NUMERIC", HOST_NUMERIC),
+    ("HOST_SINGLE_LABEL", HOST_SINGLE_LABEL),
     ("HOURS_INVALID", HOURS_INVALID),
     ("REFUSE_RESOLVE", REFUSE_RESOLVE),
     ("REFUSE_NO_ADDRESSES", REFUSE_NO_ADDRESSES),
     ("REFUSE_OUTSIDE", REFUSE_OUTSIDE),
+    ("REFUSE_SPECIAL", REFUSE_SPECIAL),
     ("REFUSE_CIDR_LARGE", REFUSE_CIDR_LARGE),
     ("REFUSE_CIDR_HUGE", REFUSE_CIDR_HUGE),
     ("OUTSIDE_HOURS", OUTSIDE_HOURS),

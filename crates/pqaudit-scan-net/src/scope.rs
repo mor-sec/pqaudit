@@ -86,6 +86,8 @@ pub enum ScopeError {
         /// The limit `tls_handshakes`.
         handshakes: u8,
     },
+    /// The scope has host names but no range that their addresses must be in.
+    HostsNeedAllowedCidrs,
 }
 
 impl ScopeError {
@@ -130,6 +132,7 @@ impl fmt::Display for ScopeError {
             Self::LegacyCheckNeedsHandshakes { handshakes } => messages::LEGACY_NEEDS_HANDSHAKES
                 .replace("{handshakes}", &handshakes.to_string())
                 .replace("{needed}", &TLS_CONNECTIONS_LEGACY.to_string()),
+            Self::HostsNeedAllowedCidrs => messages::HOSTS_NEED_ALLOWED_CIDRS.to_string(),
         };
         f.write_str(&text)
     }
@@ -219,6 +222,10 @@ impl Host {
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_'))
             && !name.starts_with('.')
             && !name.contains("..");
+        // A resolver can add a search domain to a name with one label.
+        if valid && !name.contains('.') && !text.ends_with('.') {
+            return Err(messages::HOST_SINGLE_LABEL.replace("{name}", &name));
+        }
         if valid {
             Ok(Self::Name(name))
         } else {
@@ -567,6 +574,12 @@ pub enum RefusalReason {
         /// The addresses that are outside.
         ips: Vec<IpAddr>,
     },
+    /// Some addresses are loopback, link-local, multicast, or unspecified addresses.
+    /// No IP or CIDR target names them.
+    SpecialAddress {
+        /// The addresses.
+        ips: Vec<IpAddr>,
+    },
     /// The CIDR range has more than 256 addresses.
     CidrTooLarge {
         /// The limit.
@@ -587,6 +600,10 @@ impl fmt::Display for RefusalReason {
             Self::IpOutsideAllowed { ips } => {
                 let list: Vec<String> = ips.iter().map(ToString::to_string).collect();
                 messages::REFUSE_OUTSIDE.replace("{ips}", &list.join(", "))
+            }
+            Self::SpecialAddress { ips } => {
+                let list: Vec<String> = ips.iter().map(ToString::to_string).collect();
+                messages::REFUSE_SPECIAL.replace("{ips}", &list.join(", "))
             }
             Self::CidrTooLarge { max } => {
                 messages::REFUSE_CIDR_LARGE.replace("{max}", &max.to_string())
@@ -636,8 +653,14 @@ impl CachedResolver<'_> {
         self.cache
             .entry(host.to_string())
             .or_insert_with(|| {
+                // A name with one label keeps its final dot. Then the resolver adds no search domain.
+                let query = if host.contains('.') {
+                    host.to_string()
+                } else {
+                    format!("{host}.")
+                };
                 resolver
-                    .resolve(host)
+                    .resolve(&query)
                     .map(|ips| {
                         let mut seen = HashSet::new();
                         ips.into_iter()
@@ -648,6 +671,21 @@ impl CachedResolver<'_> {
                     .map_err(|error| error.to_string())
             })
             .clone()
+    }
+}
+
+/// True for a loopback, link-local, multicast, or unspecified address.
+fn is_special(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_loopback() || v4.is_link_local() || v4.is_multicast() || v4.is_unspecified()
+        }
+        IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unicast_link_local()
+                || v6.is_multicast()
+                || v6.is_unspecified()
+        }
     }
 }
 
@@ -691,6 +729,19 @@ pub fn build_plan(scope: &ScopeFile, resolver: &dyn Resolver) -> Result<TargetPl
             handshakes: limits.tls_handshakes,
         });
     }
+    let has_names = scope
+        .target
+        .iter()
+        .any(|t| matches!(t.selector, Selector::Host(Host::Name(_))));
+    let has_ranges = !scope.allowed_cidrs.is_empty()
+        || scope
+            .target
+            .iter()
+            .any(|t| matches!(t.selector, Selector::Cidr(_)));
+    // Without a range, a host name can resolve to any address.
+    if has_names && !has_ranges && scope.require_ip_in_cidr != Some(false) {
+        return Err(ScopeError::HostsNeedAllowedCidrs);
+    }
     let mut resolver = CachedResolver {
         resolver,
         cache: HashMap::new(),
@@ -725,6 +776,16 @@ pub fn build_plan(scope: &ScopeFile, resolver: &dyn Resolver) -> Result<TargetPl
         Selector::Host(_) => None,
     }));
     let require_ip_in_cidr = scope.require_ip_in_cidr.unwrap_or(!allowed.is_empty());
+    // The IP and CIDR targets. Only these can name a special address.
+    let named: Vec<IpNet> = scope
+        .target
+        .iter()
+        .filter_map(|t| match &t.selector {
+            Selector::Cidr(net) => Some(*net),
+            Selector::Host(Host::Ip(ip)) => Some(IpNet::from(*ip)),
+            Selector::Host(Host::Name(_)) => None,
+        })
+        .collect();
 
     let mut targets = Vec::new();
     let mut seen = HashSet::new();
@@ -762,6 +823,19 @@ pub fn build_plan(scope: &ScopeFile, resolver: &dyn Resolver) -> Result<TargetPl
                     refused.push(Refusal {
                         target: name.clone(),
                         reason: RefusalReason::IpOutsideAllowed { ips: outside },
+                    });
+                    continue;
+                }
+                // A name must not lead to a special address that no target names.
+                let special: Vec<IpAddr> = ips
+                    .iter()
+                    .filter(|ip| is_special(ip) && !named.iter().any(|net| net.contains(*ip)))
+                    .copied()
+                    .collect();
+                if !special.is_empty() {
+                    refused.push(Refusal {
+                        target: name.clone(),
+                        reason: RefusalReason::SpecialAddress { ips: special },
                     });
                     continue;
                 }

@@ -25,11 +25,15 @@ fn dry_run_lists_targets_exit_0() {
         r#"
         allowed_cidrs = ["127.0.0.0/8", "::1/128"]
         [[target]]
-        host = "localhost"
+        host = "localhost."
         ports = [443]
         protocol = "tls"
         [[target]]
         host = "127.0.0.1"
+        ports = [22]
+        protocol = "ssh"
+        [[target]]
+        host = "::1"
         ports = [22]
         protocol = "ssh"
         "#,
@@ -52,7 +56,7 @@ fn dry_run_with_refusal_exit_2() {
         r#"
         allowed_cidrs = ["10.0.0.0/16"]
         [[target]]
-        host = "localhost"
+        host = "localhost."
         ports = [443]
         protocol = "tls"
         "#,
@@ -61,6 +65,33 @@ fn dry_run_with_refusal_exit_2() {
         .code(2)
         .stdout(predicate::str::contains("Refused: localhost"))
         .stdout(predicate::str::contains("not in an allowed CIDR range"));
+}
+
+#[test]
+fn dry_run_loopback_name_without_ip_target_exit_2() {
+    // The allowed range holds the loopback addresses, but no IP target names them.
+    let dir = engagement(
+        r#"
+        allowed_cidrs = ["127.0.0.0/8", "::1/128"]
+        [[target]]
+        host = "localhost."
+        ports = [443]
+        protocol = "tls"
+        "#,
+    );
+    dry_run(&dir)
+        .code(2)
+        .stdout(predicate::str::contains("Refused: localhost"))
+        .stdout(predicate::str::contains("loopback"));
+}
+
+#[test]
+fn dry_run_host_names_without_allowed_ranges_exit_1() {
+    let dir =
+        engagement("[[target]]\nhost = \"pay.acme.example\"\nports = [443]\nprotocol = \"tls\"\n");
+    dry_run(&dir)
+        .code(1)
+        .stderr(predicate::str::contains("allowed_cidrs"));
 }
 
 #[test]

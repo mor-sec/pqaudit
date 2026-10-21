@@ -5,10 +5,12 @@
 
 # If this value is true, each address of a host name must be in an allowed range.
 # The default is true when the scope has a CIDR range. Otherwise the default is false.
+# A scope with host names and no range is an error, unless this value is false.
 # require_ip_in_cidr = true
 
 # The address ranges that host names can resolve to. These ranges are not targets.
 # The CIDR ranges of the targets are also allowed.
+# A scope with host names needs this key or a CIDR target.
 # allowed_cidrs = ["10.0.0.0/16"]
 
 # The hours in which the tool can start. Use the local time.
@@ -37,6 +39,11 @@
 
 # A target is a host name, an IP address, or a CIDR range, with ports and a protocol.
 # The protocol is tls or ssh. A CIDR range can have 256 addresses at most.
+# Write each IP address in its canonical form, for example 10.0.0.1.
+#
+# A host name with one label needs a final dot.
+# A host name must not resolve to a loopback, link-local, multicast, or unspecified address.
+# To scan an address of this type, add it as an IP or CIDR target.
 # [[target]]
 # host = "pay.acme.example"
 # ports = [443]

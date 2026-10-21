@@ -117,9 +117,40 @@ fn require_ip_in_cidr_false_allows_any_address() {
 }
 
 #[test]
-fn no_cidr_means_no_address_check() {
+fn host_names_without_allowed_ranges_are_a_configuration_error() {
+    let resolver = FakeResolver::with("a.example", &["203.0.113.9"]);
+    for text in [
+        "[[target]]\nhost = \"a.example\"\nports = [443]\nprotocol = \"tls\"\n",
+        "require_ip_in_cidr = true\n[[target]]\nhost = \"a.example\"\nports = [443]\nprotocol = \"tls\"\n",
+        // An IP target is not a range for host names.
+        "[[target]]\nhost = \"10.0.0.1\"\nports = [443]\nprotocol = \"tls\"\n[[target]]\nhost = \"a.example\"\nports = [443]\nprotocol = \"tls\"\n",
+    ] {
+        let error = build_plan(&scope(text), &resolver).unwrap_err();
+        assert!(
+            matches!(error, ScopeError::HostsNeedAllowedCidrs),
+            "{text}: {error:?}"
+        );
+        assert!(!error.is_refusal(), "a configuration error gives exit 1");
+        assert!(error.to_string().contains("allowed_cidrs"), "{error}");
+    }
+    assert_eq!(
+        resolver.calls_for("a.example"),
+        0,
+        "no resolution before the check"
+    );
+}
+
+#[test]
+fn ip_only_scope_needs_no_allowed_ranges() {
+    let text = "[[target]]\nhost = \"192.0.2.1\"\nports = [443]\nprotocol = \"tls\"\n";
+    assert!(!plan(text, &FakeResolver::default()).is_refused());
+}
+
+#[test]
+fn explicit_false_without_cidr_allows_names() {
     let resolver = FakeResolver::with("a.example", &["203.0.113.9"]);
     let text = r#"
+        require_ip_in_cidr = false
         [[target]]
         host = "a.example"
         ports = [443]
@@ -129,16 +160,101 @@ fn no_cidr_means_no_address_check() {
 }
 
 #[test]
-fn explicit_true_without_cidr_refuses_names() {
-    let resolver = FakeResolver::with("a.example", &["203.0.113.9"]);
+fn special_addresses_of_names_are_refused() {
+    for (address, range) in [
+        ("127.0.0.1", "127.0.0.0/8"),
+        ("::1", "::1/128"),
+        ("169.254.10.1", "169.254.0.0/16"),
+        ("fe80::1", "fe80::/10"),
+        ("224.0.0.1", "224.0.0.0/4"),
+        ("ff02::1", "ff00::/8"),
+        ("0.0.0.0", "0.0.0.0/8"),
+        ("::", "::/128"),
+    ] {
+        let resolver = FakeResolver::with("a.example", &[address]);
+        // The allowed range holds the address. That is not enough.
+        let text = format!(
+            "allowed_cidrs = [\"{range}\"]\n[[target]]\nhost = \"a.example\"\nports = [443]\nprotocol = \"tls\"\n"
+        );
+        let plan = plan(&text, &resolver);
+        assert_eq!(plan.refused.len(), 1, "{address}");
+        assert!(
+            matches!(&plan.refused[0].reason, RefusalReason::SpecialAddress { ips } if ips == &[ip(address)]),
+            "{address}: {:?}",
+            plan.refused[0]
+        );
+        assert!(plan.targets.is_empty(), "{address}");
+        // The check also applies when require_ip_in_cidr is false.
+        let text = "require_ip_in_cidr = false\n[[target]]\nhost = \"a.example\"\nports = [443]\nprotocol = \"tls\"\n";
+        assert!(self::plan(text, &resolver).is_refused(), "{address}");
+    }
+}
+
+#[test]
+fn special_address_named_as_a_target_is_allowed() {
+    let resolver = FakeResolver::with("a.example", &["127.0.0.1"]);
+    // An IP target names the address.
     let text = r#"
-        require_ip_in_cidr = true
+        allowed_cidrs = ["127.0.0.0/8"]
+        [[target]]
+        host = "127.0.0.1"
+        ports = [22]
+        protocol = "ssh"
+        [[target]]
+        host = "a.example"
+        ports = [443]
+        protocol = "tls"
+    "#;
+    let result = plan(text, &resolver);
+    assert!(!result.is_refused(), "{:?}", result.refused);
+    assert!(result
+        .targets
+        .iter()
+        .any(|t| t.host.as_deref() == Some("a.example")));
+    // A CIDR target holds the address.
+    let text = r#"
+        [[target]]
+        cidr = "127.0.0.0/30"
+        ports = [22]
+        protocol = "ssh"
+        [[target]]
+        host = "a.example"
+        ports = [443]
+        protocol = "tls"
+    "#;
+    assert!(!plan(text, &resolver).is_refused());
+    // An allowed range is not a target.
+    let text = r#"
+        allowed_cidrs = ["127.0.0.0/8"]
+        [[target]]
+        host = "127.0.0.2"
+        ports = [22]
+        protocol = "ssh"
         [[target]]
         host = "a.example"
         ports = [443]
         protocol = "tls"
     "#;
     assert!(plan(text, &resolver).is_refused());
+}
+
+#[test]
+fn single_label_names_need_a_final_dot() {
+    for text in [
+        "allowed_cidrs = [\"10.0.0.0/8\"]\n[[target]]\nhost = \"printer\"\nports = [443]\nprotocol = \"tls\"\n",
+        "[[exclude]]\nhost = \"printer\"\n",
+    ] {
+        let error = ScopeFile::parse(text, "scope.toml").unwrap_err();
+        assert!(matches!(error, ScopeError::Parse { .. }), "{error:?}");
+        assert!(error.to_string().contains("printer."), "{error}");
+    }
+    let resolver = FakeResolver::with("printer.", &["10.0.0.7"]);
+    let text = "allowed_cidrs = [\"10.0.0.0/8\"]\n[[target]]\nhost = \"printer.\"\nports = [443]\nprotocol = \"tls\"\n";
+    let result = plan(text, &resolver);
+    assert!(!result.is_refused(), "{:?}", result.refused);
+    // The resolver gets the name with the final dot. SNI gets the name without it.
+    assert_eq!(resolver.calls_for("printer."), 1);
+    assert_eq!(result.targets[0].host.as_deref(), Some("printer"));
 }
 
 #[test]
@@ -161,6 +277,7 @@ fn cidr_target_range_is_allowed_for_names() {
 fn resolution_failure_is_a_refusal() {
     let resolver = FakeResolver::default();
     let text = r#"
+        allowed_cidrs = ["10.0.0.0/8"]
         [[target]]
         host = "gone.example"
         ports = [443]
@@ -178,6 +295,7 @@ fn resolution_failure_is_a_refusal() {
 fn zero_addresses_is_a_refusal() {
     let resolver = FakeResolver::with("empty.example", &[]);
     let text = r#"
+        allowed_cidrs = ["10.0.0.0/8"]
         [[target]]
         host = "empty.example"
         ports = [443]
@@ -209,6 +327,7 @@ fn exclude_beats_include() {
 fn exclude_by_host_name_skips_the_target_without_resolving() {
     let resolver = FakeResolver::with("skip.example", &["10.0.0.9"]);
     let text = r#"
+        allowed_cidrs = ["10.0.0.0/8"]
         [[target]]
         host = "Skip.Example"
         ports = [443]
@@ -259,6 +378,7 @@ fn excluded_bad_address_still_refuses_the_host() {
 fn mapped_exclude_cidr_matches_resolved_address() {
     let resolver = FakeResolver::with("a.example", &["10.0.1.5", "10.0.1.6"]);
     let text = r#"
+        allowed_cidrs = ["10.0.0.0/8"]
         [[target]]
         host = "a.example"
         ports = [443]

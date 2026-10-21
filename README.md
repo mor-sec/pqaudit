@@ -62,7 +62,12 @@ This section is for the security team of a client. It tells what the tool does a
 - The tool resolves each host name one time, at the start.
 - If `require_ip_in_cidr` is `true`, an address outside `allowed_cidrs` makes the tool refuse the full scan. It exits with code 2.
 - The default of `require_ip_in_cidr` is `true` only if `allowed_cidrs` or a CIDR target exists.
-- A scope with only host names checks no resolved address. Set `allowed_cidrs` to pin names to known ranges.
+- A scope with host names needs `allowed_cidrs` or a CIDR target. Otherwise the tool stops with exit code 1.
+- To accept all addresses for host names, set `require_ip_in_cidr = false`.
+- A host name must not resolve to a loopback, link-local, multicast, or unspecified address.
+- Only an IP or CIDR target can name such an address.
+- The tool rejects IP addresses that are not canonical, such as `10.1` or `0x0a.0.0.1`.
+- A host name with one label must end with a dot.
 - An `exclude` entry has priority over a target.
 - The tool does not follow redirects, SRV records, or MX records.
 - The file `scope.toml` that `init` makes has no targets. The command `scan net` does nothing until you add a target.
