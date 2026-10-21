@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+# CI reads the code only. The token can write nothing.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 

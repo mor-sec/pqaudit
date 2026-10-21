@@ -52,7 +52,7 @@ flowchart TB
     subgraph GH["GitHub mor-sec/pqaudit"]
         SRC["Source, Cargo.lock, rules/<br/>C1: signed commits and tags, review on main"]
         subgraph CI["CI workflow"]
-            CHK["fmt, clippy, tests on 3 systems<br/>ste lint, offline check<br/>C2: actions pinned by commit SHA<br/>C3: cargo --locked"]
+            CHK["fmt, clippy, tests on 3 systems<br/>ste lint, offline check<br/>C2: actions pinned by commit SHA<br/>C3: cargo --locked<br/>C5: read-only token"]
         end
         subgraph REL["Release workflow on tag v*"]
             BUILD["build: cargo auditable, 5 targets<br/>no secrets, contents read<br/>C4: fails on DEVELOPMENT KEY or test-trust string"]
@@ -138,7 +138,7 @@ flowchart TB
 | C2 | Each third-party action has a full commit SHA. Each tool has an exact version. | `ci.yml`, `release.yml` |
 | C3 | Each build uses `--locked` and the committed `Cargo.lock`. | `ci.yml`, `release.yml` |
 | C4 | The release stops if the trust list holds the development key. It also stops if a binary holds the test trust override. | `release.yml` |
-| C5 | Only the `release` job can write to the repository or get an OIDC token. It runs no cargo. | `release.yml` |
+| C5 | Only the `release` job can write to the repository or get an OIDC token. It runs no cargo. The CI workflow has only read access. | `release.yml`, `ci.yml` |
 | C6 | `sign-release` checks each Sigstore bundle against the exact workflow identity of the tag and against the commit of the tag. | `sign_release.rs` |
 | C7 | `sign-release` computes the checksums. It refuses a checksum file that does not agree. | `sign_release.rs` |
 | C8 | Signing secrets are only in the signing jobs. These jobs need approval and never build code. | `release.yml` |
@@ -223,6 +223,7 @@ Each decision has an ID, the decision, the reason, and the consequence. The firs
 | AD-52 | On Unix, the file scan opens each path with `O_NOFOLLOW` and `O_NONBLOCK`. Then it checks the type on the open handle. | A path can change after the walk. A FIFO can stop the scan, and a new link can lead outside the scan. | A changed path gives a scan error. Other systems keep the type check on the handle only. |
 | AD-53 | At most 1 SSH connection for each IP address and port. | Several host names can share one address, like for TLS in AD-34. | Extra host names get a scan error. |
 | AD-54 | `sign-release` needs `--commit` and gives it to cosign. The `release` job runs in an approved environment and only for a commit on `main`. Customers check the signer workflow and the commit. | A tag on another branch, or a bundle from another commit, must not pass. | The maintainer gives the commit of the tag. Key fingerprints are also on the project site and in the signed tag. |
+| AD-55 | The CI workflow sets `permissions: contents: read` at the top. | The default token of a repository can have write access. | A CI job that needs more access must ask for it. |
 
 ## 5. Known limits
 
