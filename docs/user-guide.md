@@ -376,6 +376,8 @@ Rules for redaction:
 - The tool redacts the name of the engagement.
 - Certificate, key, and endpoint fingerprints and finding IDs stay in the file.
 - A person can use them to confirm a guess of a public certificate or a host name.
+- For a target that is an IP address, the endpoint fingerprint and the finding ID show the IPv4 address.
+- Their hash has no key. A person can calculate the hash of all 2^32 IPv4 addresses.
 - Do not treat a redacted file as anonymous.
 - A mix of plain inputs and redacted inputs needs `--redact`. Without it, the tool stops with an error.
 - The default output is `results/merged.redacted.pqr`.
@@ -523,5 +525,8 @@ Use the same pack for the scan and for the report. If you install a newer pack b
 - Stage 1 has no `export` command. Use `report --format json` for the data.
 - The file scan has the limits in the section "The file scan". It does not read `.kbx` files.
 - The network scan has the limits in the section "The network scan".
+- An exclusion does not match the NAT64 form or the 6to4 form of an IPv4 address.
+- The hybrid handshake offers only two fixed groups: X25519MLKEM768 and SecP256r1MLKEM768.
+- A server that supports only other post-quantum groups shows as "no post-quantum key exchange".
 - The tool finds only what its rules pack knows. A finding is evidence, not proof.
 - Context that you do not give is `unassessed`. The score then uses cautious values and can be too high.

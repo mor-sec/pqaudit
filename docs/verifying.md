@@ -149,7 +149,7 @@ The CI builds the release and makes a draft. The maintainers sign the release of
 3. Run the signing task. It checks each Sigstore bundle with `cosign verify-blob`. It stops if a bundle is missing.
 
    ```text
-   cargo xtask sign-release --keys <keys-dir> --dir <release-dir> --repo mor-sec/pqaudit --tag <tag>
+   cargo --locked xtask sign-release --keys <keys-dir> --dir <release-dir> --repo mor-sec/pqaudit --tag <tag>
    ```
 
    The task computes `SHA256SUMS` and `SHA3-256SUMS` from the checked files. It writes them if they are not there. If one is there and is different, the task stops and signs nothing. Then it signs both files.
@@ -157,11 +157,11 @@ The CI builds the release and makes a draft. The maintainers sign the release of
 4. Sign the rules pack archive with the key pair for packs:
 
    ```text
-   cargo xtask sign --keys <pack-keys-dir> <release-dir>/rules-<version>.tar.zst
+   cargo --locked xtask sign --keys <pack-keys-dir> <release-dir>/rules-<version>.tar.zst
    ```
 
    The task writes `.sig.json`, `.ed25519.sig`, and `.mldsa65.sig` files next to the archive.
 5. Run the commands in sections 2 and 4 on the result.
 6. Upload the signature files to the draft release. Publish the release.
 
-To make a new key pair, run `cargo xtask keygen --out <dir>` on the offline computer. The task never overwrites a file. Put the private keys in safe offline storage. Add the public keys to the repository, the website, and the release notes. For a pack key, add the public keys to `rules/trust/keys.toml` and build a new binary.
+To make a new key pair, run `cargo --locked xtask keygen --out <dir>` on the offline computer. The task never overwrites a file. Put the private keys in safe offline storage. Add the public keys to the repository, the website, and the release notes. For a pack key, add the public keys to `rules/trust/keys.toml` and build a new binary.

@@ -17,7 +17,7 @@ pub const MERGE_SUMMARY: &str =
     "Merged {inputs} files. The result has {findings} findings, {inventory} inventory items, and {errors} errors.";
 
 /// The note about the content of a redacted output file.
-pub const MERGE_REDACTED: &str = "The output file has hashes in place of host names, addresses, paths, names, banners, and key comments. Certificate and key fingerprints stay in the file. They can identify a public certificate or key. Endpoint fingerprints and finding IDs can also confirm a guessed host name.";
+pub const MERGE_REDACTED: &str = "The output file has hashes in place of host names, addresses, paths, names, banners, and key comments. Certificate and key fingerprints stay in the file. They can identify a public certificate or key. Endpoint fingerprints and finding IDs can also confirm a guessed host name. For an IP address target, they show the IPv4 address, because a person can hash all 2^32 addresses.";
 
 /// The text when a profile ID is not in the rules pack.
 pub const UNKNOWN_PROFILE: &str = "This profile does not exist:";

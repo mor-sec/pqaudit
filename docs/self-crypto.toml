@@ -50,8 +50,8 @@ purpose = "result-fingerprints"
 algorithms = ["HMAC", "SHA-256"]
 crates = ["hmac", "sha2"]
 
-# The crate chacha20 is linked through p12-keystore, by rand 0.10. Only the code that writes a store uses it.
-# The read path of pqaudit does not use it.
+# p12-keystore links chacha20 through rand 0.10.
+# Only the code that writes a store uses it. The read path of pqaudit does not use it.
 [[use]]
 purpose = "linked-not-used-on-read"
 algorithms = ["ChaCha20"]

@@ -102,6 +102,12 @@ There are two limits. The PKCS#12 library decrypts key bags into memory that the
 
 If a key store has encryption and you give no password, the tool records "encrypted - not inspected". The tool does not read a password from the command line. A password in an environment variable stays in the process environment. Libraries get copies of passwords.
 
+### Redacted results
+
+The command `merge --redact` replaces host names, addresses, paths, names, banners, and key comments with keyed hashes. Keep the key file `redact.key` private.
+
+Fingerprints and finding IDs stay in a redacted file. They can confirm a guess of a public certificate, a key, or a host name. For a target that is an IP address, they show the IPv4 address. The hash has no key, and a person can calculate the hash of all 2^32 IPv4 addresses. Do not treat a redacted file as anonymous.
+
 ### Signed releases, the SBOM, and the CBOM
 
 Each release has these items:
@@ -136,6 +142,10 @@ This release is Stage 1. These features are not in it:
 - The deadline profiles are `us`, `uk`, and `au` only.
 
 The [user guide](docs/user-guide.md) lists more known limits of the file scan and the network scan.
+
+## Test keys
+
+The private keys in `crates/pqaudit-scan-files/tests/fixtures/` are test data. The scripts in `crates/pqaudit-scan-files/tests/` make them. No system uses them.
 
 ## Licence
 
