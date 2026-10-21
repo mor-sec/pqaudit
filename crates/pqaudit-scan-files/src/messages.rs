@@ -106,6 +106,9 @@ pub const EVIDENCE_PGP_PUBLIC: &str = "OpenPGP public key.";
 /// The evidence for an OpenPGP secret key. The tool reads the public part only.
 pub const EVIDENCE_PGP_SECRET: &str = "OpenPGP secret key. The tool read the public part only.";
 
+/// The location of the scan error that counts the skipped symbolic links.
+pub const LOCATION_SYMLINKS: &str = "symbolic links";
+
 /// Pairs of ID and text. The STE lint reads this list.
 pub const ALL: &[(&str, &str)] = &[
     ("CANNOT_READ", CANNOT_READ),
@@ -119,6 +122,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("PEM_NOT_CLOSED", PEM_NOT_CLOSED),
     ("PEM_BAD_BASE64", PEM_BAD_BASE64),
     ("SYMLINKS_SKIPPED", SYMLINKS_SKIPPED),
+    ("LOCATION_SYMLINKS", LOCATION_SYMLINKS),
     ("EVIDENCE", EVIDENCE),
     ("KEYSTORE_INVALID", KEYSTORE_INVALID),
     ("KEYSTORE_TRUNCATED", KEYSTORE_TRUNCATED),

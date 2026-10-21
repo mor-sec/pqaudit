@@ -124,3 +124,15 @@ fn local_host_name_is_not_empty() {
     assert!(!name.is_empty());
     assert_eq!(name, name.trim());
 }
+
+#[test]
+fn pem_block_debug_hides_the_body() {
+    let data =
+        b"-----BEGIN PRIVATE KEY-----\nU0VDUkVUU0VDUkVUU0VDUkVU\n-----END PRIVATE KEY-----\n";
+    let found = pqaudit_scan_files::pem::blocks(data);
+    let text = format!("{found:?}");
+    assert!(text.contains("PRIVATE KEY"), "{text}");
+    assert!(!text.contains("U0VDUkVU"), "{text}");
+    // The bytes as a list of numbers must not show either.
+    assert!(!text.contains("85, 48, 86"), "{text}");
+}

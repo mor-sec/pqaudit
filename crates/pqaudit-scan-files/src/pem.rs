@@ -50,7 +50,6 @@ impl BlockKind {
 }
 
 /// One block of PEM text.
-#[derive(Debug)]
 pub struct Block<'a> {
     /// The label, for example `PRIVATE KEY`.
     pub label: &'a [u8],
@@ -63,6 +62,18 @@ pub struct Block<'a> {
 }
 
 /// The blocks of a text.
+impl std::fmt::Debug for Block<'_> {
+    /// Show the label and the size of the body. Never show the body: it can be a private key.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Block")
+            .field("label", &String::from_utf8_lossy(self.label))
+            .field("kind", &self.kind)
+            .field("body", &format_args!("{} bytes hidden", self.body.len()))
+            .field("line", &self.line)
+            .finish()
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Blocks<'a> {
     /// The blocks with an end line.

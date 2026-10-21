@@ -8,6 +8,8 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::messages;
+
 /// The kind of threat that a finding shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -278,7 +280,7 @@ pub struct RulesPack {
 #[derive(Debug, thiserror::Error)]
 pub enum PackError {
     /// The program cannot open a file.
-    #[error("Cannot read {path}: {message}")]
+    #[error("{}", messages::PACK_READ.replace("{path}", path).replace("{message}", message))]
     Io {
         /// The file.
         path: String,
@@ -286,7 +288,7 @@ pub enum PackError {
         message: String,
     },
     /// A file has wrong content.
-    #[error("Cannot parse {path}: {message}")]
+    #[error("{}", messages::PACK_PARSE.replace("{path}", path).replace("{message}", message))]
     Parse {
         /// The file.
         path: String,
@@ -294,19 +296,19 @@ pub enum PackError {
         message: String,
     },
     /// The pack has no file that it needs.
-    #[error("The pack has no file {path}.")]
+    #[error("{}", messages::PACK_MISSING.replace("{path}", path))]
     Missing {
         /// The file.
         path: String,
     },
     /// A YAML file is in a wrong place or has the wrong extension.
-    #[error("The file {path} is in a wrong place. Use a .yaml file in rules/ or profiles/.")]
+    #[error("{}", messages::PACK_MISPLACED.replace("{path}", path))]
     Misplaced {
         /// The file.
         path: String,
     },
     /// Two rules use the same ID or alias.
-    #[error("The ID {id} is in the pack more than one time.")]
+    #[error("{}", messages::PACK_DUPLICATE_ID.replace("{id}", id))]
     Duplicate {
         /// The ID.
         id: String,

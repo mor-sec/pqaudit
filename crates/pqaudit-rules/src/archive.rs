@@ -5,6 +5,8 @@
 use std::collections::HashSet;
 use std::io::Read;
 
+use crate::messages;
+
 /// The largest size of the unpacked archive, in bytes.
 pub const MAX_UNPACKED_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -21,19 +23,19 @@ pub type ArchiveFile = (String, Vec<u8>);
 #[derive(Debug, thiserror::Error)]
 pub enum ArchiveError {
     /// A path in the archive is not safe.
-    #[error("The path {0:?} is not allowed in a pack archive.")]
+    #[error("{}", messages::ARCHIVE_BAD_PATH.replace("{path}", &format!("{:?}", .0)))]
     BadPath(String),
     /// Two files have the same path.
-    #[error("The path {0:?} is in the archive more than one time.")]
+    #[error("{}", messages::ARCHIVE_DUPLICATE.replace("{path}", &format!("{:?}", .0)))]
     Duplicate(String),
     /// The archive has too many files, or it is too large.
-    #[error("The archive is too large.")]
+    #[error("{}", messages::ARCHIVE_TOO_LARGE)]
     TooLarge,
     /// The archive has an entry that is not a normal file.
-    #[error("The entry {0:?} is not a normal file.")]
+    #[error("{}", messages::ARCHIVE_NOT_A_FILE.replace("{path}", &format!("{:?}", .0)))]
     NotAFile(String),
     /// The bytes are not a valid `tar.zst` file.
-    #[error("The archive cannot be read: {0}")]
+    #[error("{}", messages::ARCHIVE_READ.replace("{reason}", .0))]
     Read(String),
 }
 
@@ -97,7 +99,7 @@ pub fn read_archive(bytes: &[u8]) -> Result<Vec<ArchiveFile>, ArchiveError> {
             .path()
             .map_err(read_err)?
             .to_str()
-            .ok_or_else(|| ArchiveError::BadPath(String::from("(not UTF-8)")))?
+            .ok_or_else(|| ArchiveError::BadPath(String::from(messages::NOT_UTF8)))?
             .to_string();
         if !path_is_safe(&path) {
             return Err(ArchiveError::BadPath(path));

@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::embedded::default_pack;
+use crate::messages;
 use crate::pack::{PackError, RulesPack};
 use crate::verify::{
     load_unverified, verify_pack_archive, SigFile, TrustStore, VerifiedPack, VerifyError,
@@ -27,10 +28,10 @@ const MAX_SIG_FILE_BYTES: u64 = 1024 * 1024;
 #[derive(Debug, thiserror::Error)]
 pub enum InstallError {
     /// The program cannot find the data directory of the user.
-    #[error("Cannot find the data directory. Set {DATA_DIR_VARIABLE}.")]
+    #[error("{}", messages::NO_DATA_DIR.replace("{variable}", DATA_DIR_VARIABLE))]
     NoDataDir,
     /// The program cannot read or write a file.
-    #[error("Cannot use {path}: {message}")]
+    #[error("{}", messages::FILE_IO.replace("{path}", path).replace("{message}", message))]
     Io {
         /// The file.
         path: String,
@@ -38,13 +39,13 @@ pub enum InstallError {
         message: String,
     },
     /// A file is not a normal file, or it is too large.
-    #[error("The file {0} is not a normal file, or it is too large.")]
+    #[error("{}", messages::BAD_FILE.replace("{path}", .0))]
     BadFile(String),
     /// The signature check failed, or the archive is not valid.
     #[error("{0}")]
     Verify(#[from] VerifyError),
     /// The pack is not valid.
-    #[error("The pack is not valid: {0}")]
+    #[error("{}", messages::PACK_INVALID.replace("{reason}", &.0.to_string()))]
     Pack(#[from] PackError),
 }
 
@@ -285,7 +286,7 @@ impl RulesStore {
                 });
             return match checked {
                 Ok(verified) if wrong_version(&verified.pack) => Ok(InstalledState::Invalid {
-                    reason: String::from("The directory name is not the version of the pack."),
+                    reason: String::from(messages::DIR_NOT_VERSION),
                 }),
                 Ok(verified) => Ok(InstalledState::Verified {
                     pack: Arc::new(verified.pack),
@@ -295,11 +296,7 @@ impl RulesStore {
                 Err(error) => self.unverified(&archive, version, error.to_string()),
             };
         }
-        self.unverified(
-            &archive,
-            version,
-            String::from("The pack has no signature."),
-        )
+        self.unverified(&archive, version, String::from(messages::NO_SIGNATURE))
     }
 
     fn unverified(
@@ -311,7 +308,7 @@ impl RulesStore {
         let pack = load_unverified(archive)?;
         if pack.version.to_string() != version {
             return Ok(InstalledState::Invalid {
-                reason: String::from("The directory name is not the version of the pack."),
+                reason: String::from(messages::DIR_NOT_VERSION),
             });
         }
         Ok(InstalledState::Unverified {

@@ -1,7 +1,7 @@
 //! Clean text that comes from files and network peers.
 //!
 //! Such text can go to a terminal, a log, or a report.
-//! A control character in it can change the display or add a false line.
+//! A control character in it can change how the text shows, or add a false line.
 
 /// Replace each control character with `?`. Keep the printable Unicode characters.
 ///

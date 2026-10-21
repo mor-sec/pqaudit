@@ -142,7 +142,7 @@ pub fn scan(paths: &[PathBuf], opts: &ScanOptions, pack: &RulesPack, run_id: Uui
         );
     if skipped_symlinks > 0 {
         errors.push(ScanError {
-            location: String::from("symbolic links"),
+            location: String::from(messages::LOCATION_SYMLINKS),
             reason: messages::SYMLINKS_SKIPPED.replace("{count}", &skipped_symlinks.to_string()),
         });
     }

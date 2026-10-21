@@ -179,6 +179,9 @@ pub const RULE_BANDS: &str =
 /// The rule for a migration time.
 pub const RULE_MIGRATION: &str = "Each migration time must be a finite number of more than 0.";
 
+/// The host or operator of merged results when the inputs have different values.
+pub const MERGED_VALUE: &str = "merged";
+
 /// The error for an IPv6 range that holds the IPv4-mapped range.
 pub const MAPPED_RANGE_WIDE: &str =
     "This IPv6 range holds the IPv4-mapped range ::ffff:0:0/96. Use a smaller range or an IPv4 range.";
@@ -225,6 +228,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("MERGE_PACK_MISMATCH", MERGE_PACK_MISMATCH),
     ("MERGE_UNSIGNED_PACK", MERGE_UNSIGNED_PACK),
     ("MAPPED_RANGE_WIDE", MAPPED_RANGE_WIDE),
+    ("MERGED_VALUE", MERGED_VALUE),
     ("UNSUPPORTED_SCHEMA", UNSUPPORTED_SCHEMA),
     ("RESULTS_PARSE", RESULTS_PARSE),
     ("RESULTS_IO", RESULTS_IO),

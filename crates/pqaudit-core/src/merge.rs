@@ -226,10 +226,10 @@ pub fn merge(mut inputs: Vec<ResultsFile>) -> Result<ResultsFile, MergeError> {
         .max()
         .unwrap_or(header.finished);
     if inputs.iter().any(|f| f.header.host != header.host) {
-        header.host = "merged".into();
+        header.host = messages::MERGED_VALUE.into();
     }
     if inputs.iter().any(|f| f.header.operator != header.operator) {
-        header.operator = "merged".into();
+        header.operator = messages::MERGED_VALUE.into();
     }
     let packs: Vec<PackRef> = inputs.iter().map(|f| f.header.rules_pack.clone()).collect();
 

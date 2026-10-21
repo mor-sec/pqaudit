@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::archive::{read_archive, ArchiveError, ArchiveFile};
+use crate::messages;
 use crate::pack::{PackError, RulesPack};
 
 /// The format name in a signature file.
@@ -29,31 +30,31 @@ const MAX_ROTATIONS: usize = 16;
 #[derive(Debug, thiserror::Error)]
 pub enum VerifyError {
     /// The signature file is not valid.
-    #[error("The signature file is not valid: {0}")]
+    #[error("{}", messages::SIG_FILE_INVALID.replace("{reason}", .0))]
     SigFile(String),
     /// A key is not valid.
-    #[error("A key is not valid: {0}")]
+    #[error("{}", messages::KEY_INVALID.replace("{reason}", .0))]
     Key(String),
     /// One of the two signatures is not correct.
-    #[error("The {0} signature is not correct.")]
+    #[error("{}", messages::BAD_SIGNATURE.replace("{algorithm}", .0))]
     BadSignature(&'static str),
     /// The signature file names a different key.
-    #[error("The signature file names the key {0}. The check needs a different key.")]
+    #[error("{}", messages::KEY_MISMATCH.replace("{key}", .0))]
     KeyMismatch(String),
     /// The key is not in the trust list, and no key rotation leads to it.
-    #[error("The key {0} is not in the trust list.")]
+    #[error("{}", messages::UNKNOWN_KEY.replace("{key}", .0))]
     UnknownKey(String),
     /// The trust list revokes the key.
-    #[error("The trust list revokes the key {0}.")]
+    #[error("{}", messages::KEY_REVOKED.replace("{key}", .0))]
     Revoked(String),
     /// The archive is not valid.
-    #[error("The archive is not valid: {0}")]
+    #[error("{}", messages::ARCHIVE_INVALID.replace("{reason}", .0))]
     Archive(String),
     /// A key rotation statement is not valid.
-    #[error("A key rotation is not valid: {0}")]
+    #[error("{}", messages::ROTATION_INVALID.replace("{reason}", .0))]
     Rotation(String),
     /// The pack in the archive is not valid.
-    #[error("The pack is not valid: {0}")]
+    #[error("{}", messages::PACK_INVALID.replace("{reason}", &.0.to_string()))]
     Pack(#[from] PackError),
 }
 
