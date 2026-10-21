@@ -33,6 +33,8 @@ pub enum StoreError {
     Encrypted,
     /// The key store asks for more key derivation work than the limits allow.
     TooMuchWork,
+    /// The key store is in the limits for one file, but the scan used all its budget.
+    ScanBudgetUsed,
 }
 
 /// The result of a key store scan. Bad entries do not stop the scan.
@@ -53,6 +55,7 @@ impl StoreError {
             Self::Unsupported => messages::KEYSTORE_UNSUPPORTED.to_string(),
             Self::Encrypted => messages::ENCRYPTED_NOT_INSPECTED.to_string(),
             Self::TooMuchWork => messages::KEYSTORE_TOO_MUCH_WORK.to_string(),
+            Self::ScanBudgetUsed => messages::KEYSTORE_BUDGET_USED.to_string(),
         }
     }
 }
@@ -114,7 +117,8 @@ pub fn scan_p12(
 /// A certificate that is not valid gives an error text. The other certificates stay.
 ///
 /// Each attempt takes its key derivation work from the file limit and from `budget`.
-/// If a limit is too low, the error is `StoreError::TooMuchWork`. Then the library
+/// If the file limit is too low, the error is `StoreError::TooMuchWork`. If only the scan
+/// budget is too low, the error is `StoreError::ScanBudgetUsed`. Then the library
 /// does not see the file, and the code tries no more passwords.
 pub fn scan_p12_with_budget(
     bytes: &[u8],

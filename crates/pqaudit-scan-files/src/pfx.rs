@@ -28,8 +28,10 @@ pub const MAX_KDF_USES: usize = 16;
 /// The most iterations for one file, for all passwords together.
 pub const MAX_FILE_WORK: u64 = MAX_KDF_USES as u64 * MAX_KDF_ITERATIONS;
 
-/// The most iterations for all key stores of one scan.
-pub const MAX_SCAN_WORK: u64 = 5_000_000;
+/// The default number of iterations for all key stores of one scan.
+///
+/// The key `max_pkcs12_work` in `engagement.toml` can change it for a scan.
+pub const MAX_SCAN_WORK: u64 = pqaudit_core::engagement::DEFAULT_MAX_PKCS12_WORK;
 
 /// The tag of a context-specific constructed element `[0]`.
 const CONTEXT_0: u8 = 0xa0;
@@ -101,9 +103,14 @@ impl<'a> FileWork<'a> {
     }
 
     /// Take iterations before the work starts. Refuse if a limit is too low.
+    ///
+    /// The file limit comes first. Thus a file that asks for too much work always gets that error.
     fn take(&mut self, iterations: u64) -> Result<(), StoreError> {
-        if iterations > self.file_left || iterations > self.scan.remaining {
+        if iterations > self.file_left {
             return Err(StoreError::TooMuchWork);
+        }
+        if iterations > self.scan.remaining {
+            return Err(StoreError::ScanBudgetUsed);
         }
         self.file_left -= iterations;
         self.scan.remaining -= iterations;

@@ -30,6 +30,21 @@ fn date<'de, D: Deserializer<'de>>(deserializer: D) -> Result<NaiveDate, D::Erro
         .map_err(|_| serde::de::Error::custom(messages::DATE_EXPECTED))
 }
 
+/// The default for `max_pkcs12_work`: the most key derivation iterations for all PKCS#12 files of one scan.
+pub const DEFAULT_MAX_PKCS12_WORK: u64 = 5_000_000;
+
+fn default_max_pkcs12_work() -> u64 {
+    DEFAULT_MAX_PKCS12_WORK
+}
+
+/// Read a TOML integer that is more than 0.
+fn positive_work<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    match toml::Value::deserialize(deserializer)? {
+        toml::Value::Integer(value) if value > 0 => Ok(value.unsigned_abs()),
+        _ => Err(serde::de::Error::custom(messages::PKCS12_WORK_POSITIVE)),
+    }
+}
+
 fn optional_date<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<NaiveDate>, D::Error> {
@@ -52,6 +67,12 @@ pub struct EngagementConfig {
     pub deadlines: DeadlineSelection,
     /// The assumptions of the assessment.
     pub assumptions: Assumptions,
+    /// The most key derivation iterations for all PKCS#12 files of one file scan.
+    #[serde(
+        default = "default_max_pkcs12_work",
+        deserialize_with = "positive_work"
+    )]
+    pub max_pkcs12_work: u64,
     /// Where to read the passwords of key stores.
     #[serde(default)]
     pub passwords: Option<PasswordSource>,

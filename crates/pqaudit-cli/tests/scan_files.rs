@@ -392,3 +392,38 @@ fn line_breaks_in_file_names_add_no_false_lines() {
     );
     assert!(!has_line(&stdout, "Occurrences (9)"), "{stdout}");
 }
+
+#[test]
+fn max_pkcs12_work_sets_the_scan_budget() {
+    const BUDGET_USED: &str = "The scan used all its key derivation budget. The tool did not open this key store. Scan the folder again with fewer files.";
+    let setup = Setup::new();
+    let path = setup.engagement().join("engagement.toml");
+    let template = fs::read_to_string(&path).unwrap();
+    fs::copy(fixture("store-empty.p12"), setup.target().join("a.p12")).unwrap();
+    fs::copy(fixture("rsa2048-leaf.pem"), setup.target().join("b.pem")).unwrap();
+    // The default budget reads the key store.
+    setup
+        .pqaudit()
+        .args(["scan", "files"])
+        .arg(setup.target())
+        .assert()
+        .code(0);
+    // A budget of one iteration cannot open it.
+    fs::write(&path, format!("max_pkcs12_work = 1\n{template}")).unwrap();
+    setup
+        .pqaudit()
+        .args(["scan", "files"])
+        .arg(setup.target())
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains(BUDGET_USED));
+    // A budget of 0 is a configuration error.
+    fs::write(&path, format!("max_pkcs12_work = 0\n{template}")).unwrap();
+    setup
+        .pqaudit()
+        .args(["scan", "files"])
+        .arg(setup.target())
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("max_pkcs12_work"));
+}

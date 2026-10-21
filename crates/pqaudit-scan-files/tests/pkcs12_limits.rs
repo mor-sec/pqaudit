@@ -13,6 +13,7 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 const TOO_MUCH_WORK: &str = "The key store asks for too much work. The tool did not open it.";
+const BUDGET_USED: &str = "The scan used all its key derivation budget. The tool did not open this key store. Scan the folder again with fewer files.";
 
 const OID_DATA: &[u8] = &[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x07, 0x01];
 const OID_ENCRYPTED_DATA: &[u8] = &[0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x07, 0x06];
@@ -243,9 +244,10 @@ fn the_scan_budget_is_shared_by_all_files() {
     // A budget for one file reads the first file only.
     let mut budget = KdfBudget::new(cost);
     scan_p12_with_budget(&bytes, &[], &mut budget).unwrap();
+    // The file itself is in the limits. The scan used its budget.
     assert_eq!(
         scan_p12_with_budget(&bytes, &[], &mut budget).unwrap_err(),
-        StoreError::TooMuchWork
+        StoreError::ScanBudgetUsed
     );
 
     let dir = tempfile::tempdir().unwrap();
@@ -263,7 +265,7 @@ fn the_scan_budget_is_shared_by_all_files() {
     assert!(output
         .errors
         .iter()
-        .all(|error| error.reason == TOO_MUCH_WORK));
+        .all(|error| error.reason == BUDGET_USED));
     // The default budget reads all three files.
     let (output, _) = timed_scan(&paths, &ScanOptions::default());
     assert_eq!(output.files_read, 3, "{:?}", output.errors);

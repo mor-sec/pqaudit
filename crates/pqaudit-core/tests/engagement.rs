@@ -329,3 +329,37 @@ fn overflowing_weight_sum_is_rejected() {
     assert!(text.contains("The key weights "), "{text}");
     assert!(text.contains("sum of the weights"), "{text}");
 }
+
+#[test]
+fn max_pkcs12_work_has_a_default_and_must_be_positive() {
+    use pqaudit_core::engagement::DEFAULT_MAX_PKCS12_WORK;
+    assert_eq!(DEFAULT_MAX_PKCS12_WORK, 5_000_000);
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "engagement.toml", MINIMAL);
+    let e = Engagement::load(dir.path()).unwrap();
+    assert_eq!(e.config.max_pkcs12_work, DEFAULT_MAX_PKCS12_WORK);
+
+    let base = "client = \"A\"\nassessor = \"B\"\n";
+    let tail = "\n[assumptions]\ncrqc_year = 2035\n";
+    write(
+        dir.path(),
+        "engagement.toml",
+        &format!("{base}max_pkcs12_work = 20000000\n{tail}"),
+    );
+    let e = Engagement::load(dir.path()).unwrap();
+    assert_eq!(e.config.max_pkcs12_work, 20_000_000);
+
+    for value in ["0", "-1", "\"many\""] {
+        write(
+            dir.path(),
+            "engagement.toml",
+            &format!("{base}max_pkcs12_work = {value}\n{tail}"),
+        );
+        let text = Engagement::load(dir.path()).unwrap_err().to_string();
+        assert!(text.contains("line 3"), "{value}: {text}");
+        assert!(
+            text.contains(pqaudit_core::messages::PKCS12_WORK_POSITIVE),
+            "{value}: {text}"
+        );
+    }
+}

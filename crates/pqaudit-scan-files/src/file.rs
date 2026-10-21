@@ -414,8 +414,8 @@ fn scan_store(
             collector.locked.push(locked_item(data, ctx));
             Outcome::NotRead
         }
-        Err(pkcs12::StoreError::TooMuchWork) => {
-            errors.push(ctx.error(messages::KEYSTORE_TOO_MUCH_WORK.to_string()));
+        Err(error @ (pkcs12::StoreError::TooMuchWork | pkcs12::StoreError::ScanBudgetUsed)) => {
+            errors.push(ctx.error(error.reason()));
             Outcome::NotRead
         }
         Err(error) => {

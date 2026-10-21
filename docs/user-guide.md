@@ -55,6 +55,7 @@ All engagement files use TOML. The command `init` writes each file with comments
 | `client` | The name of your client. The key must exist |
 | `assessor` | Your name and your company. The key must exist |
 | `assessment_date` | The date of the assessment, in the format YEAR-MONTH-DAY. The default is the local date |
+| `max_pkcs12_work` | The most key derivation iterations for all PKCS#12 files of one file scan. The value must be a whole number that is more than 0. The default is 5000000 |
 | `[deadlines] profiles` | The list of deadline profiles. The values are `us`, `uk`, and `au`. The default is an empty list |
 | `[deadlines] sector` | An optional sector overlay, for example `government` |
 | `[assumptions] crqc_year` | The year in which a cryptographically relevant quantum computer (CRQC) can exist. The key must exist. The `init` template uses 2035 |
@@ -312,9 +313,9 @@ A PKCS#12 file sets its own key derivation work. A hostile file can ask for so m
 - It accepts at most 100000 iterations for one key derivation.
 - It accepts at most 16 key derivations in one file. The MAC, each encrypted safe, and each encrypted bag count.
 - It accepts at most 1600000 iterations for one file, for all passwords together.
-- It accepts at most 5000000 iterations for all PKCS#12 files of one scan.
+- It accepts at most 5000000 iterations for all PKCS#12 files of one scan. The key `max_pkcs12_work` in `engagement.toml` changes this limit.
 
-If a file is past a limit, the tool records "The key store asks for too much work" and does not open the file. The tool counts the file as not inspected.
+If a file is past a limit for one file, the tool records "The key store asks for too much work". If the scan used all its budget, the tool records "The scan used all its key derivation budget". In these cases, the tool does not open the file. For the second error, scan the folder again with fewer files, or set a higher `max_pkcs12_work`. The tool counts the file as not inspected.
 
 A bad file is a scan error with a reason. The scan continues and the exit code is 3.
 

@@ -26,6 +26,10 @@ pub const ENGAGEMENT_IO: &str = "The tool cannot read the file {file}. {reason}"
 /// The error for an engagement file that is not valid. The tool fills in {file}, {line}, and {reason}.
 pub const ENGAGEMENT_PARSE: &str = "The file {file} is not valid at line {line}. {reason}";
 
+/// The error for a value of max_pkcs12_work that is not a number above 0.
+pub const PKCS12_WORK_POSITIVE: &str =
+    "The value of max_pkcs12_work must be a whole number that is more than 0.";
+
 /// The error for a value that must be a date. The format is YEAR-MONTH-DAY.
 pub const DATE_EXPECTED: &str =
     "This value must be a date in the format YEAR-MONTH-DAY, for example 2026-10-20.";
@@ -238,6 +242,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("ENGAGEMENT_IO", ENGAGEMENT_IO),
     ("ENGAGEMENT_PARSE", ENGAGEMENT_PARSE),
     ("DATE_EXPECTED", DATE_EXPECTED),
+    ("PKCS12_WORK_POSITIVE", PKCS12_WORK_POSITIVE),
     ("PASSWORDS_BOTH", PASSWORDS_BOTH),
     ("PASSWORDS_NONE", PASSWORDS_NONE),
     ("CERT_INVALID", CERT_INVALID),

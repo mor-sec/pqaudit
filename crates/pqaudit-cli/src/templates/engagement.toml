@@ -11,6 +11,11 @@ assessor = ""
 # If you do not set a date, the tool uses today's date.
 # assessment_date = 2026-10-20
 
+# The most key derivation iterations for all PKCS#12 files of one file scan.
+# A hostile key store can ask for much work. This limit stops it.
+# The value must be a whole number that is more than 0. The default is 5000000.
+# max_pkcs12_work = 5000000
+
 [deadlines]
 # The deadline profiles to use. The profiles are us, uk, and au.
 # You can select more than one profile.

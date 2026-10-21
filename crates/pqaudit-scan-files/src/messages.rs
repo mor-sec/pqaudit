@@ -60,6 +60,9 @@ pub const KEYSTORE_UNSUPPORTED: &str =
 pub const KEYSTORE_TOO_MUCH_WORK: &str =
     "The key store asks for too much work. The tool did not open it.";
 
+/// The error for a key store when the scan used all its key derivation budget.
+pub const KEYSTORE_BUDGET_USED: &str = "The scan used all its key derivation budget. The tool did not open this key store. Scan the folder again with fewer files.";
+
 /// The error for a JCEKS key entry. The tool fills in {alias}.
 pub const JCEKS_ENTRY_UNSUPPORTED: &str = "The tool cannot read the JCEKS key entry with the alias {alias}. It reads the entries before it and stops.";
 
@@ -140,6 +143,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("KEYSTORE_TRUNCATED", KEYSTORE_TRUNCATED),
     ("KEYSTORE_UNSUPPORTED", KEYSTORE_UNSUPPORTED),
     ("KEYSTORE_TOO_MUCH_WORK", KEYSTORE_TOO_MUCH_WORK),
+    ("KEYSTORE_BUDGET_USED", KEYSTORE_BUDGET_USED),
     ("JCEKS_ENTRY_UNSUPPORTED", JCEKS_ENTRY_UNSUPPORTED),
     ("ENCRYPTED_NOT_INSPECTED", ENCRYPTED_NOT_INSPECTED),
     ("KBX_UNSUPPORTED", KBX_UNSUPPORTED),
