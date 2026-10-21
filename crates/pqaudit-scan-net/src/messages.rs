@@ -158,6 +158,10 @@ pub const EVIDENCE_SSH_PQ_READY: &str =
 pub const HANDSHAKE_LIMIT_USED: &str =
     "Other names used all handshakes for this address and port. The tool makes no connection.";
 
+/// The error when another name used the one SSH connection of this address and port.
+pub const SSH_LIMIT_USED: &str =
+    "Another name used the SSH connection for this address and port. The tool makes no connection.";
+
 /// The note when other names used part of the handshake limit of this address and port.
 pub const HANDSHAKE_LIMIT_PART: &str =
     "Other names used part of the handshake limit for this address and port. The probe of this name is not complete.";
@@ -234,6 +238,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("SSH_IO", SSH_IO),
     ("SSH_TIMEOUT", SSH_TIMEOUT),
     ("HANDSHAKE_LIMIT_USED", HANDSHAKE_LIMIT_USED),
+    ("SSH_LIMIT_USED", SSH_LIMIT_USED),
     ("HANDSHAKE_LIMIT_PART", HANDSHAKE_LIMIT_PART),
     ("TARGET_STOPPED", TARGET_STOPPED),
     ("RANDOM_FAILED", RANDOM_FAILED),

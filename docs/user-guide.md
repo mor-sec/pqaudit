@@ -362,7 +362,7 @@ If the budget is 1, the tool does only the hybrid handshake. If other host names
 
 ### SSH targets
 
-The tool makes one connection for each SSH port. It reads the key exchange list of the server and the host key algorithms. It does not log in.
+The tool makes one connection for each IP address and SSH port. This limit counts all the host names that point to that address and port. A second name gets a scan error. The tool reads the key exchange list of the server and the host key algorithms. It does not log in.
 
 ### The audit log
 

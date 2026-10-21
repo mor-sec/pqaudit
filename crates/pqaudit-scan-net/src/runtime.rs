@@ -4,7 +4,7 @@
 //! for each IP address and writes one audit line for each connection attempt.
 //! The runtime connects only to `PlannedTarget::ip`. It never resolves a name.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -159,6 +159,8 @@ pub struct ProbeCtx<'a> {
     pacer: Pacer,
     /// The handshakes that the probes claimed for each address and port.
     handshakes: Mutex<HashMap<(IpAddr, u16), u8>>,
+    /// The addresses and ports that an SSH probe claimed.
+    ssh_claims: Mutex<HashSet<(IpAddr, u16)>>,
 }
 
 impl<'a> ProbeCtx<'a> {
@@ -169,6 +171,7 @@ impl<'a> ProbeCtx<'a> {
             audit,
             run_id,
             handshakes: Mutex::new(HashMap::new()),
+            ssh_claims: Mutex::new(HashSet::new()),
             pacer: Pacer {
                 per_host: limits.per_host,
                 min_interval: limits.min_interval,
@@ -190,6 +193,17 @@ impl<'a> ProbeCtx<'a> {
         let granted = wanted.min(self.limits.tls_handshakes.saturating_sub(*count));
         *count += granted;
         granted
+    }
+
+    /// Claim the one SSH connection for an address and port.
+    ///
+    /// The limit of 1 connection for each SSH port is for the address and port over all names.
+    /// Return false if another target claimed it first.
+    pub fn claim_ssh(&self, ip: IpAddr, port: u16) -> bool {
+        self.ssh_claims
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert((ip, port))
     }
 
     /// Wait until the tool can make a connection to the IP address.

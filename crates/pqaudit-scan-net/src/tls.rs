@@ -68,6 +68,10 @@ impl Probes for RealProbes {
 
 /// Probe an SSH target with one connection. The probe sends no KEXINIT message.
 async fn probe_ssh(t: &PlannedTarget, ctx: &ProbeCtx<'_>) -> SshObservationResult {
+    // Several names can share one address and port. They share one connection.
+    if !ctx.claim_ssh(t.ip, t.port) {
+        return Err(messages::SSH_LIMIT_USED.to_string());
+    }
     // The pattern lists the guard first. The variables then drop in reverse order:
     // the stream closes first, and the audit guard drops last.
     let Connected {

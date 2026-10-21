@@ -81,7 +81,7 @@ Most network limits are maximum values. You can lower them. You can raise them o
 - 4 connections at the same time in total, and 1 for each host.
 - At least 1000 ms between two connections to the same host. A lower value needs `override_limits`.
 - At most 3 TLS handshakes for each IP address and port, for all host names together.
-- 1 connection for each SSH port.
+- 1 connection for each IP address and SSH port, for all host names together.
 - A connect timeout of 5000 ms and a read timeout of 10000 ms.
 - No retries.
 

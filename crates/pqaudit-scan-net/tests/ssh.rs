@@ -500,3 +500,42 @@ async fn refused_connection_is_a_scan_error() {
     assert_eq!(out.errors.len(), 1);
     assert!(out.findings.is_empty());
 }
+
+#[tokio::test]
+async fn one_ssh_connection_for_each_address_and_port() {
+    // Two names for one address and port: localhost and the address itself.
+    let (address, _) = fake_server(openssh_script(OPENSSH_KEX, OPENSSH_HOST_KEYS)).await;
+    let dir = tempfile::tempdir().unwrap();
+    let audit = AuditLog::open(&dir.path().join("audit.log")).unwrap();
+    let mut by_address = target_for(address);
+    by_address.host = None;
+    let plan = TargetPlan {
+        targets: vec![target_for(address), by_address],
+        refused: Vec::new(),
+        limits: limits(),
+    };
+    let out = run(
+        &plan,
+        &RealProbes::new(false),
+        &audit,
+        Uuid::new_v4(),
+        default_pack(),
+    )
+    .await;
+    let limit_errors: Vec<_> = out
+        .errors
+        .iter()
+        .filter(|e| {
+            e.reason
+                .contains("used the SSH connection for this address and port")
+        })
+        .collect();
+    assert_eq!(limit_errors.len(), 1, "{:?}", out.errors);
+    assert_eq!(out.errors.len(), 1, "{:?}", out.errors);
+    let connections = std::fs::read_to_string(dir.path().join("audit.log"))
+        .unwrap()
+        .lines()
+        .filter(|line| line.contains("\"started\""))
+        .count();
+    assert_eq!(connections, 1, "the tool makes one SSH connection");
+}

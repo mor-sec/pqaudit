@@ -70,7 +70,7 @@ flowchart TB
         RULES["pqaudit-rules<br/>S1: built-in trust list<br/>S2: both signatures must pass<br/>S3: rotation chain, revocation<br/>S4: bounded archive reader"]
         CORE["pqaudit-core<br/>S5: results size limit<br/>S6: keyed redaction and fingerprints<br/>S7: pack and engagement checks<br/>S8: text cleaning"]
         FILES["pqaudit-scan-files<br/>S9: no sockets<br/>S10: no private key bytes in output<br/>S11: wiped buffers, size and work limits"]
-        NET["pqaudit-scan-net<br/>S12: scope plan, refusal exits 2, no special addresses<br/>S13: one audited connect site<br/>S14: rate limits, timeouts, handshake budget"]
+        NET["pqaudit-scan-net<br/>S12: scope plan, refusal exits 2, no special addresses<br/>S13: one audited connect site<br/>S14: rate limits, timeouts, TLS and SSH budgets"]
         REP["pqaudit-report<br/>S15: HTML and Markdown escaping<br/>S16: CBOM has no key bytes"]
         ENG[("Engagement folder<br/>scope.toml, assets.toml<br/>results, audit.log, redact.key")]
     end
@@ -126,7 +126,7 @@ flowchart TB
 | S11 | Key files go into buffers that the tool wipes. Each file has a size limit. On Unix, the open call refuses links and special files. A PKCS#12 file has limits on key derivation work. A scan has a total limit. | `file.rs`, `pfx.rs` |
 | S12 | The plan resolves each name one time. An address outside the scope refuses the full scan. Host names need an allowed range. A name must not lead to a special address that no target names. Numeric names are errors. | `scope.rs` |
 | S13 | Only one function opens sockets. It writes a "started" line and a final line to the audit log. | `runtime.rs` |
-| S14 | Limits apply to each IP address. A timeout covers each full attempt. | `runtime.rs`, `tls.rs` |
+| S14 | Limits apply to each IP address. A timeout covers each full attempt. The TLS handshake budget and the one SSH connection are for each IP address and port. | `runtime.rs`, `tls.rs` |
 | S15 | The HTML template escapes all values. The Markdown writer escapes table and heading characters. | `technical.rs` |
 | S16 | The CBOM lists keys by fingerprint and type only. | `cbom.rs` |
 
@@ -220,6 +220,7 @@ Each decision has an ID, the decision, the reason, and the consequence. The firs
 | AD-50 | Redaction changes each fingerprint and each hash of public material into a keyed hash. Overrides match through the same keyed function. | A plain hash can confirm a guess, and an endpoint fingerprint can show an IPv4 address. | Reports of redacted results need `redact.key` for overrides. |
 | AD-51 | One CLI output helper cleans each line before it goes to the terminal. | A file name can hold terminal control characters. | Paths with control characters show `?` in their place. |
 | AD-52 | On Unix, the file scan opens each path with `O_NOFOLLOW` and `O_NONBLOCK`. Then it checks the type on the open handle. | A path can change after the walk. A FIFO can stop the scan, and a new link can lead outside the scan. | A changed path gives a scan error. Other systems keep the type check on the handle only. |
+| AD-53 | At most 1 SSH connection for each IP address and port. | Several host names can share one address, like for TLS in AD-34. | Extra host names get a scan error. |
 
 ## 5. Known limits
 
