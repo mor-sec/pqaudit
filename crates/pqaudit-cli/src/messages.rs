@@ -42,6 +42,9 @@ pub const LOG_FILES_SKIPPED: &str =
 /// The error when the results file belongs to a different engagement. The tool fills in {results} and {engagement}.
 pub const ENGAGEMENT_MISMATCH: &str = "The results file belongs to the engagement {results}. The engagement directory is {engagement}. Use a results file of this engagement.";
 
+/// The error when redacted results do not match the engagement. The tool fills in {results} and {engagement}.
+pub const ENGAGEMENT_MISMATCH_REDACTED: &str = "The redacted results file has the engagement name {results}. The engagement directory is {engagement}. The results belong to a different engagement, or they use a different redaction key. Use a results file of this engagement.";
+
 /// The warning when the tool cannot check the engagement name of redacted results.
 pub const ENGAGEMENT_UNCHECKED: &str = "Warning: the tool cannot check the engagement name of the redacted results. The engagement directory has no file redact.key.";
 
@@ -309,6 +312,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("LOG_PACK_ORIGIN", LOG_PACK_ORIGIN),
     ("LOG_FILES_SKIPPED", LOG_FILES_SKIPPED),
     ("ENGAGEMENT_MISMATCH", ENGAGEMENT_MISMATCH),
+    ("ENGAGEMENT_MISMATCH_REDACTED", ENGAGEMENT_MISMATCH_REDACTED),
     ("ENGAGEMENT_UNCHECKED", ENGAGEMENT_UNCHECKED),
     ("REDACT_KEY_LOAD", REDACT_KEY_LOAD),
     ("RULES_INSTALLED", RULES_INSTALLED),

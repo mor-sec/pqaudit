@@ -209,7 +209,8 @@ fn redacted_results_check_the_engagement_with_the_key() {
         .arg(&redacted)
         .assert()
         .code(1)
-        .stderr(predicate::str::contains("redacted:000000000000"));
+        .stderr(predicate::str::contains("redacted:000000000000"))
+        .stderr(predicate::str::contains("different redaction key"));
 
     // Without the key, the tool cannot check. It gives a warning and continues.
     file.header.engagement = good;

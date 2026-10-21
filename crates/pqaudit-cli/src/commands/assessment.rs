@@ -94,10 +94,14 @@ fn check_engagement(results: &ResultsFile, engagement: &Engagement) -> Result<()
     if results.header.engagement == expected {
         return Ok(());
     }
+    let text = if results.header.redacted {
+        messages::ENGAGEMENT_MISMATCH_REDACTED
+    } else {
+        messages::ENGAGEMENT_MISMATCH
+    };
     eprintln!(
         "{}",
-        messages::ENGAGEMENT_MISMATCH
-            .replace("{results}", &results.header.engagement)
+        text.replace("{results}", &results.header.engagement)
             .replace("{engagement}", &name)
     );
     Err(ExitCode::Error)

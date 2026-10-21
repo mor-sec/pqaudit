@@ -232,6 +232,10 @@ Make a report from a results file.
 - `--results <FILE>`: Read this results file. The default is `results/merged.pqr` in the engagement directory.
 - `--output <FILE>`: Write the report to this file. The default is `reports/technical.<ext>` in the engagement directory.
 
+The commands `report`, `cbom`, and `explain` check the results file. The results must belong to the engagement directory. The tool stops with an error if the engagement name in the results file is different.
+
+Redacted results have a redacted engagement name. To check it, the tool needs the file `redact.key` in the engagement directory. The key must be the key that made the redacted results. If the file does not exist, the tool gives a warning and does not check the name.
+
 ### pqaudit cbom
 
 Make a cryptography bill of materials (CBOM).
