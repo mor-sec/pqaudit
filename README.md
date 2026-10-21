@@ -1,5 +1,22 @@
 # pqaudit
 
+```text
+         _________                .~~~~~~~~~~~~~~~~~~~~~~~~~~~.
+        /  _____  \               |  RSA-2048 ....... [ !! ]  |
+       |  |     |  |              |  ECDSA P-256 .... [ !! ]  |
+       |  |     |  |              |  X25519MLKEM768 . [ OK ]  |
+   ____|__|_____|__|____          |  ML-DSA-65 ...... [ OK ]  |
+  |  o---o---o---o---o  |         '~~~~~~~~~~~~~~~~~~~~~~~~~~~'
+  |  | \ | / | \ | / |  |
+  |  o---o-[0x50]-o--o  |                              _ _ _
+  |  | / | \ | / | \ |  |    _ __   __ _  __ _ _   _  __| (_) |_
+  |  o---o-[0x51]-o--o  |   | '_ \ / _` |/ _` | | | |/ _` | | __|
+  |  | \ | / | \ | / |  |   | |_) | (_| | (_| | |_| | (_| | | |_
+  |  o---o---o---o---o  |   | .__/ \__, |\__,_|\__,_|\__,_|_|\__|
+  |_____________________|   |_|       |_|
+       lattice locked         find it. score it. fix it.
+```
+
 `pqaudit` is a command-line tool for post-quantum readiness audits. It finds the cryptography that a system uses. It shows which parts a quantum computer can break. It also shows what to fix first.
 
 Security consultants and security teams use it in an engagement. A scan finds certificates, keys, and TLS and SSH endpoints. The tool then adds the context of the client: how important the data is, and how far an attacker can reach the system. The result is a technical report with a suggested priority and a deadline for each finding. You can see how the tool calculates each score. You can change each priority with an override.
