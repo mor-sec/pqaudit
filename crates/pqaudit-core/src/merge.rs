@@ -4,11 +4,11 @@ use crate::finding::{
     CertInfo, EndpointInfo, Finding, InventoryItem, KeyInfo, Location, Occurrence, ScanError,
     SshObservation, TlsObservation,
 };
-use crate::fingerprint::Fingerprint;
+use crate::fingerprint::{finding_id, Fingerprint};
 use crate::messages;
 use crate::results::{PackOriginRef, PackRef, ResultsFile, ResultsHeader, RunInfo, ScannerKind};
 use hmac::{Hmac, KeyInit, Mac};
-use sha2::{Digest, Sha256};
+use sha2::Sha256;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::io::Read;
@@ -336,16 +336,6 @@ fn single(values: BTreeSet<String>) -> Option<String> {
     } else {
         None
     }
-}
-
-/// The ID of a finding: `F-` and 8 hex digits of the SHA-256 hash of its fingerprint.
-fn finding_id(fingerprint: &Fingerprint) -> String {
-    let digest = Sha256::digest(fingerprint.0.as_bytes());
-    let mut id = String::from("F-");
-    for byte in &digest[..4] {
-        write!(id, "{byte:02x}").expect("writing to a String cannot fail");
-    }
-    id
 }
 
 /// Sort the occurrences and remove the duplicates by (run, location).

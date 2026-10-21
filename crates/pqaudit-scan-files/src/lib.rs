@@ -22,6 +22,7 @@ use std::path::PathBuf;
 
 use chrono::Utc;
 use pqaudit_core::classify::{classify_cert, classify_key};
+use pqaudit_core::fingerprint::finding_id;
 use pqaudit_core::{
     Agility, Finding, Fingerprint, FixOwner, InventoryItem, InventoryKind, Purpose, ScanError,
     Source,
@@ -153,16 +154,11 @@ pub fn scan(paths: &[PathBuf], opts: &ScanOptions, pack: &RulesPack, run_id: Uui
     } = collector;
     output.inventory.extend(locked);
     let today = Utc::now().date_naive();
-    let mut count = 0;
-    let mut next_id = || {
-        count += 1;
-        format!("file-{count}")
-    };
     for (_, item) in certs {
         let fingerprint = Fingerprint::cert(&item.cert.sha256);
         match classify_cert(&item.cert, pack, today) {
             Some((rule_id, threat_type, also)) => output.findings.push(Finding {
-                id: next_id(),
+                id: finding_id(&fingerprint),
                 fingerprint,
                 rule_id,
                 source: Source::File,
@@ -204,7 +200,7 @@ pub fn scan(paths: &[PathBuf], opts: &ScanOptions, pack: &RulesPack, run_id: Uui
             .and_then(|algorithm| classify_key(algorithm, pack));
         match verdict {
             Some((rule_id, threat_type)) => output.findings.push(Finding {
-                id: next_id(),
+                id: finding_id(&fingerprint),
                 fingerprint,
                 rule_id,
                 source: Source::File,

@@ -236,6 +236,13 @@ fn full_scan_writes_findings_audit_log_and_results() {
         .findings
         .iter()
         .any(|finding| finding.rule_id == "cert.classical-key"));
+    for finding in &results.findings {
+        assert_eq!(
+            finding.id,
+            pqaudit_core::fingerprint::finding_id(&finding.fingerprint),
+            "the ID comes from the fingerprint"
+        );
+    }
     // Two connections for a TLS port: hybrid and classical.
     let lines = setup.audit_lines();
     assert_eq!(lines.len(), 2, "{lines:?}");

@@ -175,6 +175,7 @@ Each command accepts these flags.
   - `text`: Plain text for people.
   - `json`: One JSON object for each line.
 - `--no-color`: Do not use colors in the log.
+- `--allow-unsigned-rules`: Accept a rules pack that has no correct signature. The results record this choice.
 
 The tool writes three types of output.
 

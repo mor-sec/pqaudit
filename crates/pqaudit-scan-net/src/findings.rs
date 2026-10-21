@@ -5,6 +5,7 @@ use std::net::{IpAddr, SocketAddr};
 
 use chrono::Utc;
 use pqaudit_core::classify::classify_cert;
+use pqaudit_core::fingerprint::finding_id;
 use pqaudit_core::{
     Agility, Algorithm, CertInfo, EndpointInfo, Finding, Fingerprint, FixOwner, InventoryItem,
     InventoryKind, Location, Occurrence, Protocol, Purpose, ScanError, Source, SshObservation,
@@ -50,7 +51,6 @@ struct Builder<'a> {
     run_id: Uuid,
     output: NetOutput,
     certs: BTreeMap<String, SeenCert>,
-    count: usize,
 }
 
 /// Make the output of a scan from the results of the probes.
@@ -65,7 +65,6 @@ pub(crate) fn build(
         run_id,
         output: NetOutput::default(),
         certs: BTreeMap::new(),
-        count: 0,
     };
     for (target, result) in targets.iter().zip(results) {
         match result {
@@ -96,11 +95,6 @@ fn is_pq_ready(pack: &RulesPack, name: &str) -> bool {
 }
 
 impl Builder<'_> {
-    fn next_id(&mut self) -> String {
-        self.count += 1;
-        format!("net-{}", self.count)
-    }
-
     fn error(&mut self, t: &PlannedTarget, reason: String) {
         let location = match &t.host {
             Some(host) => format!("{host} ({})", address_text(t.ip, t.port)),
@@ -160,7 +154,7 @@ impl Builder<'_> {
                 .unwrap_or_else(|| messages::UNKNOWN_VALUE.to_string());
             let evidence = messages::EVIDENCE_NO_PQ.replace("{group}", &group);
             let finding = Finding {
-                id: self.next_id(),
+                id: finding_id(&Fingerprint::endpoint(&host, t.port, RULE_NO_PQ_KEX)),
                 fingerprint: Fingerprint::endpoint(&host, t.port, RULE_NO_PQ_KEX),
                 rule_id: RULE_NO_PQ_KEX.to_string(),
                 source: Source::Net,
@@ -184,7 +178,7 @@ impl Builder<'_> {
         if let Some(versions) = obs.legacy_versions.as_ref().filter(|v| !v.is_empty()) {
             let evidence = messages::EVIDENCE_LEGACY.replace("{versions}", &versions.join(", "));
             let finding = Finding {
-                id: self.next_id(),
+                id: finding_id(&Fingerprint::endpoint(&host, t.port, RULE_LEGACY_VERSION)),
                 fingerprint: Fingerprint::endpoint(&host, t.port, RULE_LEGACY_VERSION),
                 rule_id: RULE_LEGACY_VERSION.to_string(),
                 source: Source::Net,
@@ -327,7 +321,11 @@ impl Builder<'_> {
 
     fn ssh_finding(&mut self, t: &PlannedTarget, endpoint: &EndpointInfo, found: SshFinding) {
         let finding = Finding {
-            id: self.next_id(),
+            id: finding_id(&Fingerprint::endpoint(
+                &display_host(t),
+                t.port,
+                found.rule_id,
+            )),
             fingerprint: Fingerprint::endpoint(&display_host(t), t.port, found.rule_id),
             rule_id: found.rule_id.to_string(),
             source: Source::Net,
@@ -352,7 +350,7 @@ impl Builder<'_> {
             let fingerprint = Fingerprint::cert(&seen.cert.sha256);
             match classify_cert(&seen.cert, self.pack, today) {
                 Some((rule_id, threat_type, also)) => {
-                    let id = self.next_id();
+                    let id = finding_id(&fingerprint);
                     self.output.findings.push(Finding {
                         id,
                         fingerprint,

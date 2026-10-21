@@ -54,3 +54,13 @@ impl Fingerprint {
         Self(format!("{kind}:{hex}"))
     }
 }
+
+/// The ID of a finding: `F-` and 8 hex digits of the SHA-256 hash of its fingerprint.
+pub fn finding_id(fingerprint: &Fingerprint) -> String {
+    let digest = Sha256::digest(fingerprint.0.as_bytes());
+    let mut id = String::from("F-");
+    for byte in &digest[..4] {
+        write!(id, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    id
+}

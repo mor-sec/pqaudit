@@ -265,3 +265,28 @@ fn host_name_comes_from_the_operating_system() {
     assert_ne!(host, "env-name-marker", "the variable must not win");
     assert_eq!(&file.header.runs[0].host, host);
 }
+
+#[test]
+fn finding_ids_come_from_the_fingerprint() {
+    let setup = Setup::new();
+    fs::copy(fixture("rsa2048-leaf.pem"), setup.target().join("a.pem")).unwrap();
+    fs::copy(fixture("rsa1024-leaf.pem"), setup.target().join("b.pem")).unwrap();
+    let output = setup.dir.path().join("a.pqr");
+    setup
+        .pqaudit()
+        .args(["scan", "files", "--output"])
+        .arg(&output)
+        .arg(setup.target())
+        .assert()
+        .code(0);
+    let file = ResultsFile::read(&output).unwrap();
+    assert_eq!(file.findings.len(), 2);
+    for finding in &file.findings {
+        let id = &finding.id;
+        assert!(id.starts_with("F-") && id.len() == 10, "{id}");
+        assert_eq!(
+            id,
+            &pqaudit_core::fingerprint::finding_id(&finding.fingerprint)
+        );
+    }
+}
