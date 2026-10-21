@@ -36,17 +36,13 @@ purpose = "pqc-internal-hashing"
 algorithms = ["SHA3-256", "SHAKE128", "SHAKE256"]
 crates = ["sha3", "keccak", "shake"]
 
-# The PKCS#12 reader (p12-keystore) uses these crates for the MAC and for the encryption of a store.
+# The PKCS#12 reader (p12-keystore) uses these crates. They check the MAC and open the encryption of a store.
+# The PBES2 cipher can be AES-CBC or AES-GCM. PBES1 and the MAC key use the PKCS#12 key derivation.
+# The crates pkcs5 and pkcs12 hold these formats. The MAC can use any SHA-2 hash.
 [[use]]
 purpose = "keystore-reading"
-algorithms = ["PBKDF2", "scrypt", "HMAC", "AES", "3DES", "RC2", "SHA-1", "SHA-256"]
-crates = ["p12-keystore", "cms", "x509-cert", "pbkdf2", "scrypt", "salsa20", "hmac", "aes", "cbc", "des", "rc2", "sha1", "sha2"]
-
-# The pkcs5 crate brings these crates in. They handle AES-GCM in encrypted PKCS#8 keys.
-[[use]]
-purpose = "encrypted-key-reading"
-algorithms = ["AES-GCM"]
-crates = ["aes-gcm", "ctr", "ghash", "polyval", "aes"]
+algorithms = ["PBKDF2", "scrypt", "PKCS#12-KDF", "HMAC", "AES", "AES-GCM", "3DES", "RC2", "SHA-1", "SHA-224", "SHA-256", "SHA-384", "SHA-512", "SHA-512/224", "SHA-512/256"]
+crates = ["p12-keystore", "cms", "x509-cert", "pkcs5", "pkcs12", "pbkdf2", "scrypt", "salsa20", "hmac", "aes", "aes-gcm", "cbc", "ctr", "ghash", "polyval", "des", "rc2", "sha1", "sha2"]
 
 # The merge step makes a keyed hash of each finding, so that a result file does not show the raw value.
 [[use]]
@@ -54,9 +50,10 @@ purpose = "result-fingerprints"
 algorithms = ["HMAC", "SHA-256"]
 crates = ["hmac", "sha2"]
 
-# The random number generator of the rand crate uses ChaCha20.
+# The crate chacha20 is linked through p12-keystore, by rand 0.10. Only the code that writes a store uses it.
+# The read path of pqaudit does not use it.
 [[use]]
-purpose = "random-numbers"
+purpose = "linked-not-used-on-read"
 algorithms = ["ChaCha20"]
 crates = ["chacha20"]
 

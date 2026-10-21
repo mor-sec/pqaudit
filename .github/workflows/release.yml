@@ -269,11 +269,11 @@ jobs:
       - name: Make the CBOM of the tool
         run: |
           export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          cargo xtask self-cbom --sbom "meta/pqaudit-${GITHUB_REF_NAME}.sbom.cdx.json" \
+          cargo --locked xtask self-cbom --sbom "meta/pqaudit-${GITHUB_REF_NAME}.sbom.cdx.json" \
             --out "meta/pqaudit-${GITHUB_REF_NAME}.cbom.cdx.json"
 
       - name: Make the rules pack archive
-        run: cargo xtask pack-rules --out meta
+        run: cargo --locked xtask pack-rules --out meta
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -364,7 +364,7 @@ jobs:
           import sys
           version, pack, cosign, ed, ml = sys.argv[1:6]
           text = open(".github/release-notes-template.md").read()
-          for old, new in [("<version>", version), ("<pack-version>", pack), ("<cosign-version>", cosign),
+          for old, new in [("<tag>", version), ("<version>", version), ("<pack-version>", pack), ("<cosign-version>", cosign),
                            ("<ed25519-public-key-pem>", ed), ("<mldsa65-public-key-pem>", ml)]:
               text = text.replace(old, new)
           sys.stdout.write(text)

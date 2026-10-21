@@ -297,3 +297,5 @@ crypto_crates:
   - x509-cert
   - cms
   - p12-keystore
+  - pkcs5
+  - pkcs12
