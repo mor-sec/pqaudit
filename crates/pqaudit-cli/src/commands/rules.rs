@@ -68,7 +68,7 @@ fn list(store: &RulesStore, allow_unsigned: bool) -> ExitCode {
         describe(&active.pack),
         active.pack.content_hash
     );
-    for installed in store.list_installed() {
+    for installed in store.list_installed(allow_unsigned) {
         match installed.state {
             InstalledState::Verified {
                 pack,
@@ -85,6 +85,12 @@ fn list(store: &RulesStore, allow_unsigned: bool) -> ExitCode {
                 describe(&pack),
                 pack.content_hash
             ),
+            InstalledState::SignatureFailed { reason } => {
+                println!(
+                    "installed  {}  signature failed: {reason}",
+                    installed.version
+                );
+            }
             InstalledState::Invalid { reason } => {
                 println!("installed  {}  invalid: {reason}", installed.version);
             }

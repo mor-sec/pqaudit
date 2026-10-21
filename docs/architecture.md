@@ -67,7 +67,7 @@ flowchart TB
 
     subgraph OP["Operator computer"]
         CLI["pqaudit-cli"]
-        RULES["pqaudit-rules<br/>S1: built-in trust list<br/>S2: both signatures must pass<br/>S3: rotation chain, revocation<br/>S4: bounded archive reader"]
+        RULES["pqaudit-rules<br/>S1: built-in trust list<br/>S2: both signatures pass before the parse<br/>S3: rotation chain, revocation<br/>S4: bounded archive reader"]
         CORE["pqaudit-core<br/>S5: results size limit<br/>S6: keyed redaction and fingerprints<br/>S7: pack and engagement checks<br/>S8: text cleaning"]
         FILES["pqaudit-scan-files<br/>S9: no sockets<br/>S10: no private key bytes in output<br/>S11: wiped buffers, size and work limits"]
         NET["pqaudit-scan-net<br/>S12: scope plan, refusal exits 2, no special addresses<br/>S13: one audited connect site<br/>S14: rate limits, timeouts, TLS and SSH budgets"]
@@ -114,7 +114,7 @@ flowchart TB
 | ID | Control | Where |
 |---|---|---|
 | S1 | The trust list of pack keys is in the binary. A pack cannot add a trusted key. | `rules/trust/keys.toml`, `verify.rs` |
-| S2 | A pack needs a correct Ed25519 signature and a correct ML-DSA-65 signature. | `verify.rs` |
+| S2 | A pack needs a correct Ed25519 signature and a correct ML-DSA-65 signature. Without `--allow-unsigned-rules`, the parser never reads a pack that fails the check. | `verify.rs`, `install.rs` |
 | S3 | A rotation chain starts at a built-in key. A revoked key anywhere in the chain stops the pack. | `verify.rs` |
 | S4 | The archive reader rejects unsafe paths, links, duplicates, and archives that are too large. | `archive.rs` |
 | S5 | The tool reads at most 1 GiB from a results file, also after decompression. | `results.rs` |
@@ -224,6 +224,7 @@ Each decision has an ID, the decision, the reason, and the consequence. The firs
 | AD-53 | At most 1 SSH connection for each IP address and port. | Several host names can share one address, like for TLS in AD-34. | Extra host names get a scan error. |
 | AD-54 | `sign-release` needs `--commit` and gives it to cosign. The `release` job runs in an approved environment and only for a commit on `main`. Customers check the signer workflow and the commit. | A tag on another branch, or a bundle from another commit, must not pass. | The maintainer gives the commit of the tag. Key fingerprints are also on the project site and in the signed tag. |
 | AD-55 | The CI workflow sets `permissions: contents: read` at the top. | The default token of a repository can have write access. | A CI job that needs more access must ask for it. |
+| AD-56 | Without `--allow-unsigned-rules`, an installed pack that fails the signature check stays unread. | The parser must not see pack files from an unknown source. | The skip warning gives only the signature error. |
 
 ## 5. Known limits
 

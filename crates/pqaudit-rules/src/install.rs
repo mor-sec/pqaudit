@@ -111,6 +111,12 @@ pub enum InstalledState {
         /// The reason why the signature check did not pass.
         reason: String,
     },
+    /// The signature check failed, and unsigned packs are not allowed.
+    /// The program did not read the pack files.
+    SignatureFailed {
+        /// Why the signature check did not pass.
+        reason: String,
+    },
     /// The program cannot load the pack.
     Invalid {
         /// Why the program cannot load the pack.
@@ -259,8 +265,8 @@ impl RulesStore {
     }
 
     /// Check one installed pack.
-    fn check_dir(&self, version: String, path: PathBuf) -> InstalledPack {
-        let state = match self.load_state(&version, &path) {
+    fn check_dir(&self, version: String, path: PathBuf, allow_unsigned: bool) -> InstalledPack {
+        let state = match self.load_state(&version, &path, allow_unsigned) {
             Ok(state) => state,
             Err(error) => InstalledState::Invalid {
                 reason: error.to_string(),
@@ -273,7 +279,16 @@ impl RulesStore {
         }
     }
 
-    fn load_state(&self, version: &str, dir: &Path) -> Result<InstalledState, InstallError> {
+    /// Check the signature of one installed pack. Read the pack only if the check passes.
+    ///
+    /// Without `allow_unsigned`, a pack that fails the check stays unread. Its files can come
+    /// from anybody, so the parser never sees them.
+    fn load_state(
+        &self,
+        version: &str,
+        dir: &Path,
+        allow_unsigned: bool,
+    ) -> Result<InstalledState, InstallError> {
         let archive_path = dir.join(format!("rules-{version}.tar.zst"));
         let sig_path = dir.join(format!("rules-{version}.tar.zst.sig.json"));
         let archive = read_limited(&archive_path, MAX_ARCHIVE_FILE_BYTES)?;
@@ -293,8 +308,16 @@ impl RulesStore {
                     signed_by: verified.signed_by,
                     rotation_chain: verified.rotation_chain,
                 }),
+                Err(error) if !allow_unsigned => Ok(InstalledState::SignatureFailed {
+                    reason: error.to_string(),
+                }),
                 Err(error) => self.unverified(&archive, version, error.to_string()),
             };
+        }
+        if !allow_unsigned {
+            return Ok(InstalledState::SignatureFailed {
+                reason: String::from(messages::NO_SIGNATURE),
+            });
         }
         self.unverified(&archive, version, String::from(messages::NO_SIGNATURE))
     }
@@ -318,7 +341,9 @@ impl RulesStore {
     }
 
     /// Check all installed packs. Sort them by directory name.
-    pub fn list_installed(&self) -> Vec<InstalledPack> {
+    ///
+    /// Without `allow_unsigned`, the program reads only the packs with a valid signature.
+    pub fn list_installed(&self, allow_unsigned: bool) -> Vec<InstalledPack> {
         let Ok(entries) = fs::read_dir(self.rules_dir()) else {
             return Vec::new();
         };
@@ -333,7 +358,7 @@ impl RulesStore {
         found.sort();
         found
             .into_iter()
-            .map(|(version, path)| self.check_dir(version, path))
+            .map(|(version, path)| self.check_dir(version, path, allow_unsigned))
             .collect()
     }
 
@@ -349,7 +374,7 @@ impl RulesStore {
             skipped: Vec::new(),
         };
         let mut skipped = Vec::new();
-        for installed in self.list_installed() {
+        for installed in self.list_installed(allow_unsigned) {
             let candidate = match installed.state {
                 InstalledState::Verified {
                     pack,
@@ -371,7 +396,9 @@ impl RulesStore {
                     },
                     skipped: Vec::new(),
                 },
-                InstalledState::Unverified { reason, .. } | InstalledState::Invalid { reason } => {
+                InstalledState::Unverified { reason, .. }
+                | InstalledState::SignatureFailed { reason }
+                | InstalledState::Invalid { reason } => {
                     skipped.push(SkippedPack {
                         version: installed.version,
                         path: installed.path,

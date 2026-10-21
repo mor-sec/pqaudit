@@ -111,7 +111,7 @@ fn active_pack_prefers_a_newer_installed_pack() {
         }
         other => panic!("wrong origin: {other:?}"),
     }
-    match &store.list_installed()[0].state {
+    match &store.list_installed(false)[0].state {
         InstalledState::Verified { rotation_chain, .. } => assert_eq!(rotation_chain.len(), 1),
         other => panic!("wrong state: {other:?}"),
     }
@@ -143,7 +143,7 @@ fn installed_pack_is_checked_again_when_it_loads() {
     let active = store.active_pack(false).unwrap();
     assert!(matches!(active.origin, PackOrigin::Embedded));
     // The same change is also not accepted as "unsigned" without the flag.
-    let listed = store.list_installed();
+    let listed = store.list_installed(false);
     assert_eq!(listed.len(), 1);
     assert!(!matches!(listed[0].state, InstalledState::Verified { .. }));
     let loose = store.active_pack(true).unwrap();
@@ -196,7 +196,7 @@ fn install_replaces_the_same_version() {
     let store = fx.store();
     store.install(&archive, &sig).unwrap();
     store.install(&archive, &sig).unwrap();
-    assert_eq!(store.list_installed().len(), 1);
+    assert_eq!(store.list_installed(false).len(), 1);
 }
 
 #[test]
@@ -300,4 +300,43 @@ fn active_pack_skips_nothing_when_all_packs_are_good() {
     let store = fx.store();
     store.install(&archive, &sig).unwrap();
     assert!(store.active_pack(false).unwrap().skipped.is_empty());
+}
+
+#[test]
+fn failed_signature_does_not_parse_the_pack_without_the_flag() {
+    let fx = Fixture::new();
+    let (archive, sig) = fx.signed("99.0.0");
+    let store = fx.store();
+    let dir = store.install(&archive, &sig).unwrap();
+    // Put an archive with YAML that is not valid in place of the signed one.
+    let bad = build_archive(vec![
+        (
+            "pack.toml".into(),
+            b"id = \"test\"\nversion = \"99.0.0\"\n".to_vec(),
+        ),
+        ("algorithms.yaml".into(), b"{ not: [valid yaml\n".to_vec()),
+    ])
+    .unwrap();
+    fs::write(dir.join("rules-99.0.0.tar.zst"), &bad).unwrap();
+    let parse_error = pqaudit_rules::verify::load_unverified(&bad)
+        .unwrap_err()
+        .to_string();
+
+    let active = store.active_pack(false).unwrap();
+    assert!(matches!(active.origin, PackOrigin::Embedded));
+    assert_eq!(active.skipped.len(), 1, "{:?}", active.skipped);
+    let reason = &active.skipped[0].reason;
+    assert_ne!(reason, &parse_error, "the tool parsed the pack");
+    assert!(!reason.contains("yaml"), "{reason}");
+    assert!(reason.contains("signature"), "{reason}");
+    let listed = store.list_installed(false);
+    assert!(matches!(
+        listed[0].state,
+        InstalledState::SignatureFailed { .. }
+    ));
+
+    // With the flag, the tool reads the pack and finds the YAML error.
+    let loose = store.active_pack(true).unwrap();
+    assert_eq!(loose.skipped.len(), 1);
+    assert_eq!(loose.skipped[0].reason, parse_error);
 }

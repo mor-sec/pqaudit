@@ -537,7 +537,9 @@ The tool does not get packs from the network. Download a pack and its signature 
 
 ### Unsigned packs
 
-By default, the tool refuses an unsigned pack and a changed pack. The flag `--allow-unsigned-rules` accepts a pack without a correct signature. Use it only for a pack that you wrote yourself or that you trust by other means. The tool prints a warning. Each result and each report records that the pack had no valid signature.
+By default, the tool refuses an unsigned pack and a changed pack. It does not read the files of such a pack. It reports only that the signature check failed.
+
+The flag `--allow-unsigned-rules` accepts a pack without a correct signature. Use it only for a pack that you wrote yourself or that you trust by other means. The tool prints a warning. Each result and each report records that the pack had no valid signature.
 
 With `rules verify`, the flag does not change the result. The command exits with code 1 for a pack without a correct signature, and it prints a warning.
 
