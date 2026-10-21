@@ -17,7 +17,7 @@ pub const MERGE_SUMMARY: &str =
     "Merged {inputs} files. The result has {findings} findings, {inventory} inventory items, and {errors} errors.";
 
 /// The note about the content of a redacted output file.
-pub const MERGE_REDACTED: &str = "The output file has hashes in place of host names, addresses, paths, names, banners, and key comments. Certificate and key fingerprints stay in the file. They can identify a public certificate or key. Endpoint fingerprints and finding IDs can also confirm a guessed host name. For an IP address target, they show the IPv4 address, because a person can hash all 2^32 addresses.";
+pub const MERGE_REDACTED: &str = "The output file has keyed hashes in place of host names, addresses, paths, names, banners, and key comments. Fingerprints, certificate hashes, and key hashes are also keyed hashes. Keep redact.key private. A report needs redact.key to apply the overrides.";
 
 /// The text when a profile ID is not in the rules pack.
 pub const UNKNOWN_PROFILE: &str = "This profile does not exist:";
@@ -47,6 +47,9 @@ pub const ENGAGEMENT_MISMATCH_REDACTED: &str = "The redacted results file has th
 
 /// The warning when the tool cannot check the engagement name of redacted results.
 pub const ENGAGEMENT_UNCHECKED: &str = "Warning: the tool cannot check the engagement name of the redacted results. The engagement directory has no file redact.key.";
+
+/// The warning when redacted results have overrides but the engagement has no redaction key.
+pub const OVERRIDES_NEED_KEY: &str = "Warning: the results file has keyed hashes, but the engagement directory has no file redact.key. No override with a plain fingerprint matches a finding.";
 
 /// The error when the tool cannot read the redaction key. The tool fills in {reason}.
 pub const REDACT_KEY_LOAD: &str = "The tool cannot read the redaction key. {reason}";
@@ -315,6 +318,7 @@ pub const ALL: &[(&str, &str)] = &[
     ("ENGAGEMENT_MISMATCH_REDACTED", ENGAGEMENT_MISMATCH_REDACTED),
     ("ENGAGEMENT_UNCHECKED", ENGAGEMENT_UNCHECKED),
     ("REDACT_KEY_LOAD", REDACT_KEY_LOAD),
+    ("OVERRIDES_NEED_KEY", OVERRIDES_NEED_KEY),
     ("RULES_INSTALLED", RULES_INSTALLED),
     ("INIT_CREATED", INIT_CREATED),
     ("INIT_NEXT", INIT_NEXT),

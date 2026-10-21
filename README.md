@@ -111,7 +111,7 @@ If a key store has encryption and you give no password, the tool records "encryp
 
 The command `merge --redact` replaces host names, addresses, paths, names, banners, and key comments with keyed hashes. Keep the key file `redact.key` private.
 
-Fingerprints and finding IDs stay in a redacted file. They can confirm a guess of a public certificate, a key, or a host name. For a target that is an IP address, they show the IPv4 address. The hash has no key, and a person can calculate the hash of all 2^32 IPv4 addresses. Do not treat a redacted file as anonymous.
+Fingerprints, certificate hashes, and key hashes also become keyed hashes. Finding IDs come from the keyed fingerprints. Without the key, a person cannot compare them with a known certificate, key, or IP address. Overrides still apply to a redacted file when the engagement folder holds `redact.key`. Do not treat a redacted file as anonymous. The algorithms, dates, and counts stay.
 
 ### Signed releases, the SBOM, and the CBOM
 

@@ -393,15 +393,20 @@ Rules for redaction:
 - Keep `redact.key` private. Never send it with a redacted file. A person with the key can test guesses against the hashes.
 - IP addresses map into the ranges 198.18.0.0/15 (IPv4) and 2001:db8::/32 (IPv6).
 - The tool redacts the name of the engagement.
-- Certificate, key, and endpoint fingerprints and finding IDs stay in the file.
-- A person can use them to confirm a guess of a public certificate or a host name.
-- For a target that is an IP address, the endpoint fingerprint and the finding ID show the IPv4 address.
-- Their hash has no key. A person can calculate the hash of all 2^32 IPv4 addresses.
-- Do not treat a redacted file as anonymous.
+- Each fingerprint becomes a keyed hash. The kind at the start stays, for example `cert:`.
+- Certificate hashes and key hashes also become keyed hashes.
+- Each finding ID comes from the keyed fingerprint. Thus a redacted file has other IDs than the plain file.
+- Without the key, a person cannot compare a fingerprint with a known certificate, key, or address.
+- The same key gives the same values. Thus `merge` joins redacted files that use one key.
+- Do not treat a redacted file as anonymous. The algorithms, dates, and counts stay.
 - A mix of plain inputs and redacted inputs needs `--redact`. Without it, the tool stops with an error.
 - The default output is `results/merged.redacted.pqr`.
 
 A report from a redacted file cannot match assets to findings. All context fields show as `Unassessed`.
+
+Overrides use plain fingerprints. For a redacted file, `report`, `cbom`, and `explain` read `redact.key` in the engagement folder. They calculate the keyed form of each override fingerprint and match that form. An override that already has the keyed form also matches. The report then shows only keyed fingerprints.
+
+Without `redact.key`, no plain override matches. The report lists the overrides as orphaned and tells why.
 
 ## Assessment: how the tool uses your context
 

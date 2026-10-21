@@ -11,9 +11,10 @@ use crate::assets::{compile_paths, AssetContext, AssetIndex};
 use crate::complexity::{assess_complexity, testing_scope, Complexity};
 use crate::deadlines::{self, DeadlineRef};
 use crate::engagement::{Assumptions, Band, Engagement, Override};
+use crate::merge::{keyed_fingerprint, RedactKey};
 use crate::messages;
 use crate::scoring::{self, ScoreBreakdown};
-use crate::{Finding, InventoryItem, PackRef, ResultsFile, ResultsHeader, ScanError};
+use crate::{Finding, Fingerprint, InventoryItem, PackRef, ResultsFile, ResultsHeader, ScanError};
 
 /// A short description of the engagement, for the reports.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -74,6 +75,9 @@ pub struct Assessment {
     pub planning_milestones: Vec<(String, Milestone)>,
     /// The overrides that match no finding.
     pub orphaned_overrides: Vec<Override>,
+    /// True for a redacted results file with overrides, when the tool has no redaction key.
+    /// Then a plain override fingerprint cannot match a finding.
+    pub overrides_need_key: bool,
     /// The number of findings with at least one unassessed context field.
     pub unassessed_count: usize,
     /// The assumptions of the engagement.
@@ -128,16 +132,49 @@ impl fmt::Display for AssessError {
 
 impl std::error::Error for AssessError {}
 
-/// Assess the findings of a results file.
+/// Assess the findings of a results file without a redaction key.
 ///
-/// The asset of a finding is the first asset in the assets file that matches any occurrence.
-/// The date of the assessment is `assessment_date` from the engagement. If it is not set,
-/// the tool uses `today`. The caller gives the local date as `today`.
+/// Refer to `assess_with_key`.
 pub fn assess(
     results: &ResultsFile,
     eng: &Engagement,
     pack: &RulesPack,
     today: NaiveDate,
+) -> Result<Assessment, AssessError> {
+    assess_with_key(results, eng, pack, today, None)
+}
+
+/// An override and the fingerprints that it matches.
+struct OverrideMatch {
+    /// The override as the reports show it.
+    shown: Override,
+    /// The fingerprint in the overrides file.
+    plain: String,
+    /// The keyed form of the fingerprint, for redacted results.
+    keyed: Option<String>,
+}
+
+impl OverrideMatch {
+    fn matches(&self, fingerprint: &str) -> bool {
+        self.plain == fingerprint || self.keyed.as_deref() == Some(fingerprint)
+    }
+}
+
+/// Assess the findings of a results file.
+///
+/// The asset of a finding is the first asset in the assets file that matches any occurrence.
+/// The date of the assessment is `assessment_date` from the engagement. If it is not set,
+/// the tool uses `today`. The caller gives the local date as `today`.
+///
+/// Redacted results have keyed fingerprints. With the redaction key, an override with a plain
+/// fingerprint matches the keyed form. An override in the keyed form also matches. Then the
+/// assessment shows only keyed fingerprints. Without the key, only an exact match applies.
+pub fn assess_with_key(
+    results: &ResultsFile,
+    eng: &Engagement,
+    pack: &RulesPack,
+    today: NaiveDate,
+    key: Option<&RedactKey>,
 ) -> Result<Assessment, AssessError> {
     let today = eng.config.assessment_date.unwrap_or(today);
     let config = &eng.config;
@@ -177,6 +214,30 @@ pub fn assess(
         })?;
     }
     let index = AssetIndex::new(&eng.assets.asset);
+    let redaction_key = key.filter(|_| results.header.redacted);
+    let overrides: Vec<OverrideMatch> = eng
+        .overrides
+        .r#override
+        .iter()
+        .map(|o| {
+            let plain = o.fingerprint.clone();
+            let keyed =
+                redaction_key.map(|key| keyed_fingerprint(&Fingerprint(plain.clone()), key).0);
+            let mut shown = o.clone();
+            if let Some(keyed) = &keyed {
+                // A plain fingerprint must not reach a redacted report.
+                let exact = results.findings.iter().any(|f| f.fingerprint.0 == plain);
+                if !exact {
+                    shown.fingerprint = keyed.clone();
+                }
+            }
+            OverrideMatch {
+                shown,
+                plain,
+                keyed,
+            }
+        })
+        .collect();
 
     let mut findings = Vec::with_capacity(results.findings.len());
     for finding in &results.findings {
@@ -208,12 +269,10 @@ pub fn assess(
             today,
         );
         let band = scoring::band(score.total, &eng.scoring.bands);
-        let override_ = eng
-            .overrides
-            .r#override
+        let override_ = overrides
             .iter()
-            .find(|candidate| candidate.fingerprint == finding.fingerprint.0)
-            .cloned();
+            .find(|candidate| candidate.matches(&finding.fingerprint.0))
+            .map(|candidate| candidate.shown.clone());
         let effective_band = override_.as_ref().map_or(band, |o| o.priority);
         let testing = testing_scope(rule, &context, &eng.scoring);
         findings.push(AssessedFinding {
@@ -236,13 +295,13 @@ pub fn assess(
         .iter()
         .map(|finding| finding.fingerprint.0.as_str())
         .collect();
-    let orphaned_overrides = eng
-        .overrides
-        .r#override
+    let orphaned_overrides = overrides
         .iter()
-        .filter(|o| !known.contains(o.fingerprint.as_str()))
-        .cloned()
+        .filter(|o| !known.iter().any(|fingerprint| o.matches(fingerprint)))
+        .map(|o| o.shown.clone())
         .collect();
+    let overrides_need_key =
+        results.header.redacted && key.is_none() && !eng.overrides.r#override.is_empty();
     let unassessed_count = findings
         .iter()
         .filter(|f| f.context.has_unassessed())
@@ -267,6 +326,7 @@ pub fn assess(
         errors: results.errors.clone(),
         planning_milestones: deadlines::planning(&profiles),
         orphaned_overrides,
+        overrides_need_key,
         unassessed_count,
         assumptions: config.assumptions.clone(),
         pack: results.header.rules_pack.clone(),

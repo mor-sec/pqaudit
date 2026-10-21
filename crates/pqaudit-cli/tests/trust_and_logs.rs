@@ -225,6 +225,72 @@ fn redacted_results_check_the_engagement_with_the_key() {
 }
 
 #[test]
+fn overrides_apply_to_redacted_results_with_the_key() {
+    let dir = engagement();
+    scan_and_merge(dir.path(), &[]);
+    let plain =
+        pqaudit_core::ResultsFile::read(&dir.path().join("eng/results/merged.pqr")).unwrap();
+    let fingerprint = plain.findings[0].fingerprint.0.clone();
+    fs::write(
+        dir.path().join("eng/overrides.toml"),
+        format!("[[override]]\nfingerprint = \"{fingerprint}\"\npriority = \"low\"\nreason = \"Accepted risk.\"\nby = \"Jo\"\ndate = 2026-10-01\n"),
+    )
+    .unwrap();
+    pqaudit(dir.path())
+        .args(["merge", "--redact"])
+        .arg(dir.path().join("eng/results/merged.pqr"))
+        .assert()
+        .code(0);
+    let redacted = dir.path().join("eng/results/merged.redacted.pqr");
+    let redacted_file = pqaudit_core::ResultsFile::read(&redacted).unwrap();
+    let redacted_text = serde_json::to_string(&redacted_file).unwrap();
+    assert!(
+        !redacted_text.contains(&fingerprint),
+        "the plain fingerprint is in the file"
+    );
+    let id = redacted_file.findings[0].id.clone();
+
+    // With the key, the plain override matches the keyed fingerprint.
+    pqaudit(dir.path())
+        .args(["report", "--format", "json", "--results"])
+        .arg(&redacted)
+        .assert()
+        .code(0);
+    let json = fs::read_to_string(dir.path().join("eng/reports/technical.json")).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        value["findings"][0]["override_"]["reason"],
+        "Accepted risk."
+    );
+    assert_eq!(value["orphaned_overrides"].as_array().unwrap().len(), 0);
+    assert!(
+        !json.contains(&fingerprint),
+        "the plain fingerprint is in the report"
+    );
+    pqaudit(dir.path())
+        .args(["explain", id.as_str(), "--results"])
+        .arg(&redacted)
+        .assert()
+        .code(0)
+        .stdout(predicate::str::contains("Accepted risk."));
+
+    // Without the key, no override matches. The report says why.
+    fs::remove_file(dir.path().join("eng/redact.key")).unwrap();
+    pqaudit(dir.path())
+        .args(["report", "--results"])
+        .arg(&redacted)
+        .assert()
+        .code(0)
+        .stderr(predicate::str::contains(
+            "No override with a plain fingerprint matches",
+        ));
+    let html = fs::read_to_string(dir.path().join("eng/reports/technical.html")).unwrap();
+    assert!(html.contains(
+        "The results file has keyed hashes, but the engagement directory has no file redact.key."
+    ));
+}
+
+#[test]
 fn quiet_stops_the_summary_lines() {
     let dir = engagement();
     for args in [vec!["scan", "files"], vec!["scan", "files", "--output"]] {

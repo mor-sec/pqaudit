@@ -1,11 +1,12 @@
 //! Tests for the assessment.
 
 use chrono::{NaiveDate, TimeZone, Utc};
-use pqaudit_core::assess::{assess, AssessError};
+use pqaudit_core::assess::{assess, assess_with_key, AssessError};
 use pqaudit_core::assets::Ctx;
 use pqaudit_core::engagement::{
     AssetsFile, Band, Engagement, EngagementConfig, OverridesFile, ScoringConfig,
 };
+use pqaudit_core::merge::{keyed_fingerprint, redact, RedactKey};
 use pqaudit_core::*;
 use pqaudit_rules::embedded::default_pack;
 use std::path::PathBuf;
@@ -289,4 +290,72 @@ fn duplicate_override_errors() {
     let err = assess(&results(vec![]), &eng, default_pack(), today()).unwrap_err();
     assert_eq!(err, AssessError::DuplicateOverride("key:aa".into()));
     assert!(err.to_string().contains("key:aa"));
+}
+
+/// One override for `key:aa`, and a redacted copy of results with that finding.
+fn redacted_case(key: &RedactKey) -> (Engagement, ResultsFile) {
+    let overrides = "[[override]]\nfingerprint = \"key:aa\"\npriority = \"low\"\nreason = \"r\"\nby = \"Jo\"\ndate = 2026-10-01\n";
+    let eng = engagement(&["uk"], FULL_ASSET, overrides);
+    let mut res = results(vec![
+        finding("key:aa", "pay.example"),
+        finding("key:bb", "pay.example"),
+    ]);
+    redact(&mut res, key);
+    (eng, res)
+}
+
+#[test]
+fn overrides_apply_to_redacted_results_with_the_key() {
+    let key = RedactKey::from_bytes([7; 32]);
+    let (eng, res) = redacted_case(&key);
+    let keyed = keyed_fingerprint(&Fingerprint("key:aa".into()), &key);
+    assert_eq!(res.findings[0].fingerprint, keyed);
+    let out = assess_with_key(&res, &eng, default_pack(), today(), Some(&key)).unwrap();
+    let matched = out.findings[0]
+        .override_
+        .as_ref()
+        .expect("the override applies");
+    assert_eq!(out.findings[0].effective_band, Band::Low);
+    // The assessment shows the keyed form. The plain fingerprint must not reach a report.
+    assert_eq!(matched.fingerprint, keyed.0);
+    assert!(out.findings[1].override_.is_none());
+    assert!(out.orphaned_overrides.is_empty());
+    assert!(!out.overrides_need_key);
+}
+
+#[test]
+fn override_in_keyed_form_still_matches() {
+    let key = RedactKey::from_bytes([7; 32]);
+    let keyed = keyed_fingerprint(&Fingerprint("key:aa".into()), &key);
+    let overrides = format!("[[override]]\nfingerprint = \"{}\"\npriority = \"low\"\nreason = \"r\"\nby = \"Jo\"\ndate = 2026-10-01\n", keyed.0);
+    let eng = engagement(&["uk"], FULL_ASSET, &overrides);
+    let (_, res) = redacted_case(&key);
+    let out = assess_with_key(&res, &eng, default_pack(), today(), Some(&key)).unwrap();
+    assert!(out.findings[0].override_.is_some());
+    assert!(out.orphaned_overrides.is_empty());
+}
+
+#[test]
+fn redacted_results_without_the_key_match_no_plain_override() {
+    let key = RedactKey::from_bytes([7; 32]);
+    let (eng, res) = redacted_case(&key);
+    let out = assess_with_key(&res, &eng, default_pack(), today(), None).unwrap();
+    assert!(out.findings.iter().all(|f| f.override_.is_none()));
+    assert_eq!(out.orphaned_overrides.len(), 1);
+    assert!(out.overrides_need_key, "the report must say why");
+    // The plain call has no key.
+    let out = assess(&res, &eng, default_pack(), today()).unwrap();
+    assert!(out.overrides_need_key);
+}
+
+#[test]
+fn wrong_key_leaves_the_override_orphaned() {
+    let (eng, res) = redacted_case(&RedactKey::from_bytes([7; 32]));
+    let other = RedactKey::from_bytes([8; 32]);
+    let out = assess_with_key(&res, &eng, default_pack(), today(), Some(&other)).unwrap();
+    assert!(out.findings.iter().all(|f| f.override_.is_none()));
+    assert_eq!(out.orphaned_overrides.len(), 1);
+    // The orphaned override shows the keyed form of the wrong key, not the plain fingerprint.
+    assert_ne!(out.orphaned_overrides[0].fingerprint, "key:aa");
+    assert!(!out.overrides_need_key);
 }

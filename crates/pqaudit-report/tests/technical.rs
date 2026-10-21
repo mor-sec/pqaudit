@@ -260,6 +260,7 @@ fn fixture() -> Assessment {
             by: "B. Person".to_string(),
             date: date(2026, 9, 1),
         }],
+        overrides_need_key: false,
         unassessed_count: 1,
         assumptions: Assumptions { crqc_year: 2035 },
         pack,
@@ -417,6 +418,19 @@ fn overrides_log_shows_reason() {
     let orphans = &text[end..text.find("# Appendix").unwrap()];
     assert!(orphans.contains("cert:orphan"));
     assert!(orphans.contains("Orphan reason."));
+}
+
+#[test]
+fn missing_redaction_key_note_shows_with_the_orphans() {
+    const NOTE: &str =
+        "The results file has keyed hashes, but the engagement directory has no file redact.key.";
+    assert!(!html().contains(NOTE));
+    let mut a = fixture();
+    a.overrides_need_key = true;
+    for format in [Format::Html, Format::Md] {
+        let text = render(&a, format).unwrap();
+        assert!(text.contains(NOTE), "{format:?}");
+    }
 }
 
 #[test]

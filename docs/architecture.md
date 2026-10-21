@@ -33,8 +33,9 @@ The tool goes into client networks. Thus the architecture has two more goals:
 
 1. `init` makes the engagement folder with five TOML files.
 2. Each scan writes one `.pqr` results file. Its header names the rules pack and the scope and audit hashes.
-3. `merge` joins results files. `--redact` changes names, paths, and addresses into keyed hashes.
+3. `merge` joins results files. `--redact` changes names, paths, addresses, and fingerprints into keyed hashes.
 4. `report`, `cbom`, and `explain` assess the results. They add context, deadlines, overrides, and scores.
+5. For redacted results, these commands use `redact.key`. They change each override fingerprint into its keyed form.
 
 ## 3. Diagram
 
@@ -67,7 +68,7 @@ flowchart TB
     subgraph OP["Operator computer"]
         CLI["pqaudit-cli"]
         RULES["pqaudit-rules<br/>S1: built-in trust list<br/>S2: both signatures must pass<br/>S3: rotation chain, revocation<br/>S4: bounded archive reader"]
-        CORE["pqaudit-core<br/>S5: results size limit<br/>S6: keyed redaction<br/>S7: pack and engagement checks<br/>S8: text cleaning"]
+        CORE["pqaudit-core<br/>S5: results size limit<br/>S6: keyed redaction and fingerprints<br/>S7: pack and engagement checks<br/>S8: text cleaning"]
         FILES["pqaudit-scan-files<br/>S9: no sockets<br/>S10: no private key bytes in output<br/>S11: wiped buffers, size and work limits"]
         NET["pqaudit-scan-net<br/>S12: scope plan, refusal exits 2, no special addresses<br/>S13: one audited connect site<br/>S14: rate limits, timeouts, handshake budget"]
         REP["pqaudit-report<br/>S15: HTML and Markdown escaping<br/>S16: CBOM has no key bytes"]
@@ -117,7 +118,7 @@ flowchart TB
 | S3 | A rotation chain starts at a built-in key. A revoked key anywhere in the chain stops the pack. | `verify.rs` |
 | S4 | The archive reader rejects unsafe paths, links, duplicates, and archives that are too large. | `archive.rs` |
 | S5 | The tool reads at most 1 GiB from a results file, also after decompression. | `results.rs` |
-| S6 | Redaction uses HMAC-SHA256 with a key for each engagement. The key file has mode 0600. | `merge.rs` |
+| S6 | Redaction uses HMAC-SHA256 with a key for each engagement. The key file has mode 0600. Fingerprints and public hashes also become keyed hashes. | `merge.rs`, `assess.rs` |
 | S7 | A report needs the same rules pack as the results. A report needs results from the same engagement. | `assess.rs`, `assessment.rs` |
 | S8 | Text from peers and files loses control characters before output. | `text.rs` |
 | S9 | The file scanner has no network crate. A CI job traces it with `strace`. | `check_offline.rs`, `ci.yml` |
@@ -198,8 +199,8 @@ Each decision has an ID, the decision, the reason, and the consequence. The firs
 | AD-34 | At most 3 TLS handshakes for each IP address and port. | Several host names can share one address. | Extra host names get a scan error. |
 | AD-35 | With a budget of 1, the probe uses the hybrid handshake. | PQC support is the main check. | No certificate chain if the hybrid handshake fails. |
 | AD-36 | Ctrl-C keeps finished results and lists the rest. | Exit 3 means partial results. | The audit log is complete. |
-| AD-37 | Redaction uses HMAC with an engagement key. IP addresses map into test ranges. | Plain hashes of host names are easy to guess. | Keep `redact.key` private. |
-| AD-38 | Fingerprints stay the same after redaction. | Design section 10.1. Overrides depend on them. | Fingerprints of IP endpoints can show the IPv4 address. The documents say so. |
+| AD-37 | Redaction uses HMAC with an engagement key. IP addresses map into test ranges. Fingerprints, certificate hashes, and key hashes also become keyed hashes. | Plain hashes of host names, addresses, and public certificates are easy to guess. | Keep `redact.key` private. |
+| AD-38 | A redacted file has keyed fingerprints. The assessment maps each override fingerprint to the keyed form with `redact.key`. | Design section 10.1. Overrides depend on fingerprints. A plain fingerprint can show an IPv4 address. | Without `redact.key`, overrides do not match redacted results. The report says so. |
 | AD-39 | Finding IDs come from fingerprints. | `explain` must show the same finding after a new merge. | IDs are not in sequence. |
 | AD-40 | A report refuses a different rules pack, a duplicate override, or results from another engagement. | The report must not mix sources. | Keep the pack that made the results. |
 | AD-41 | A multi-asset finding takes the first matching asset in `assets.toml`. | Occurrence order follows random run IDs. | The order of assets in the file matters. |
@@ -228,5 +229,4 @@ Each decision has an ID, the decision, the reason, and the consequence. The firs
 
 ## 6. Open decisions
 
-- Keyed fingerprints for IP endpoints in redacted results. This change hides the addresses, but old overrides must get new keys.
 - STARTTLS, the code audit, the board report, PDF output, and more deadline profiles come in later stages.

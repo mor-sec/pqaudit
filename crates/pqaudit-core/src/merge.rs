@@ -470,6 +470,42 @@ pub fn redacted(value: &str, key: &RedactKey) -> String {
     text
 }
 
+/// Make the keyed form of a fingerprint. The kind prefix stays.
+///
+/// The hex part becomes 32 hex digits of the keyed hash of the full fingerprint.
+/// The same key gives the same value, so merge can join redacted files.
+pub fn keyed_fingerprint(fingerprint: &Fingerprint, key: &RedactKey) -> Fingerprint {
+    let mac = key.mac("fingerprint", &fingerprint.0);
+    let mut hex = String::with_capacity(32);
+    for byte in &mac[..16] {
+        write!(hex, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    match fingerprint.0.split_once(':') {
+        Some((kind, _)) => Fingerprint(format!("{kind}:{hex}")),
+        None => Fingerprint(hex),
+    }
+}
+
+/// Replace a hash of public material with 64 hex digits of its keyed hash.
+///
+/// A person can compare a plain hash with a known certificate or key. An empty value stays empty.
+fn hide_hash(value: &mut String, key: &RedactKey) {
+    if value.is_empty() {
+        return;
+    }
+    let mac = key.mac("fingerprint", value);
+    let mut hex = String::with_capacity(64);
+    for byte in mac {
+        write!(hex, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    *value = hex;
+}
+
+/// Replace a fingerprint with its keyed form. Then make the finding ID again from it.
+fn hide_fingerprint(fingerprint: &mut Fingerprint, key: &RedactKey) {
+    *fingerprint = keyed_fingerprint(fingerprint, key);
+}
+
 fn hide(value: &mut String, key: &RedactKey) {
     *value = redacted(value, key);
 }
@@ -504,7 +540,10 @@ fn map_ip(ip: IpAddr, key: &RedactKey) -> IpAddr {
 /// Replace each host name, address, path, subject, issuer, banner, and key comment.
 ///
 /// The functions below name every field of every type. A new field makes the build fail
-/// until the author decides if it is sensitive. The fingerprints and hashes stay.
+/// until the author decides if it is sensitive.
+///
+/// Each fingerprint, certificate hash, and key hash becomes a keyed hash.
+/// Each finding ID comes again from the keyed fingerprint.
 /// An IP address cannot hold text. It becomes a keyed address in a reserved range.
 /// If the file is already redacted, this function does nothing.
 pub fn redact(file: &mut ResultsFile, key: &RedactKey) {
@@ -565,8 +604,8 @@ pub fn redact(file: &mut ResultsFile, key: &RedactKey) {
 
     for finding in findings {
         let Finding {
-            id: _,
-            fingerprint: _,
+            id,
+            fingerprint,
             rule_id: _,
             source: _,
             algorithm: _,
@@ -580,13 +619,15 @@ pub fn redact(file: &mut ResultsFile, key: &RedactKey) {
             key: key_info,
             endpoint,
         } = finding;
+        hide_fingerprint(fingerprint, key);
+        *id = finding_id(fingerprint);
         redact_occurrences(occurrences, key);
         redact_facts(cert, key_info, endpoint, key);
     }
     for item in inventory {
         let InventoryItem {
             kind: _,
-            fingerprint: _,
+            fingerprint,
             pq_ready: _,
             algorithm: _,
             cert,
@@ -594,6 +635,7 @@ pub fn redact(file: &mut ResultsFile, key: &RedactKey) {
             endpoint,
             occurrences,
         } = item;
+        hide_fingerprint(fingerprint, key);
         redact_occurrences(occurrences, key);
         redact_facts(cert, key_info, endpoint, key);
     }
@@ -634,7 +676,7 @@ fn redact_facts(
     key: &RedactKey,
 ) {
     if let Some(CertInfo {
-        sha256: _,
+        sha256,
         subject,
         issuer,
         not_before: _,
@@ -647,16 +689,18 @@ fn redact_facts(
         chain_position: _,
     }) = cert
     {
+        hide_hash(sha256, key);
         hide(subject, key);
         hide(issuer, key);
     }
     if let Some(KeyInfo {
-        fingerprint_sha256: _,
+        fingerprint_sha256,
         kind: _,
         algorithm: _,
         comment,
     }) = key_info
     {
+        hide_hash(fingerprint_sha256, key);
         hide_opt(comment, key);
     }
     if let Some(EndpointInfo {

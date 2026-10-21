@@ -178,6 +178,10 @@ The customer made no overrides.
 
 ## Orphaned overrides
 
+{% if overrides_need_key %}
+The results file has keyed hashes, but the engagement directory has no file redact.key. Thus the tool cannot find the keyed form of the override fingerprints. No override with a plain fingerprint matches a finding. To apply the overrides, put the redaction key in the engagement directory.
+
+{% endif %}
 {% if orphans %}
 These overrides match no finding in the results.
 

@@ -81,7 +81,9 @@ fn merge_redact_flag_removes_paths() {
         .arg(&out)
         .assert()
         .code(0)
-        .stdout(predicates::str::contains("fingerprints stay"));
+        .stdout(predicates::str::contains(
+            "Fingerprints, certificate hashes, and key hashes are also keyed hashes.",
+        ));
     let key_path = dir.path().join("eng/redact.key");
     assert_eq!(fs::read_to_string(&key_path).unwrap().trim().len(), 64);
     let merged = ResultsFile::read(&out).unwrap();

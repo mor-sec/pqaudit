@@ -128,6 +128,7 @@ struct View {
     vendor_questions: Vec<BriefView>,
     overrides: Vec<OverrideView>,
     orphans: Vec<OrphanView>,
+    overrides_need_key: bool,
     register: Vec<RegisterRow>,
 }
 
@@ -647,6 +648,7 @@ impl View {
                     date: o.date.to_string(),
                 })
                 .collect(),
+            overrides_need_key: a.overrides_need_key,
             register: ordered.iter().map(|f| register_row(f)).collect(),
         }
     }

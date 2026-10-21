@@ -1,7 +1,10 @@
 //! Tests for merge and redaction of results files.
 
 use chrono::{TimeZone, Utc};
-use pqaudit_core::merge::{merge, redact, MergeError, RedactKey, RedactKeyError};
+use pqaudit_core::fingerprint::finding_id;
+use pqaudit_core::merge::{
+    keyed_fingerprint, merge, redact, MergeError, RedactKey, RedactKeyError,
+};
 use pqaudit_core::*;
 use std::net::IpAddr;
 use uuid::Uuid;
@@ -380,7 +383,7 @@ fn populated() -> (ResultsFile, Vec<String>) {
 }
 
 #[test]
-fn redact_keeps_fingerprints_and_removes_hosts() {
+fn redact_keys_fingerprints_and_removes_hosts() {
     let (mut file, originals) = populated();
     let before = file.clone();
     let hashes = before.header.scope_hash.clone();
@@ -388,7 +391,8 @@ fn redact_keeps_fingerprints_and_removes_hosts() {
     assert!(file.header.redacted);
     assert_eq!(file.header.scope_hash, hashes);
     for (a, b) in before.findings.iter().zip(&file.findings) {
-        assert_eq!(a.fingerprint, b.fingerprint);
+        assert_ne!(a.fingerprint, b.fingerprint);
+        assert_eq!(b.fingerprint, keyed_fingerprint(&a.fingerprint, &key()));
     }
     let json = serde_json::to_value(&file).unwrap();
     let mut all = Vec::new();
@@ -402,6 +406,103 @@ fn redact_keeps_fingerprints_and_removes_hosts() {
     assert!(all
         .iter()
         .any(|s| s.starts_with("redacted:") && s.len() == 9 + 12));
+}
+
+/// Each fingerprint, finding ID, certificate hash, and key hash of a file.
+fn public_hashes(file: &ResultsFile) -> Vec<String> {
+    let mut out = Vec::new();
+    for f in &file.findings {
+        out.push(f.fingerprint.0.clone());
+        out.push(f.id.clone());
+        out.push(f.fingerprint.0.split_once(':').unwrap().1.to_string());
+        out.extend(f.cert.iter().map(|c| c.sha256.clone()));
+        out.extend(f.key.iter().map(|k| k.fingerprint_sha256.clone()));
+    }
+    for item in &file.inventory {
+        out.push(item.fingerprint.0.clone());
+        out.push(item.fingerprint.0.split_once(':').unwrap().1.to_string());
+        out.extend(item.cert.iter().map(|c| c.sha256.clone()));
+        out.extend(item.key.iter().map(|k| k.fingerprint_sha256.clone()));
+    }
+    out.retain(|s| !s.is_empty());
+    out
+}
+
+#[test]
+fn no_public_hash_survives_redaction() {
+    let (mut file, _) = populated();
+    // An endpoint finding of an IP address target. Its plain fingerprint shows the address.
+    let mut endpoint = file.findings[0].clone();
+    endpoint.fingerprint = Fingerprint::endpoint("192.0.2.77", 443, "tls.no-pq-kex");
+    endpoint.id = finding_id(&endpoint.fingerprint);
+    endpoint.cert = None;
+    file.findings.push(endpoint);
+    let originals = public_hashes(&file);
+    assert!(originals.len() >= 8, "{originals:?}");
+    redact(&mut file, &key());
+    let text = serde_json::to_string(&file).unwrap();
+    for original in &originals {
+        assert!(!text.contains(original.as_str()), "{original} survives");
+    }
+    for f in &file.findings {
+        let (kind, hex) = f.fingerprint.0.split_once(':').unwrap();
+        assert!(
+            ["cert", "key", "endpoint", "place"].contains(&kind),
+            "{kind}"
+        );
+        assert_eq!(hex.len(), 32);
+        assert!(hex.bytes().all(|b| b.is_ascii_hexdigit()));
+        assert_eq!(
+            f.id,
+            finding_id(&f.fingerprint),
+            "the ID comes from the keyed fingerprint"
+        );
+        for hash in f
+            .cert
+            .iter()
+            .map(|c| &c.sha256)
+            .chain(f.key.iter().map(|k| &k.fingerprint_sha256))
+        {
+            assert_eq!(hash.len(), 64, "{hash}");
+            assert!(hash.bytes().all(|b| b.is_ascii_hexdigit()));
+        }
+    }
+}
+
+#[test]
+fn empty_key_hash_stays_empty() {
+    let (mut file, _) = populated();
+    file.findings[0].key.as_mut().unwrap().fingerprint_sha256 = String::new();
+    redact(&mut file, &key());
+    assert_eq!(
+        file.findings[0].key.as_ref().unwrap().fingerprint_sha256,
+        ""
+    );
+}
+
+#[test]
+fn separately_redacted_files_keep_one_finding_for_one_cert() {
+    let merged = merge(vec![
+        redacted_copy(&files_result()),
+        redacted_copy(&net_result()),
+    ])
+    .unwrap();
+    let cert_fp = keyed_fingerprint(&Fingerprint::cert(&cert("aa").sha256), &key());
+    let certs: Vec<_> = merged
+        .findings
+        .iter()
+        .filter(|f| f.fingerprint == cert_fp)
+        .collect();
+    assert_eq!(certs.len(), 1);
+    assert_eq!(certs[0].occurrences.len(), 2);
+    // A different key gives other fingerprints.
+    assert_ne!(
+        cert_fp,
+        keyed_fingerprint(
+            &Fingerprint::cert(&cert("aa").sha256),
+            &RedactKey::from_bytes([9; 32])
+        )
+    );
 }
 
 #[test]

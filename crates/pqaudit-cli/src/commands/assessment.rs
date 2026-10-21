@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use chrono::Local;
-use pqaudit_core::assess::{assess, Assessment};
+use pqaudit_core::assess::{assess_with_key, Assessment};
 use pqaudit_core::engagement::Engagement;
 use pqaudit_core::merge::{redacted, RedactKey};
 use pqaudit_core::ResultsFile;
@@ -54,14 +54,42 @@ pub fn load_with_pack(
         );
         ExitCode::Error
     })?;
-    check_engagement(&results, &engagement)?;
+    let key = if results.header.redacted {
+        redaction_key(&engagement)?
+    } else {
+        None
+    };
+    check_engagement(&results, &engagement, key.as_ref())?;
     let active = load_active(cli)?;
     let today = Local::now().date_naive();
-    let assessment = assess(&results, &engagement, &active.pack, today).map_err(|error| {
-        eprintln!("{error}");
-        ExitCode::Error
-    })?;
+    let assessment = assess_with_key(&results, &engagement, &active.pack, today, key.as_ref())
+        .map_err(|error| {
+            eprintln!("{error}");
+            ExitCode::Error
+        })?;
+    if assessment.overrides_need_key {
+        output::warn(messages::OVERRIDES_NEED_KEY);
+    }
     Ok((assessment, active))
+}
+
+/// Read `redact.key` in the engagement directory. Return `None` if the file does not exist.
+///
+/// Redacted results need the key for the engagement check and for the overrides.
+fn redaction_key(engagement: &Engagement) -> Result<Option<RedactKey>, ExitCode> {
+    let path = engagement.dir.join(REDACT_KEY_FILE);
+    let missing = std::fs::symlink_metadata(&path)
+        .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound);
+    if missing {
+        return Ok(None);
+    }
+    RedactKey::load(&path).map(Some).map_err(|error| {
+        eprintln!(
+            "{}",
+            messages::REDACT_KEY_LOAD.replace("{reason}", &error.to_string())
+        );
+        ExitCode::Error
+    })
 }
 
 /// Check that the results belong to the engagement directory.
@@ -70,24 +98,18 @@ pub fn load_with_pack(
 /// Redacted results must have the redacted form of that name.
 /// The tool needs `redact.key` to make the redacted form.
 /// Without the key, the tool writes a warning and continues.
-fn check_engagement(results: &ResultsFile, engagement: &Engagement) -> Result<(), ExitCode> {
+fn check_engagement(
+    results: &ResultsFile,
+    engagement: &Engagement,
+    key: Option<&RedactKey>,
+) -> Result<(), ExitCode> {
     let name = engagement_name(engagement);
     let expected = if results.header.redacted {
-        let path = engagement.dir.join(REDACT_KEY_FILE);
-        let missing = std::fs::symlink_metadata(&path)
-            .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound);
-        if missing {
+        let Some(key) = key else {
             output::warn(messages::ENGAGEMENT_UNCHECKED);
             return Ok(());
-        }
-        let key = RedactKey::load(&path).map_err(|error| {
-            eprintln!(
-                "{}",
-                messages::REDACT_KEY_LOAD.replace("{reason}", &error.to_string())
-            );
-            ExitCode::Error
-        })?;
-        redacted(&name, &key)
+        };
+        redacted(&name, key)
     } else {
         name.clone()
     };
