@@ -155,9 +155,11 @@ Do the release steps in this order:
 For step 5, get the SHA-256 fingerprint of each release public key:
 
 ```text
-openssl pkey -pubin -in release-keys/release-ed25519.pub.pem -outform DER | sha256sum
-openssl pkey -pubin -in release-keys/release-mldsa65.pub.pem -outform DER | sha256sum
+sed '1d;$d' release-keys/release-ed25519.pub.pem | base64 -d | sha256sum
+sed '1d;$d' release-keys/release-mldsa65.pub.pem | base64 -d | sha256sum
 ```
+
+These commands give the same hashes as the commands in `docs/verifying.md`. They need no OpenSSL.
 
 Also put the fingerprints on the project site. Customers compare them with the keys in the repository.
 

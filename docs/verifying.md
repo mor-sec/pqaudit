@@ -86,15 +86,24 @@ The maintainers sign the checksum files with two keys: Ed25519 and ML-DSA-65. Th
 
 First get the public keys. They are in the folder `release-keys/` of the repository, on the website of the project, and in the release notes. Name the files `release-ed25519.pub.pem` and `release-mldsa65.pub.pem`.
 
-A person who can change the repository can change `release-keys/` and the release notes. Thus compare the key fingerprints with a copy from outside the repository. The maintainers publish the fingerprints on the project site and in the message of the signed tag. To get the fingerprint of a key, run this command:
+A person who can change the repository can change `release-keys/` and the release notes. Thus compare the key fingerprints with a copy from outside the repository. The maintainers publish the fingerprints on the project site and in the message of the signed tag. The fingerprint of a key is the SHA-256 hash of its DER bytes. These commands need no OpenSSL. They remove the first line and the last line of the PEM file and decode the rest:
 
 ```text
-openssl pkey -pubin -in release-ed25519.pub.pem -outform DER | sha256sum
+sed '1d;$d' release-ed25519.pub.pem | base64 -d | sha256sum
+sed '1d;$d' release-mldsa65.pub.pem | base64 -d | sha256sum
 ```
 
-Do the same for `release-mldsa65.pub.pem`. If a fingerprint is different, do not trust the key.
+Each PEM file must start with its `BEGIN` line and stop with its `END` line. If a fingerprint is different, do not trust the key.
 
-Then run both commands:
+The key ID of a key pair is the SHA-256 hash of the Ed25519 DER bytes, followed by the ML-DSA-65 DER bytes. The command `xtask keygen` and the trust list `rules/trust/keys.toml` use this ID. To get the key ID of the release keys, run this command:
+
+```text
+{ sed '1d;$d' release-ed25519.pub.pem | base64 -d; sed '1d;$d' release-mldsa65.pub.pem | base64 -d; } | sha256sum
+```
+
+For a pack key in `rules/trust/keys.toml`, put each PEM value in a file of its own first. Then use the same command. On macOS, use `shasum -a 256` in place of `sha256sum`.
+
+Then check the two signatures with these commands:
 
 ```text
 openssl pkeyutl -verify -pubin -inkey release-ed25519.pub.pem -rawin -in SHA256SUMS -sigfile SHA256SUMS.ed25519.sig
