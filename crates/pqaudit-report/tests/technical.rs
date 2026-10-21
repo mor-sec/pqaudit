@@ -260,6 +260,7 @@ fn fixture() -> Assessment {
             by: "B. Person".to_string(),
             date: date(2026, 9, 1),
         }],
+        orphaned_override_count: 1,
         overrides_need_key: false,
         unassessed_count: 1,
         assumptions: Assumptions { crqc_year: 2035 },

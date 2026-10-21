@@ -263,7 +263,9 @@ a { color: #0550ae; }
 {% if overrides_need_key %}
 <p>The results file has keyed hashes, but the engagement directory has no file redact.key. Thus the tool cannot find the keyed form of the override fingerprints. No override with a plain fingerprint matches a finding. To apply the overrides, put the redaction key in the engagement directory.</p>
 {% endif %}
-{% if orphans %}
+{% if orphan_count > 0 and not orphans %}
+<p>{{ orphan_count }} {% if orphan_count == 1 %}override{% else %}overrides{% endif %} in overrides.toml cannot match. The tool has no redact.key.</p>
+{% elif orphans %}
 <p>These overrides match no finding in the results.</p>
 <div class="table-wrap">
 <table>

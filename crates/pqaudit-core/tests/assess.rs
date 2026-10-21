@@ -341,7 +341,9 @@ fn redacted_results_without_the_key_match_no_plain_override() {
     let (eng, res) = redacted_case(&key);
     let out = assess_with_key(&res, &eng, default_pack(), today(), None).unwrap();
     assert!(out.findings.iter().all(|f| f.override_.is_none()));
-    assert_eq!(out.orphaned_overrides.len(), 1);
+    // The list would show the plain fingerprint. The assessment gives only the count.
+    assert!(out.orphaned_overrides.is_empty());
+    assert_eq!(out.orphaned_override_count, 1);
     assert!(out.overrides_need_key, "the report must say why");
     // The plain call has no key.
     let out = assess(&res, &eng, default_pack(), today()).unwrap();
@@ -355,6 +357,7 @@ fn wrong_key_leaves_the_override_orphaned() {
     let out = assess_with_key(&res, &eng, default_pack(), today(), Some(&other)).unwrap();
     assert!(out.findings.iter().all(|f| f.override_.is_none()));
     assert_eq!(out.orphaned_overrides.len(), 1);
+    assert_eq!(out.orphaned_override_count, 1);
     // The orphaned override shows the keyed form of the wrong key, not the plain fingerprint.
     assert_ne!(out.orphaned_overrides[0].fingerprint, "key:aa");
     assert!(!out.overrides_need_key);

@@ -74,7 +74,12 @@ pub struct Assessment {
     /// The planning milestones of the selected profiles.
     pub planning_milestones: Vec<(String, Milestone)>,
     /// The overrides that match no finding.
+    ///
+    /// This list is empty for a redacted results file when the tool has no redaction key.
+    /// Then the fingerprints are plain, and a plain fingerprint can confirm a guess.
     pub orphaned_overrides: Vec<Override>,
+    /// The number of overrides that match no finding. It includes the overrides that the list does not show.
+    pub orphaned_override_count: usize,
     /// True for a redacted results file with overrides, when the tool has no redaction key.
     /// Then a plain override fingerprint cannot match a finding.
     pub overrides_need_key: bool,
@@ -295,11 +300,18 @@ pub fn assess_with_key(
         .iter()
         .map(|finding| finding.fingerprint.0.as_str())
         .collect();
-    let orphaned_overrides = overrides
+    let orphaned_overrides: Vec<Override> = overrides
         .iter()
         .filter(|o| !known.iter().any(|fingerprint| o.matches(fingerprint)))
         .map(|o| o.shown.clone())
         .collect();
+    let orphaned_override_count = orphaned_overrides.len();
+    // Without the key, the tool cannot make a keyed form. A plain fingerprint must not reach a redacted report.
+    let orphaned_overrides = if results.header.redacted && key.is_none() {
+        Vec::new()
+    } else {
+        orphaned_overrides
+    };
     let overrides_need_key =
         results.header.redacted && key.is_none() && !eng.overrides.r#override.is_empty();
     let unassessed_count = findings
@@ -326,6 +338,7 @@ pub fn assess_with_key(
         errors: results.errors.clone(),
         planning_milestones: deadlines::planning(&profiles),
         orphaned_overrides,
+        orphaned_override_count,
         overrides_need_key,
         unassessed_count,
         assumptions: config.assumptions.clone(),

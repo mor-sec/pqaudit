@@ -406,7 +406,7 @@ A report from a redacted file cannot match assets to findings. All context field
 
 Overrides use plain fingerprints. For a redacted file, `report`, `cbom`, and `explain` read `redact.key` in the engagement folder. They calculate the keyed form of each override fingerprint and match that form. An override that already has the keyed form also matches. The report then shows only keyed fingerprints.
 
-Without `redact.key`, no plain override matches. The report lists the overrides as orphaned and tells why.
+Without `redact.key`, no plain override matches. The report tells why. It gives only the number of orphaned overrides. It does not show their fingerprints or their reasons, because a plain fingerprint can confirm a guess. In the JSON report, `orphaned_overrides` is empty and `orphaned_override_count` has the number.
 
 ## Assessment: how the tool uses your context
 

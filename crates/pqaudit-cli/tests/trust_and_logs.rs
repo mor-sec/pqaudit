@@ -288,6 +288,38 @@ fn overrides_apply_to_redacted_results_with_the_key() {
     assert!(html.contains(
         "The results file has keyed hashes, but the engagement directory has no file redact.key."
     ));
+
+    // Without the key, the reports give only the count of the orphaned overrides.
+    // A plain override fingerprint can confirm a guess, so it must not show.
+    let hex = fingerprint
+        .split_once(':')
+        .map_or(fingerprint.as_str(), |(_, hex)| hex);
+    const COUNT_NOTE: &str =
+        "1 override in overrides.toml cannot match. The tool has no redact.key.";
+    for (format, file) in [
+        ("html", "technical.html"),
+        ("md", "technical.md"),
+        ("json", "technical.json"),
+    ] {
+        pqaudit(dir.path())
+            .args(["report", "--format", format, "--results"])
+            .arg(&redacted)
+            .assert()
+            .code(0);
+        let text = fs::read_to_string(dir.path().join("eng/reports").join(file)).unwrap();
+        assert!(!text.contains(hex), "{format}: the plain fingerprint shows");
+        assert!(
+            !text.contains("Accepted risk."),
+            "{format}: the reason shows"
+        );
+        if format == "json" {
+            let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(value["orphaned_overrides"].as_array().unwrap().len(), 0);
+            assert_eq!(value["orphaned_override_count"], 1);
+        } else {
+            assert!(text.contains(COUNT_NOTE), "{format}: no count note");
+        }
+    }
 }
 
 #[test]

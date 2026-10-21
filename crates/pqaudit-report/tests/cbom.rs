@@ -277,6 +277,7 @@ fn assessment(redacted: bool) -> Assessment {
         errors: vec![],
         planning_milestones: vec![],
         orphaned_overrides: vec![],
+        orphaned_override_count: 0,
         overrides_need_key: false,
         unassessed_count: 0,
         assumptions: Assumptions { crqc_year: 2035 },
