@@ -63,19 +63,26 @@ impl std::fmt::Debug for ScanOptions {
 }
 
 /// Find the name of this computer. Return "unknown" if the tool cannot find it.
+///
+/// The tool asks the operating system first. This call does no network input or output.
+/// If the call gives no name, the tool reads the environment, then the system files.
 pub fn local_host_name() -> String {
+    let clean = |name: &str| Some(name.trim().to_string()).filter(|name| !name.is_empty());
+    if let Some(name) = gethostname::gethostname().to_str().and_then(clean) {
+        return name;
+    }
     for variable in ["HOSTNAME", "COMPUTERNAME"] {
-        if let Ok(name) = std::env::var(variable) {
-            if !name.trim().is_empty() {
-                return name.trim().to_string();
-            }
+        if let Some(name) = std::env::var(variable).ok().as_deref().and_then(clean) {
+            return name;
         }
     }
-    for path in ["/proc/sys/kernel/hostname", "/etc/hostname"] {
-        if let Ok(name) = std::fs::read_to_string(path) {
-            if !name.trim().is_empty() {
-                return name.trim().to_string();
-            }
+    for path in ["/etc/hostname", "/proc/sys/kernel/hostname"] {
+        if let Some(name) = std::fs::read_to_string(path)
+            .ok()
+            .as_deref()
+            .and_then(clean)
+        {
+            return name;
         }
     }
     String::from("unknown")

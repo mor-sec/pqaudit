@@ -243,3 +243,25 @@ fn unreadable_paths_give_partial_exit_3() {
     // Make the file readable, so that the cleanup can delete it.
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o600)).unwrap();
 }
+
+#[test]
+fn host_name_comes_from_the_operating_system() {
+    let setup = Setup::new();
+    fs::copy(fixture("rsa2048-leaf.pem"), setup.target().join("a.pem")).unwrap();
+    let output = setup.dir.path().join("a.pqr");
+    setup
+        .pqaudit()
+        .env("HOSTNAME", "env-name-marker")
+        .env("COMPUTERNAME", "env-name-marker")
+        .args(["scan", "files", "--output"])
+        .arg(&output)
+        .arg(setup.target())
+        .assert()
+        .code(0);
+    let file = ResultsFile::read(&output).unwrap();
+    let host = &file.header.host;
+    assert!(!host.is_empty());
+    assert_eq!(host, host.trim());
+    assert_ne!(host, "env-name-marker", "the variable must not win");
+    assert_eq!(&file.header.runs[0].host, host);
+}

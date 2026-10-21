@@ -349,3 +349,16 @@ impl ExistsAnd for PathBuf {
         fs::read_to_string(self).is_ok_and(|text| test(&text))
     }
 }
+
+#[test]
+fn unsigned_pack_warns_in_scan_net() {
+    let setup = Setup::new(&scope_for(closed_port(), ""));
+    common::install_unsigned_pack(&setup.dir.path().join("data"));
+    setup
+        .scan_with(&["--allow-unsigned-rules"])
+        .code(3)
+        .stderr(predicate::str::contains("this pack has no valid signature"));
+    setup.scan().code(3).stderr(predicate::str::contains(
+        "did not use the installed rules pack 99.0.0",
+    ));
+}

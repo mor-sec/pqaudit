@@ -117,3 +117,10 @@ fn skipped_symlinks_are_counted_and_noted() {
     assert!(out.errors.is_empty());
     assert_eq!(out.findings[0].occurrences.len(), 2);
 }
+
+#[test]
+fn local_host_name_is_not_empty() {
+    let name = pqaudit_scan_files::local_host_name();
+    assert!(!name.is_empty());
+    assert_eq!(name, name.trim());
+}
