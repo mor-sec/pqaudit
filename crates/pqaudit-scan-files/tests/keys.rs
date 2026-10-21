@@ -1227,3 +1227,15 @@ fn key_files_of_unsupported_versions_and_types_are_errors_not_skipped() {
     }
     assert!(out.findings.is_empty() && out.inventory.is_empty());
 }
+
+#[test]
+fn ssh_key_comment_with_control_characters_is_clean() {
+    let line = fs::read_to_string(key_fixture("id_ed25519.pub")).unwrap();
+    let mut tokens: Vec<&str> = line.split_whitespace().take(2).collect();
+    tokens.push("evil\u{1b}[2J\u{7}name");
+    let text = tokens.join(" ");
+    let scan = pqaudit_scan_files::ssh::scan_text(text.as_bytes());
+    assert_eq!(scan.found.len(), 1);
+    let comment = scan.found[0].info.comment.as_deref().unwrap();
+    assert_eq!(comment, "evil?[2J?name");
+}

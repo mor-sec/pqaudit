@@ -112,7 +112,7 @@ impl<'a> Reader<'a> {
     /// Read an alias for a message. Cut a long alias.
     fn alias(&mut self) -> Result<String, StoreError> {
         let length = usize::from(self.u16()?);
-        let text = String::from_utf8_lossy(self.take(length)?);
+        let text = pqaudit_core::text::clean_bytes(self.take(length)?);
         Ok(text.chars().take(MAX_ALIAS_CHARS).collect())
     }
 }

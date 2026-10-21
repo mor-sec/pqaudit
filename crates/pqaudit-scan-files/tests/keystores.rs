@@ -276,3 +276,33 @@ fn leak_check_detects_a_leak() {
     let text = format!("{{\"key\":\"{}\"}}", hex(&secret));
     assert_no_window(&text, &secret, "control");
 }
+
+#[test]
+fn jks_alias_with_control_characters_is_clean() {
+    let bytes = write_store(
+        JCEKS_MAGIC,
+        &[
+            Entry::Trusted {
+                alias: "ca",
+                cert: pem_to_der("rsa2048-leaf.pem").remove(0),
+            },
+            Entry::Key {
+                alias: "evil\u{1b}[2J\nname",
+                encrypted_key: pseudo_random(3, 64),
+                chain: vec![],
+            },
+        ],
+    );
+    let scan = scan_jks(&bytes).unwrap();
+    assert_eq!(scan.errors.len(), 1);
+    assert!(
+        !scan.errors[0].chars().any(char::is_control),
+        "{:?}",
+        scan.errors
+    );
+    assert!(
+        scan.errors[0].contains("evil?[2J?name"),
+        "{:?}",
+        scan.errors
+    );
+}

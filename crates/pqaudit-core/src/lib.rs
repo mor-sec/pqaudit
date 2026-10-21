@@ -12,6 +12,7 @@ pub mod merge;
 pub mod messages;
 pub mod results;
 pub mod scoring;
+pub mod text;
 pub mod x509;
 
 pub use finding::*;

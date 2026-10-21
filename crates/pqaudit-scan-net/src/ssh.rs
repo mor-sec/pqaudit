@@ -146,18 +146,9 @@ impl<S: AsyncRead + Unpin> Input<'_, S> {
     }
 }
 
-/// Replace the bytes that are not printable ASCII. A banner can go to a terminal.
+/// Replace the control characters. A banner can go to a terminal.
 fn clean(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|byte| {
-            if (0x20..0x7f).contains(byte) {
-                char::from(*byte)
-            } else {
-                '?'
-            }
-        })
-        .collect()
+    pqaudit_core::text::clean_bytes(bytes)
 }
 
 async fn exchange<S>(stream: &mut S) -> Result<SshObservation, SshProbeError>

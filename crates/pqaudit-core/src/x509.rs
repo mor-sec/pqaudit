@@ -145,12 +145,12 @@ pub fn parse_certificate(der: &[u8], position: usize) -> Result<CertInfo, CertEr
     })
 }
 
+/// Clean a name from a certificate and cut it if it is too long.
 fn limit(text: String) -> String {
-    if text.chars().count() > MAX_NAME_CHARS {
-        text.chars().take(MAX_NAME_CHARS).collect()
-    } else {
-        text
-    }
+    crate::text::clean(&text)
+        .chars()
+        .take(MAX_NAME_CHARS)
+        .collect()
 }
 
 fn to_utc(seconds: i64) -> DateTime<Utc> {

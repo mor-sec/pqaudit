@@ -95,13 +95,12 @@ impl FoundKey {
     }
 }
 
-/// Cut a comment that is too long.
+/// Clean a comment or a user ID and cut it if it is too long.
 pub fn limit_comment(text: String) -> String {
-    if text.chars().count() > MAX_COMMENT_CHARS {
-        text.chars().take(MAX_COMMENT_CHARS).collect()
-    } else {
-        text
-    }
+    pqaudit_core::text::clean(&text)
+        .chars()
+        .take(MAX_COMMENT_CHARS)
+        .collect()
 }
 
 /// Why the tool cannot read a key.
