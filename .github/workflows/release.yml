@@ -312,6 +312,24 @@ jobs:
           (cd crates/pqaudit-cli && cargo cyclonedx --format json --spec-version 1.5 --target all)
           mv crates/pqaudit-cli/pqaudit-cli.cdx.json "meta/pqaudit-${GITHUB_REF_NAME}.sbom.cdx.json"
 
+      # The tool cargo-cyclonedx writes no serial number. The step actions/attest-sbom needs one.
+      # The number comes from the hash of the SBOM, so the same input gives the same number.
+      - name: Give the SBOM a serial number
+        run: |
+          python3 - "meta/pqaudit-${GITHUB_REF_NAME}.sbom.cdx.json" <<'PY'
+          import hashlib, json, sys, uuid
+          path = sys.argv[1]
+          with open(path) as f:
+              bom = json.load(f)
+          bom.pop("serialNumber", None)
+          digest = hashlib.sha256(json.dumps(bom, sort_keys=True).encode()).hexdigest()
+          serial = "urn:uuid:" + str(uuid.uuid5(uuid.NAMESPACE_URL, "https://github.com/mor-sec/pqaudit/sbom/" + digest))
+          bom = {"bomFormat": bom.pop("bomFormat"), "specVersion": bom.pop("specVersion"), "serialNumber": serial, **bom}
+          with open(path, "w") as f:
+              json.dump(bom, f, indent=2)
+              f.write("\n")
+          PY
+
       # This step also runs cargo tree for each not-linked crate. It fails if the build links one.
       - name: Make the CBOM of the tool
         run: |
